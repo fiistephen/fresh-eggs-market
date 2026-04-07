@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -8,14 +8,22 @@ const BOOKING_STATUS_COLORS = {
   CANCELLED: 'bg-red-100 text-red-700',
 };
 
-function formatCurrency(n) {
-  if (n == null) return '—';
-  return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', minimumFractionDigits: 0 }).format(n);
+function formatCurrency(value) {
+  if (value == null) return '—';
+  return new Intl.NumberFormat('en-NG', {
+    style: 'currency',
+    currency: 'NGN',
+    minimumFractionDigits: 0,
+  }).format(Number(value));
 }
 
-function formatDate(d) {
-  if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' });
+function formatDate(value) {
+  if (!value) return '—';
+  return new Date(value).toLocaleDateString('en-NG', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
 }
 
 export default function Bookings() {
@@ -30,55 +38,80 @@ export default function Bookings() {
   const canCreate = ['ADMIN', 'MANAGER'].includes(user?.role);
   const canCancel = ['ADMIN', 'MANAGER'].includes(user?.role);
 
-  useEffect(() => { loadBookings(); }, [filter]);
+  useEffect(() => {
+    loadBookings();
+  }, [filter]);
 
   async function loadBookings() {
     setLoading(true);
+    setError('');
     try {
       const params = filter ? `?status=${filter}` : '';
       const data = await api.get(`/bookings${params}`);
-      setBookings(data.bookings);
-    } catch (err) {
+      setBookings(data.bookings || []);
+    } catch {
       setError('Failed to load bookings');
     } finally {
       setLoading(false);
     }
   }
 
+  const summary = useMemo(() => {
+    const confirmed = bookings.filter((booking) => booking.status === 'CONFIRMED');
+    return {
+      count: bookings.length,
+      confirmedCount: confirmed.length,
+      bookedCrates: confirmed.reduce((sum, booking) => sum + booking.quantity, 0),
+      amountApplied: confirmed.reduce((sum, booking) => sum + Number(booking.amountPaid || 0), 0),
+    };
+  }, [bookings]);
+
   return (
-    <div>
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-4">
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Bookings</h1>
-          <p className="text-sm text-gray-500 mt-1">Customer pre-orders against open batches.</p>
+          <h1 className="text-2xl font-bold text-gray-900">Bookings</h1>
+          <p className="mt-1 max-w-3xl text-sm text-gray-500">
+            Book from money already received. Choose the customer, choose the batch, then apply the customer&apos;s available payments.
+          </p>
         </div>
         {canCreate && (
           <button
             onClick={() => setShowCreate(true)}
-            className="bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 w-fit"
+            className="w-fit rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-600"
           >
-            <span className="text-lg leading-none">+</span> New Booking
+            New booking
           </button>
         )}
       </div>
 
-      {/* Status filter tabs */}
-      <div className="overflow-x-auto mb-6">
-        <div className="flex gap-1 bg-gray-100 rounded-lg p-1 w-fit">
+      <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+        <h2 className="text-sm font-semibold text-blue-900">Booking rule</h2>
+        <p className="mt-1 text-sm text-blue-900">
+          Do not type payment manually here. First record the customer&apos;s payment in Banking. Then come here and apply that money to the booking.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <SummaryCard label="Bookings in view" value={summary.count} />
+        <SummaryCard label="Confirmed bookings" value={summary.confirmedCount} />
+        <SummaryCard label="Booked crates" value={summary.bookedCrates} />
+        <SummaryCard label="Money applied" value={formatCurrency(summary.amountApplied)} />
+      </div>
+
+      <div className="overflow-x-auto">
+        <div className="flex gap-1 rounded-lg bg-gray-100 p-1 w-fit">
           {[
             { value: '', label: 'All' },
             { value: 'CONFIRMED', label: 'Confirmed' },
-            { value: 'PICKED_UP', label: 'Picked Up' },
+            { value: 'PICKED_UP', label: 'Picked up' },
             { value: 'CANCELLED', label: 'Cancelled' },
-          ].map(tab => (
+          ].map((tab) => (
             <button
               key={tab.value}
               onClick={() => setFilter(tab.value)}
-              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
-                filter === tab.value
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
+              className={`whitespace-nowrap rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
+                filter === tab.value ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
               }`}
             >
               {tab.label}
@@ -87,107 +120,109 @@ export default function Bookings() {
         </div>
       </div>
 
-      {error && (
-        <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg mb-4 text-sm">{error}</div>
-      )}
+      {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 
-      {/* Bookings list */}
       {loading ? (
-        <div className="text-center py-12 text-gray-400">Loading bookings...</div>
+        <div className="rounded-2xl border border-gray-200 bg-white px-6 py-24 text-center text-sm text-gray-500">Loading bookings…</div>
       ) : bookings.length === 0 ? (
-        <div className="text-center py-16">
-          <div className="text-4xl mb-3">📋</div>
-          <p className="text-gray-500">{filter ? 'No bookings with this status' : 'No bookings yet'}</p>
-          {canCreate && !filter && (
-            <button
-              onClick={() => setShowCreate(true)}
-              className="mt-4 text-brand-500 hover:text-brand-600 text-sm font-medium"
-            >
-              Create your first booking
-            </button>
-          )}
+        <div className="rounded-2xl border border-gray-200 bg-white px-6 py-24">
+          <EmptyState
+            title={filter ? 'No bookings in this group' : 'No bookings yet'}
+            body={filter ? 'Try another filter.' : 'When a customer has paid in Banking, you can create a booking from that money here.'}
+          />
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[800px]">
-              <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Batch</th>
-                  <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Qty</th>
-                  <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Order Value</th>
-                  <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Amount Paid</th>
-                  <th className="text-center py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Channel</th>
-                  <th className="text-center py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                  {canCancel && <th className="text-center py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {bookings.map(b => (
-                  <tr key={b.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                    <td className="py-3 px-4">
-                      <span className="font-medium text-gray-900">{b.customer?.name || '—'}</span>
-                      {b.customer?.phone && (
-                        <span className="text-xs text-gray-400 ml-2">{b.customer.phone}</span>
+        <div className="rounded-2xl border border-gray-200 bg-white overflow-x-auto">
+          <table className="w-full min-w-[1040px]">
+            <thead>
+              <tr className="border-b border-gray-100">
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-[0.14em] text-gray-500">Customer</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-[0.14em] text-gray-500">Batch</th>
+                <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-[0.14em] text-gray-500">Qty</th>
+                <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-[0.14em] text-gray-500">Booking value</th>
+                <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-[0.14em] text-gray-500">Applied</th>
+                <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-[0.14em] text-gray-500">Balance</th>
+                <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-[0.14em] text-gray-500">Payments used</th>
+                <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-[0.14em] text-gray-500">Status</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-[0.14em] text-gray-500">Date</th>
+                {canCancel && <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-[0.14em] text-gray-500">Action</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {bookings.map((booking) => (
+                <tr key={booking.id} className="border-b border-gray-50 align-top hover:bg-gray-50">
+                  <td className="px-4 py-3">
+                    <div className="text-sm font-medium text-gray-900">{booking.customer?.name || '—'}</div>
+                    {booking.customer?.phone && <div className="text-xs text-gray-400">{booking.customer.phone}</div>}
+                  </td>
+                  <td className="px-4 py-3 text-sm font-medium text-gray-700">{booking.batch?.name || '—'}</td>
+                  <td className="px-4 py-3 text-right text-sm">{booking.quantity.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-right text-sm text-gray-600">{formatCurrency(booking.orderValue)}</td>
+                  <td className="px-4 py-3 text-right text-sm font-medium text-gray-900">{formatCurrency(booking.amountPaid)}</td>
+                  <td className={`px-4 py-3 text-right text-sm font-medium ${booking.balance > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                    {formatCurrency(booking.balance)}
+                  </td>
+                  <td className="px-4 py-3 text-center text-sm text-gray-500">{booking.allocations?.length || 0}</td>
+                  <td className="px-4 py-3 text-center">
+                    <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${BOOKING_STATUS_COLORS[booking.status]}`}>
+                      {booking.status.replace('_', ' ')}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-500">{formatDate(booking.createdAt)}</td>
+                  {canCancel && (
+                    <td className="px-4 py-3 text-center">
+                      {booking.status === 'CONFIRMED' && (
+                        <button
+                          onClick={() => setShowCancel(booking)}
+                          className="text-xs font-medium text-red-500 hover:text-red-700"
+                        >
+                          Cancel
+                        </button>
                       )}
                     </td>
-                    <td className="py-3 px-4 text-sm font-medium text-gray-700">{b.batch?.name || '—'}</td>
-                    <td className="py-3 px-4 text-sm text-right">{b.quantity.toLocaleString()}</td>
-                    <td className="py-3 px-4 text-sm text-right text-gray-500">{formatCurrency(b.orderValue)}</td>
-                    <td className="py-3 px-4 text-sm text-right font-medium">{formatCurrency(b.amountPaid)}</td>
-                    <td className="py-3 px-4 text-sm text-center capitalize">{b.channel}</td>
-                    <td className="py-3 px-4 text-center">
-                      <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium ${BOOKING_STATUS_COLORS[b.status]}`}>
-                        {b.status.replace('_', ' ')}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-sm text-gray-500">{formatDate(b.createdAt)}</td>
-                    {canCancel && (
-                      <td className="py-3 px-4 text-center">
-                        {b.status === 'CONFIRMED' && (
-                          <button
-                            onClick={() => setShowCancel(b)}
-                            className="text-red-500 hover:text-red-700 text-xs font-medium"
-                          >
-                            Cancel
-                          </button>
-                        )}
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
-      {/* Create booking modal */}
       {showCreate && (
         <CreateBookingModal
           onClose={() => setShowCreate(false)}
-          onCreated={() => { setShowCreate(false); loadBookings(); }}
+          onCreated={() => {
+            setShowCreate(false);
+            loadBookings();
+          }}
         />
       )}
 
-      {/* Cancel confirmation */}
       {showCancel && (
         <CancelBookingModal
           booking={showCancel}
           onClose={() => setShowCancel(null)}
-          onCancelled={() => { setShowCancel(null); loadBookings(); }}
+          onCancelled={() => {
+            setShowCancel(null);
+            loadBookings();
+          }}
         />
       )}
     </div>
   );
 }
 
-// ─── CREATE BOOKING MODAL ─────────────────────────────────────
+function SummaryCard({ label, value }) {
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white p-4">
+      <p className="text-xs font-medium uppercase tracking-[0.16em] text-gray-500">{label}</p>
+      <p className="mt-2 text-2xl font-bold text-gray-900">{value}</p>
+    </div>
+  );
+}
 
 function CreateBookingModal({ onClose, onCreated }) {
-  const [step, setStep] = useState(1); // 1: select customer, 2: select batch + qty
+  const [step, setStep] = useState(1);
   const [customerSearch, setCustomerSearch] = useState('');
   const [customers, setCustomers] = useState([]);
   const [searchingCustomers, setSearchingCustomers] = useState(false);
@@ -198,75 +233,137 @@ function CreateBookingModal({ onClose, onCreated }) {
   const [loadingBatches, setLoadingBatches] = useState(false);
   const [selectedBatch, setSelectedBatch] = useState(null);
   const [quantity, setQuantity] = useState('');
-  const [amountPaid, setAmountPaid] = useState('');
   const [notes, setNotes] = useState('');
+
+  const [funds, setFunds] = useState([]);
+  const [loadingFunds, setLoadingFunds] = useState(false);
+  const [allocationDrafts, setAllocationDrafts] = useState({});
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  // Search customers
   useEffect(() => {
-    if (!customerSearch.trim()) { setCustomers([]); return; }
+    if (!customerSearch.trim()) {
+      setCustomers([]);
+      return;
+    }
     const timer = setTimeout(async () => {
       setSearchingCustomers(true);
       try {
         const data = await api.get(`/customers?search=${encodeURIComponent(customerSearch)}`);
-        setCustomers(data.customers);
-      } catch {}
-      setSearchingCustomers(false);
+        setCustomers(data.customers || []);
+      } catch {
+        setCustomers([]);
+      } finally {
+        setSearchingCustomers(false);
+      }
     }, 300);
+
     return () => clearTimeout(timer);
   }, [customerSearch]);
 
-  // Load open batches when moving to step 2
   useEffect(() => {
-    if (step === 2) loadOpenBatches();
+    if (step === 2) {
+      loadOpenBatches();
+    }
   }, [step]);
+
+  useEffect(() => {
+    if (selectedCustomer) {
+      loadCustomerFunds(selectedCustomer.id);
+    } else {
+      setFunds([]);
+      setAllocationDrafts({});
+    }
+  }, [selectedCustomer]);
 
   async function loadOpenBatches() {
     setLoadingBatches(true);
     try {
       const data = await api.get('/bookings/open-batches');
-      setOpenBatches(data.batches);
-    } catch {}
-    setLoadingBatches(false);
+      setOpenBatches(data.batches || []);
+    } catch {
+      setOpenBatches([]);
+    } finally {
+      setLoadingBatches(false);
+    }
   }
 
-  // Computed values
-  const orderValue = selectedBatch && quantity ? Number(quantity) * selectedBatch.wholesalePrice : 0;
-  const minPayment = orderValue * 0.8;
+  async function loadCustomerFunds(customerId) {
+    setLoadingFunds(true);
+    try {
+      const data = await api.get(`/bookings/customer-funds/${customerId}`);
+      setFunds(data.payments || []);
+      setAllocationDrafts({});
+    } catch {
+      setFunds([]);
+    } finally {
+      setLoadingFunds(false);
+    }
+  }
+
+  async function handleNewCustomer(customerData) {
+    const data = await api.post('/customers', customerData);
+    setSelectedCustomer(data.customer);
+    setShowNewCustomer(false);
+    setStep(2);
+  }
+
+  const orderValue = selectedBatch && quantity ? Number(quantity) * Number(selectedBatch.wholesalePrice) : 0;
+  const minimumPayment = orderValue * 0.8;
   const maxQty = selectedCustomer?.isFirstTime ? 20 : 100;
   const batchRemaining = selectedBatch?.remainingAvailable || 0;
   const effectiveMax = Math.min(maxQty, batchRemaining);
 
-  async function handleNewCustomer(customerData) {
-    try {
-      const data = await api.post('/customers', customerData);
-      setSelectedCustomer(data.customer);
-      setShowNewCustomer(false);
-      setStep(2);
-    } catch (err) {
-      setError(err.error || 'Failed to create customer');
-    }
+  const totalAllocated = Object.values(allocationDrafts).reduce((sum, value) => sum + Number(value || 0), 0);
+  const balance = Math.max(0, orderValue - totalAllocated);
+  const canContinueToFunds = selectedBatch && quantity && Number(quantity) > 0;
+  const canSubmit = totalAllocated >= minimumPayment && totalAllocated <= orderValue && !submitting;
+
+  function updateAllocation(paymentId, value) {
+    setAllocationDrafts((current) => ({
+      ...current,
+      [paymentId]: value,
+    }));
   }
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setSubmitting(true);
-    setError('');
+  function fillToTarget(targetAmount) {
+    let remaining = targetAmount;
+    const next = {};
 
+    for (const payment of funds) {
+      if (remaining <= 0) break;
+      const amount = Math.min(payment.availableAmount, remaining);
+      if (amount > 0) {
+        next[payment.id] = amount.toFixed(2);
+        remaining -= amount;
+      }
+    }
+
+    setAllocationDrafts(next);
+  }
+
+  async function handleSubmit(event) {
+    event.preventDefault();
     if (!selectedCustomer || !selectedBatch) {
-      setError('Please select a customer and batch');
-      setSubmitting(false);
+      setError('Choose a customer and a batch first');
       return;
     }
+
+    setSubmitting(true);
+    setError('');
 
     try {
       await api.post('/bookings', {
         customerId: selectedCustomer.id,
         batchId: selectedBatch.id,
         quantity: Number(quantity),
-        amountPaid: Number(amountPaid),
+        paymentAllocations: Object.entries(allocationDrafts)
+          .map(([bankTransactionId, amount]) => ({
+            bankTransactionId,
+            amount: Number(amount),
+          }))
+          .filter((allocation) => allocation.amount > 0),
         channel: 'backend',
         notes: notes.trim() || undefined,
       });
@@ -279,78 +376,77 @@ function CreateBookingModal({ onClose, onCreated }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="px-4 sm:px-6 py-4 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-900">New Booking</h2>
-          <div className="flex gap-2 mt-2">
-            <span className={`text-xs font-medium px-2 py-0.5 rounded ${step >= 1 ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-400'}`}>
-              1. Customer
-            </span>
-            <span className={`text-xs font-medium px-2 py-0.5 rounded ${step >= 2 ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-400'}`}>
-              2. Batch & Quantity
-            </span>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-3xl bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+        <div className="sticky top-0 z-10 border-b border-gray-100 bg-white px-6 py-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">New booking</h2>
+              <p className="mt-1 text-sm text-gray-500">Choose customer, choose batch, then apply money already received.</p>
+            </div>
+            <button onClick={onClose} className="rounded-lg px-2 py-1 text-sm text-gray-500 hover:bg-gray-100 hover:text-gray-700">Close</button>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <StepPill active={step === 1} complete={step > 1} label="1. Customer" />
+            <StepPill active={step === 2} complete={step > 2} label="2. Batch" />
+            <StepPill active={step === 3} complete={false} label="3. Apply payments" />
           </div>
         </div>
 
-        <div className="p-4 sm:p-6">
-          {error && (
-            <div className="bg-red-50 text-red-600 px-3 py-2 rounded-lg text-sm mb-4">{error}</div>
-          )}
+        <div className="p-6">
+          {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 
-          {/* STEP 1: Select Customer */}
           {step === 1 && !showNewCustomer && (
             <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Search Customer</label>
+              <Field label="Find customer">
                 <input
                   type="text"
-                  placeholder="Type name or phone..."
                   value={customerSearch}
-                  onChange={e => setCustomerSearch(e.target.value)}
+                  onChange={(event) => setCustomerSearch(event.target.value)}
+                  placeholder="Type customer name or phone"
                   autoFocus
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
                 />
-              </div>
+              </Field>
 
-              {searchingCustomers && <p className="text-sm text-gray-400">Searching...</p>}
+              {searchingCustomers && <p className="text-sm text-gray-500">Searching…</p>}
 
               {customers.length > 0 && (
-                <div className="border border-gray-200 rounded-lg overflow-hidden max-h-60 overflow-y-auto">
-                  {customers.map(c => (
+                <div className="overflow-hidden rounded-xl border border-gray-200">
+                  {customers.map((customer) => (
                     <button
-                      key={c.id}
-                      onClick={() => { setSelectedCustomer(c); setStep(2); }}
-                      className="w-full text-left px-4 py-3 hover:bg-gray-50 border-b border-gray-50 last:border-0 transition-colors"
+                      key={customer.id}
+                      onClick={() => {
+                        setSelectedCustomer(customer);
+                        setStep(2);
+                      }}
+                      className="block w-full border-b border-gray-100 px-4 py-3 text-left transition-colors hover:bg-gray-50 last:border-b-0"
                     >
-                      <span className="font-medium text-gray-900">{c.name}</span>
-                      <span className="text-sm text-gray-400 ml-2">{c.phone}</span>
-                      {c.isFirstTime && (
-                        <span className="ml-2 text-xs bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded">New (max 20)</span>
-                      )}
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-gray-900">{customer.name}</span>
+                        <span className="text-sm text-gray-400">{customer.phone}</span>
+                        {customer.isFirstTime && (
+                          <span className="rounded bg-yellow-100 px-1.5 py-0.5 text-xs text-yellow-700">New customer</span>
+                        )}
+                      </div>
                     </button>
                   ))}
                 </div>
               )}
 
               {customerSearch && !searchingCustomers && customers.length === 0 && (
-                <p className="text-sm text-gray-400">No customers found</p>
+                <p className="text-sm text-gray-500">No customer found.</p>
               )}
 
               <button
                 onClick={() => setShowNewCustomer(true)}
-                className="text-brand-500 hover:text-brand-600 text-sm font-medium"
+                className="text-sm font-medium text-brand-600 hover:text-brand-700"
               >
                 + Create new customer
               </button>
-
-              <div className="flex justify-end pt-2">
-                <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Cancel</button>
-              </div>
             </div>
           )}
 
-          {/* STEP 1b: Inline new customer form */}
           {step === 1 && showNewCustomer && (
             <InlineNewCustomerForm
               onCancel={() => setShowNewCustomer(false)}
@@ -358,151 +454,219 @@ function CreateBookingModal({ onClose, onCreated }) {
             />
           )}
 
-          {/* STEP 2: Select Batch & Quantity */}
           {step === 2 && (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Selected customer pill */}
-              <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">
-                <span className="text-sm text-gray-500">Customer:</span>
-                <span className="text-sm font-medium text-gray-900">{selectedCustomer?.name}</span>
-                <span className="text-xs text-gray-400">{selectedCustomer?.phone}</span>
-                {selectedCustomer?.isFirstTime && (
-                  <span className="text-xs bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded">New — max 20 crates</span>
-                )}
-                <button
-                  type="button"
-                  onClick={() => { setStep(1); setSelectedBatch(null); }}
-                  className="ml-auto text-xs text-gray-400 hover:text-gray-600"
-                >
-                  Change
-                </button>
-              </div>
+            <div className="space-y-5">
+              <SelectedCustomerCard
+                customer={selectedCustomer}
+                onChange={() => {
+                  setStep(1);
+                  setSelectedBatch(null);
+                  setQuantity('');
+                }}
+              />
 
-              {/* Batch selection */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Select Batch</label>
-                {loadingBatches ? (
-                  <p className="text-sm text-gray-400">Loading open batches...</p>
-                ) : openBatches.length === 0 ? (
-                  <p className="text-sm text-gray-500">No open batches available for booking.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {openBatches.map(batch => (
-                      <button
-                        key={batch.id}
-                        type="button"
-                        onClick={() => setSelectedBatch(batch)}
-                        className={`w-full text-left border rounded-lg px-4 py-3 transition-colors ${
-                          selectedBatch?.id === batch.id
-                            ? 'border-brand-500 bg-brand-50 ring-2 ring-brand-200'
-                            : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-semibold text-gray-900">{batch.name}</span>
-                          <span className="text-sm text-gray-500">Expected {formatDate(batch.expectedDate)}</span>
-                        </div>
-                        <div className="flex items-center gap-4 mt-1 text-sm">
-                          <span className="text-gray-500">
-                            Wholesale: <span className="font-medium text-gray-900">{formatCurrency(batch.wholesalePrice)}</span>
-                          </span>
-                          <span className="text-gray-500">
-                            Available: <span className="font-medium text-green-600">{batch.remainingAvailable.toLocaleString()} crates</span>
-                          </span>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
+                <h3 className="text-sm font-semibold text-gray-900">Choose batch</h3>
+                <p className="mt-1 text-sm text-gray-500">Pick an open batch with enough space for this customer.</p>
               </div>
 
-              {/* Quantity + payment */}
+              {loadingBatches ? (
+                <p className="text-sm text-gray-500">Loading open batches…</p>
+              ) : openBatches.length === 0 ? (
+                <EmptyState title="No open batches" body="There are no open batches available for booking right now." compact />
+              ) : (
+                <div className="space-y-2">
+                  {openBatches.map((batch) => (
+                    <button
+                      key={batch.id}
+                      type="button"
+                      onClick={() => setSelectedBatch(batch)}
+                      className={`block w-full rounded-xl border px-4 py-3 text-left transition-colors ${
+                        selectedBatch?.id === batch.id
+                          ? 'border-brand-300 bg-brand-50'
+                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <p className="font-semibold text-gray-900">{batch.name}</p>
+                          <p className="mt-1 text-sm text-gray-500">Expected {formatDate(batch.expectedDate)}</p>
+                        </div>
+                        <div className="text-right text-sm">
+                          <p className="font-medium text-gray-900">{formatCurrency(batch.wholesalePrice)} / crate</p>
+                          <p className="text-green-600">{batch.remainingAvailable} crates free</p>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {selectedBatch && (
                 <>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Quantity (max {effectiveMax})
-                      </label>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <Field label={`Quantity (max ${effectiveMax})`}>
                       <input
                         type="number"
-                        required
                         min="1"
                         max={effectiveMax}
-                        placeholder="e.g. 50"
                         value={quantity}
-                        onChange={e => {
-                          setQuantity(e.target.value);
-                          // Auto-fill amount paid if empty
-                          if (!amountPaid || amountPaid === '') {
-                            const ov = Number(e.target.value) * selectedBatch.wholesalePrice;
-                            setAmountPaid(String(ov));
-                          }
-                        }}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+                        onChange={(event) => setQuantity(event.target.value)}
+                        placeholder="How many crates?"
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
                       />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Amount Paid (₦)</label>
+                    </Field>
+                    <Field label="Notes">
                       <input
-                        type="number"
-                        required
-                        min={minPayment || 1}
-                        placeholder={minPayment ? `Min ₦${minPayment.toLocaleString()}` : ''}
-                        value={amountPaid}
-                        onChange={e => setAmountPaid(e.target.value)}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+                        type="text"
+                        value={notes}
+                        onChange={(event) => setNotes(event.target.value)}
+                        placeholder="Optional note"
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
                       />
-                    </div>
+                    </Field>
                   </div>
 
-                  {/* Order summary */}
                   {quantity && Number(quantity) > 0 && (
-                    <div className="bg-gray-50 rounded-lg p-3 space-y-1">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-500">Order value</span>
-                        <span className="font-medium">{formatCurrency(orderValue)}</span>
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                        <BookingStat label="Booking value" value={formatCurrency(orderValue)} />
+                        <BookingStat label="Minimum to book" value={formatCurrency(minimumPayment)} />
+                        <BookingStat label="Remaining after minimum" value={formatCurrency(Math.max(0, orderValue - minimumPayment))} />
                       </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-500">Min payment (80%)</span>
-                        <span className="font-medium text-orange-600">{formatCurrency(minPayment)}</span>
-                      </div>
-                      {amountPaid && Number(amountPaid) > 0 && (
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-500">Balance remaining</span>
-                          <span className={`font-medium ${orderValue - Number(amountPaid) > 0 ? 'text-red-500' : 'text-green-600'}`}>
-                            {formatCurrency(Math.max(0, orderValue - Number(amountPaid)))}
-                          </span>
-                        </div>
-                      )}
                     </div>
                   )}
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Notes (optional)</label>
-                    <input
-                      type="text"
-                      placeholder="Any notes for this booking..."
-                      value={notes}
-                      onChange={e => setNotes(e.target.value)}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-                    />
-                  </div>
                 </>
               )}
 
-              <div className="flex flex-col-reverse sm:flex-row sm:justify-between gap-3 pt-2">
-                <button type="button" onClick={() => { setStep(1); setSelectedBatch(null); }} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 order-2 sm:order-1">
-                  &larr; Back
+              <div className="flex justify-between gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStep(1);
+                    setSelectedBatch(null);
+                    setQuantity('');
+                  }}
+                  className="text-sm font-medium text-gray-600 hover:text-gray-800"
+                >
+                  Back
                 </button>
-                <div className="flex gap-3 flex-col-reverse sm:flex-row order-1 sm:order-2">
-                  <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Cancel</button>
+                <button
+                  type="button"
+                  onClick={() => setStep(3)}
+                  disabled={!canContinueToFunds}
+                  className="rounded-lg bg-brand-500 px-5 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-gray-300"
+                >
+                  Continue
+                </button>
+              </div>
+            </div>
+          )}
+
+          {step === 3 && (
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <SelectedCustomerCard customer={selectedCustomer} onChange={() => setStep(1)} />
+
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+                  <BookingStat label="Batch" value={selectedBatch?.name || '—'} />
+                  <BookingStat label="Quantity" value={`${quantity || 0} crates`} />
+                  <BookingStat label="Booking value" value={formatCurrency(orderValue)} />
+                  <BookingStat label="Minimum to book" value={formatCurrency(minimumPayment)} />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-900">Apply customer payments</h3>
+                    <p className="mt-1 text-sm text-gray-500">Choose how much of the customer&apos;s available money should fund this booking.</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => fillToTarget(minimumPayment)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                      Fill minimum
+                    </button>
+                    <button type="button" onClick={() => fillToTarget(orderValue)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                      Fill full booking
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {loadingFunds ? (
+                <p className="text-sm text-gray-500">Loading customer payments…</p>
+              ) : funds.length === 0 ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                  No available customer payments found. First record the customer&apos;s payment in Banking, then come back here to create the booking.
+                </div>
+              ) : (
+                <div className="overflow-hidden rounded-2xl border border-gray-200">
+                  <table className="w-full min-w-[760px]">
+                    <thead>
+                      <tr className="border-b border-gray-100 bg-gray-50">
+                        <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-[0.14em] text-gray-500">Date</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-[0.14em] text-gray-500">Source</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-[0.14em] text-gray-500">Account</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-[0.14em] text-gray-500">Available</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-[0.14em] text-gray-500">Use for this booking</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {funds.map((payment) => (
+                        <tr key={payment.id} className="border-b border-gray-50">
+                          <td className="px-4 py-3 text-sm text-gray-600">{formatDate(payment.transactionDate)}</td>
+                          <td className="px-4 py-3 text-sm text-gray-700">{payment.description || payment.reference || 'Payment received'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-500">{payment.bankAccount?.name || '—'}</td>
+                          <td className="px-4 py-3 text-right text-sm font-medium text-gray-900">{formatCurrency(payment.availableAmount)}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                min="0"
+                                max={payment.availableAmount}
+                                step="0.01"
+                                value={allocationDrafts[payment.id] || ''}
+                                onChange={(event) => updateAllocation(payment.id, event.target.value)}
+                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-right text-sm outline-none focus:ring-2 focus:ring-brand-500"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => updateAllocation(payment.id, payment.availableAmount.toFixed(2))}
+                                className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                              >
+                                Use all
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <BookingStat label="Applied now" value={formatCurrency(totalAllocated)} />
+                  <BookingStat label="Still to pay" value={formatCurrency(balance)} tone={balance > 0 ? 'orange' : 'green'} />
+                  <BookingStat label="Minimum met?" value={totalAllocated >= minimumPayment ? 'Yes' : 'No'} tone={totalAllocated >= minimumPayment ? 'green' : 'orange'} />
+                </div>
+              </div>
+
+              <div className="flex justify-between gap-3 pt-2">
+                <button type="button" onClick={() => setStep(2)} className="text-sm font-medium text-gray-600 hover:text-gray-800">
+                  Back
+                </button>
+                <div className="flex gap-3">
+                  <button type="button" onClick={onClose} className="text-sm font-medium text-gray-600 hover:text-gray-800">
+                    Cancel
+                  </button>
                   <button
                     type="submit"
-                    disabled={submitting || !selectedBatch || !quantity}
-                    className="bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors"
+                    disabled={!canSubmit}
+                    className="rounded-lg bg-brand-500 px-6 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-gray-300"
                   >
-                    {submitting ? 'Creating...' : 'Confirm Booking'}
+                    {submitting ? 'Creating…' : 'Create booking'}
                   </button>
                 </div>
               </div>
@@ -514,15 +678,64 @@ function CreateBookingModal({ onClose, onCreated }) {
   );
 }
 
-// ─── INLINE NEW CUSTOMER FORM ─────────────────────────────────
+function StepPill({ active, complete, label }) {
+  return (
+    <span className={`rounded-full px-3 py-1 text-xs font-medium ${
+      active || complete ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-500'
+    }`}>
+      {label}
+    </span>
+  );
+}
+
+function Field({ label, children }) {
+  return (
+    <div>
+      <label className="mb-1 block text-sm font-medium text-gray-700">{label}</label>
+      {children}
+    </div>
+  );
+}
+
+function BookingStat({ label, value, tone = 'gray' }) {
+  const colors = {
+    gray: 'text-gray-900',
+    green: 'text-green-700',
+    orange: 'text-orange-600',
+  };
+  return (
+    <div>
+      <p className="text-xs font-medium uppercase tracking-[0.14em] text-gray-500">{label}</p>
+      <p className={`mt-1 text-lg font-semibold ${colors[tone] || colors.gray}`}>{value}</p>
+    </div>
+  );
+}
+
+function SelectedCustomerCard({ customer, onChange }) {
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+      <div>
+        <p className="text-xs font-medium uppercase tracking-[0.14em] text-gray-500">Customer</p>
+        <p className="text-sm font-semibold text-gray-900">{customer?.name}</p>
+        <p className="text-xs text-gray-500">{customer?.phone}</p>
+      </div>
+      {customer?.isFirstTime && (
+        <span className="rounded bg-yellow-100 px-2 py-1 text-xs font-medium text-yellow-700">New customer: max 20 crates</span>
+      )}
+      <button onClick={onChange} type="button" className="ml-auto text-sm font-medium text-gray-500 hover:text-gray-700">
+        Change
+      </button>
+    </div>
+  );
+}
 
 function InlineNewCustomerForm({ onCancel, onCreated }) {
   const [form, setForm] = useState({ name: '', phone: '', email: '' });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  async function handleSubmit(e) {
-    e.preventDefault();
+  async function handleSubmit(event) {
+    event.preventDefault();
     setSubmitting(true);
     setError('');
     try {
@@ -539,50 +752,54 @@ function InlineNewCustomerForm({ onCancel, onCreated }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3">
-      <h3 className="text-sm font-medium text-gray-700">New Customer</h3>
-      {error && <div className="bg-red-50 text-red-600 px-3 py-2 rounded-lg text-sm">{error}</div>}
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <h3 className="text-sm font-semibold text-gray-900">New customer</h3>
+      <p className="text-sm text-gray-500">Create the customer first. After that, record their payment in Banking before making the booking.</p>
+      {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 
-      <input
-        type="text"
-        required
-        placeholder="Customer name *"
-        value={form.name}
-        onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-        autoFocus
-        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-      />
-      <input
-        type="tel"
-        required
-        placeholder="Phone number *"
-        value={form.phone}
-        onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
-        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-      />
-      <input
-        type="email"
-        placeholder="Email (optional)"
-        value={form.email}
-        onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-      />
+      <Field label="Customer name">
+        <input
+          type="text"
+          required
+          value={form.name}
+          onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+          autoFocus
+        />
+      </Field>
+
+      <Field label="Phone number">
+        <input
+          type="tel"
+          required
+          value={form.phone}
+          onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+        />
+      </Field>
+
+      <Field label="Email (optional)">
+        <input
+          type="email"
+          value={form.email}
+          onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+        />
+      </Field>
 
       <div className="flex justify-end gap-3">
-        <button type="button" onClick={onCancel} className="text-sm text-gray-500 hover:text-gray-700">Cancel</button>
+        <button type="button" onClick={onCancel} className="text-sm font-medium text-gray-600 hover:text-gray-800">Cancel</button>
         <button
           type="submit"
           disabled={submitting}
-          className="bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white px-4 py-1.5 rounded-lg text-sm font-medium transition-colors"
+          className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-gray-300"
         >
-          {submitting ? 'Creating...' : 'Create & Continue'}
+          {submitting ? 'Creating…' : 'Create customer'}
         </button>
       </div>
     </form>
   );
 }
-
-// ─── CANCEL BOOKING MODAL ─────────────────────────────────────
 
 function CancelBookingModal({ booking, onClose, onCancelled }) {
   const [submitting, setSubmitting] = useState(false);
@@ -602,37 +819,47 @@ function CancelBookingModal({ booking, onClose, onCancelled }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
-        <div className="px-4 sm:px-6 py-4 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-red-600">Cancel Booking</h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-3xl bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+        <div className="border-b border-gray-100 px-6 py-4">
+          <h2 className="text-lg font-semibold text-red-600">Cancel booking</h2>
         </div>
-        <div className="p-4 sm:p-6 space-y-4">
-          {error && <div className="bg-red-50 text-red-600 px-3 py-2 rounded-lg text-sm">{error}</div>}
+        <div className="space-y-4 p-6">
+          {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 
-          <div className="bg-gray-50 rounded-lg p-3 space-y-1 text-sm">
-            <p><span className="text-gray-500">Customer:</span> <span className="font-medium">{booking.customer?.name}</span></p>
-            <p><span className="text-gray-500">Batch:</span> <span className="font-medium">{booking.batch?.name}</span></p>
-            <p><span className="text-gray-500">Quantity:</span> <span className="font-medium">{booking.quantity} crates</span></p>
-            <p><span className="text-gray-500">Amount paid:</span> <span className="font-medium">{formatCurrency(booking.amountPaid)}</span></p>
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm">
+            <p><span className="text-gray-500">Customer:</span> <span className="font-medium text-gray-900">{booking.customer?.name}</span></p>
+            <p><span className="text-gray-500">Batch:</span> <span className="font-medium text-gray-900">{booking.batch?.name}</span></p>
+            <p><span className="text-gray-500">Quantity:</span> <span className="font-medium text-gray-900">{booking.quantity} crates</span></p>
+            <p><span className="text-gray-500">Applied:</span> <span className="font-medium text-gray-900">{formatCurrency(booking.amountPaid)}</span></p>
           </div>
 
           <p className="text-sm text-gray-600">
-            Are you sure you want to cancel this booking? The customer's deposit will need to be refunded via the Banking module.
+            This will cancel the booking only. Any refund still needs to be recorded from Banking.
           </p>
 
-          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 pt-2">
-            <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Keep Booking</button>
+          <div className="flex justify-end gap-3">
+            <button onClick={onClose} className="text-sm font-medium text-gray-600 hover:text-gray-800">Keep booking</button>
             <button
               onClick={handleCancel}
               disabled={submitting}
-              className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors"
+              className="rounded-lg bg-red-600 px-5 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-gray-300"
             >
-              {submitting ? 'Cancelling...' : 'Cancel Booking'}
+              {submitting ? 'Cancelling…' : 'Cancel booking'}
             </button>
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function EmptyState({ title, body, compact = false }) {
+  return (
+    <div className={`text-center ${compact ? 'py-6' : 'py-12'}`}>
+      <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-xl">📋</div>
+      <h3 className="text-base font-semibold text-gray-900">{title}</h3>
+      <p className="mx-auto mt-2 max-w-md text-sm text-gray-500">{body}</p>
     </div>
   );
 }

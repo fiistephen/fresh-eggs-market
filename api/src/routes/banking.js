@@ -858,7 +858,10 @@ export default async function bankingRoutes(fastify) {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER')],
     handler: async (request, reply) => {
       const deposits = await prisma.bankTransaction.findMany({
-        where: { category: 'CUSTOMER_DEPOSIT' },
+        where: {
+          direction: 'INFLOW',
+          category: 'CUSTOMER_DEPOSIT',
+        },
         include: {
           customer: { select: { name: true, phone: true } },
           bankAccount: { select: { name: true } },
@@ -867,11 +870,37 @@ export default async function bankingRoutes(fastify) {
         orderBy: { transactionDate: 'desc' },
       });
 
-      const total = deposits.reduce((sum, deposit) => sum + Number(deposit.amount), 0);
+      const allocations = deposits.length > 0
+        ? await prisma.bookingPaymentAllocation.groupBy({
+            by: ['bankTransactionId'],
+            where: {
+              bankTransactionId: { in: deposits.map((deposit) => deposit.id) },
+            },
+            _sum: { amount: true },
+          })
+        : [];
+
+      const allocationMap = new Map(
+        allocations.map((allocation) => [allocation.bankTransactionId, Number(allocation._sum.amount || 0)])
+      );
+
+      const unbookedDeposits = deposits
+        .map((deposit) => {
+          const allocatedAmount = allocationMap.get(deposit.id) || 0;
+          const availableAmount = Math.max(0, Number(deposit.amount) - allocatedAmount);
+          return {
+            ...enrichTransaction(deposit),
+            allocatedAmount,
+            availableAmount,
+          };
+        })
+        .filter((deposit) => deposit.availableAmount > 0.009);
+
+      const total = unbookedDeposits.reduce((sum, deposit) => sum + deposit.availableAmount, 0);
       return reply.send({
-        deposits: deposits.map(enrichTransaction),
+        deposits: unbookedDeposits,
         total,
-        count: deposits.length,
+        count: unbookedDeposits.length,
       });
     },
   });

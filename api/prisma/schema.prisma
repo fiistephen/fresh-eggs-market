@@ -38,6 +38,7 @@ model User {
   inventoryCounts  InventoryCount[]    @relation("CountEnteredBy")
   statementImports BankStatementImport[] @relation("StatementImportedBy")
   reconciliations  BankReconciliation[]  @relation("ReconciledBy")
+  bookingAllocations BookingPaymentAllocation[] @relation("AllocationCreatedBy")
 
   @@map("users")
 }
@@ -151,6 +152,7 @@ model Booking {
   customer Customer @relation(fields: [customerId], references: [id])
   batch    Batch    @relation(fields: [batchId], references: [id])
   sale     Sale?    // Linked when booking is picked up and converted to sale
+  allocations BookingPaymentAllocation[]
 
   @@map("bookings")
 }
@@ -330,6 +332,7 @@ model BankTransaction {
   customer    Customer?   @relation(fields: [customerId], references: [id])
   enteredBy   User        @relation("TransactionEnteredBy", fields: [enteredById], references: [id])
   statementLine BankStatementLine?
+  allocations BookingPaymentAllocation[]
 
   @@map("bank_transactions")
 }
@@ -410,6 +413,22 @@ model BankReconciliation {
   reconciledBy      User                 @relation("ReconciledBy", fields: [reconciledById], references: [id])
 
   @@map("bank_reconciliations")
+}
+
+model BookingPaymentAllocation {
+  id              String   @id @default(cuid())
+  bookingId       String   @map("booking_id")
+  bankTransactionId String @map("bank_transaction_id")
+  amount          Decimal  @db.Decimal(12, 2)
+  allocatedById   String   @map("allocated_by_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  booking         Booking         @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  bankTransaction BankTransaction @relation(fields: [bankTransactionId], references: [id], onDelete: Cascade)
+  allocatedBy     User            @relation("AllocationCreatedBy", fields: [allocatedById], references: [id])
+
+  @@unique([bookingId, bankTransactionId])
+  @@map("booking_payment_allocations")
 }
 
 // ─── INVENTORY ─────────────────────────────────────────────────

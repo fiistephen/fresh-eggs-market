@@ -98,12 +98,10 @@ export default async function alertRoutes(fastify) {
       }
 
       // ── 3. Unbooked customer deposits ──
-      const unbookedDeposits = await prisma.bankTransaction.findMany({
+      const depositCandidates = await prisma.bankTransaction.findMany({
         where: {
           direction: 'INFLOW',
           category: 'CUSTOMER_DEPOSIT',
-          // No linked booking
-          bookingId: null,
         },
         include: {
           customer: { select: { name: true, phone: true } },
@@ -113,8 +111,21 @@ export default async function alertRoutes(fastify) {
         take: 20,
       });
 
-      for (const dep of unbookedDeposits) {
-        const amount = Number(dep.amount);
+      const allocationGroups = depositCandidates.length > 0
+        ? await prisma.bookingPaymentAllocation.groupBy({
+            by: ['bankTransactionId'],
+            where: { bankTransactionId: { in: depositCandidates.map((deposit) => deposit.id) } },
+            _sum: { amount: true },
+          })
+        : [];
+
+      const allocationMap = new Map(
+        allocationGroups.map((allocation) => [allocation.bankTransactionId, Number(allocation._sum.amount || 0)])
+      );
+
+      for (const dep of depositCandidates) {
+        const amount = Math.max(0, Number(dep.amount) - (allocationMap.get(dep.id) || 0));
+        if (amount <= 0.009) continue;
         const daysSince = Math.floor((Date.now() - new Date(dep.transactionDate).getTime()) / (1000 * 60 * 60 * 24));
         alerts.push({
           id: `unbooked-deposit-${dep.id}`,

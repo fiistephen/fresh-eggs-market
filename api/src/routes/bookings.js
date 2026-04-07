@@ -2,26 +2,246 @@ import prisma from '../plugins/prisma.js';
 import { authenticate } from '../plugins/auth.js';
 import { authorize } from '../middleware/authorize.js';
 
-// Convert Prisma Decimals to Numbers for JSON
-function enrichBooking(b) {
+const ELIGIBLE_BOOKING_PAYMENT_CATEGORIES = [
+  'CUSTOMER_DEPOSIT',
+  'CUSTOMER_BOOKING',
+  'UNALLOCATED_INCOME',
+];
+
+function toNumber(value) {
+  return value == null ? null : Number(value);
+}
+
+function enrichBooking(booking) {
+  const amountPaid = Number(booking.amountPaid);
+  const orderValue = Number(booking.orderValue);
+  const minimumPayment = orderValue * 0.8;
+  const balance = Math.max(0, orderValue - amountPaid);
+
   return {
-    ...b,
-    amountPaid: Number(b.amountPaid),
-    orderValue: Number(b.orderValue),
-    ...(b.batch && {
+    ...booking,
+    amountPaid,
+    orderValue,
+    minimumPayment,
+    balance,
+    isMinimumMet: amountPaid >= minimumPayment,
+    allocations: (booking.allocations || []).map((allocation) => ({
+      ...allocation,
+      amount: Number(allocation.amount),
+      bankTransaction: allocation.bankTransaction ? {
+        ...allocation.bankTransaction,
+        amount: Number(allocation.bankTransaction.amount),
+      } : undefined,
+    })),
+    ...(booking.batch && {
       batch: {
-        ...b.batch,
-        ...(b.batch.wholesalePrice !== undefined && { wholesalePrice: Number(b.batch.wholesalePrice) }),
-        ...(b.batch.retailPrice !== undefined && { retailPrice: Number(b.batch.retailPrice) }),
-        ...(b.batch.costPrice !== undefined && { costPrice: Number(b.batch.costPrice) }),
+        ...booking.batch,
+        ...(booking.batch.wholesalePrice !== undefined && { wholesalePrice: Number(booking.batch.wholesalePrice) }),
+        ...(booking.batch.retailPrice !== undefined && { retailPrice: Number(booking.batch.retailPrice) }),
+        ...(booking.batch.costPrice !== undefined && { costPrice: Number(booking.batch.costPrice) }),
       },
     }),
   };
 }
 
-export default async function bookingRoutes(fastify) {
+function buildBookingInclude() {
+  return {
+    customer: true,
+    batch: {
+      select: {
+        id: true,
+        name: true,
+        expectedDate: true,
+        status: true,
+        wholesalePrice: true,
+        retailPrice: true,
+        costPrice: true,
+      },
+    },
+    sale: true,
+    allocations: {
+      include: {
+        bankTransaction: {
+          select: {
+            id: true,
+            amount: true,
+            transactionDate: true,
+            category: true,
+            reference: true,
+            description: true,
+            bankAccount: {
+              select: { id: true, name: true, accountType: true, lastFour: true },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    },
+  };
+}
 
-  // ─── LIST BOOKINGS ────────────────────────────────────────────
+async function getBookedQuantityForBatch(batchId, excludeBookingId = null) {
+  const totalBooked = await prisma.booking.aggregate({
+    where: {
+      batchId,
+      status: { not: 'CANCELLED' },
+      ...(excludeBookingId ? { id: { not: excludeBookingId } } : {}),
+    },
+    _sum: { quantity: true },
+  });
+
+  return totalBooked._sum.quantity || 0;
+}
+
+async function getAvailableCustomerPayments(customerId, options = {}) {
+  const { excludeBookingId = null } = options;
+
+  const transactions = await prisma.bankTransaction.findMany({
+    where: {
+      customerId,
+      direction: 'INFLOW',
+      category: { in: ELIGIBLE_BOOKING_PAYMENT_CATEGORIES },
+    },
+    include: {
+      bankAccount: { select: { id: true, name: true, accountType: true, lastFour: true } },
+      enteredBy: { select: { firstName: true, lastName: true } },
+    },
+    orderBy: [{ transactionDate: 'asc' }, { createdAt: 'asc' }],
+  });
+
+  if (transactions.length === 0) {
+    return [];
+  }
+
+  const allocationGroups = await prisma.bookingPaymentAllocation.groupBy({
+    by: ['bankTransactionId'],
+    where: {
+      bankTransactionId: { in: transactions.map((transaction) => transaction.id) },
+      ...(excludeBookingId ? { bookingId: { not: excludeBookingId } } : {}),
+    },
+    _sum: { amount: true },
+  });
+
+  const allocationMap = new Map(
+    allocationGroups.map((group) => [group.bankTransactionId, Number(group._sum.amount || 0)])
+  );
+
+  return transactions
+    .map((transaction) => {
+      const allocatedAmount = allocationMap.get(transaction.id) || 0;
+      const availableAmount = Math.max(0, Number(transaction.amount) - allocatedAmount);
+
+      return {
+        ...transaction,
+        amount: Number(transaction.amount),
+        allocatedAmount,
+        availableAmount,
+      };
+    })
+    .filter((transaction) => transaction.availableAmount > 0.009);
+}
+
+async function normalizePaymentAllocations({
+  customerId,
+  paymentAllocations,
+  orderValue,
+  excludeBookingId = null,
+}) {
+  if (!Array.isArray(paymentAllocations) || paymentAllocations.length === 0) {
+    throw new Error('Select at least one payment to fund this booking');
+  }
+
+  const normalized = paymentAllocations
+    .map((allocation) => ({
+      bankTransactionId: allocation.bankTransactionId,
+      amount: Number(allocation.amount),
+    }))
+    .filter((allocation) => allocation.bankTransactionId && allocation.amount > 0);
+
+  if (normalized.length === 0) {
+    throw new Error('Select at least one payment to fund this booking');
+  }
+
+  const uniqueIds = new Set();
+  for (const allocation of normalized) {
+    if (uniqueIds.has(allocation.bankTransactionId)) {
+      throw new Error('Each payment can only be used once in a booking');
+    }
+    uniqueIds.add(allocation.bankTransactionId);
+  }
+
+  const availablePayments = await getAvailableCustomerPayments(customerId, { excludeBookingId });
+  const paymentMap = new Map(availablePayments.map((payment) => [payment.id, payment]));
+
+  let totalAllocated = 0;
+
+  for (const allocation of normalized) {
+    const payment = paymentMap.get(allocation.bankTransactionId);
+    if (!payment) {
+      throw new Error('One or more selected payments are no longer available');
+    }
+    if (payment.customerId !== customerId) {
+      throw new Error('Selected payments must belong to the same customer');
+    }
+    if (allocation.amount > payment.availableAmount + 0.009) {
+      throw new Error(`You can only use up to ₦${payment.availableAmount.toLocaleString()} from one of the selected payments`);
+    }
+    totalAllocated += allocation.amount;
+  }
+
+  if (totalAllocated > orderValue + 0.009) {
+    throw new Error('Allocated amount cannot be more than the booking value');
+  }
+
+  return {
+    allocations: normalized,
+    totalAllocated,
+  };
+}
+
+function validateBookingQuantity(quantity) {
+  if (!quantity || quantity <= 0 || !Number.isInteger(quantity)) {
+    return 'Quantity must be a positive integer';
+  }
+  return null;
+}
+
+async function validateBookingBasics({ customerId, batchId, quantity, excludeBookingId = null }) {
+  const quantityError = validateBookingQuantity(quantity);
+  if (quantityError) {
+    return { error: quantityError };
+  }
+
+  const [batch, customer] = await Promise.all([
+    prisma.batch.findUnique({ where: { id: batchId } }),
+    prisma.customer.findUnique({ where: { id: customerId } }),
+  ]);
+
+  if (!batch) return { error: 'Batch not found' };
+  if (!customer) return { error: 'Customer not found' };
+  if (batch.status !== 'OPEN') return { error: 'Batch is not open for booking' };
+
+  const currentlyBooked = await getBookedQuantityForBatch(batchId, excludeBookingId);
+  const remaining = batch.availableForBooking - currentlyBooked;
+  if (quantity > remaining) {
+    return {
+      error: `Only ${remaining} crates available for booking in this batch`,
+      remaining,
+    };
+  }
+
+  if (quantity > 100) {
+    return { error: 'Maximum booking is 100 crates per order' };
+  }
+
+  if (customer.isFirstTime && quantity > 20) {
+    return { error: 'First-time customers can book a maximum of 20 crates' };
+  }
+
+  return { batch, customer };
+}
+
+export default async function bookingRoutes(fastify) {
   fastify.get('/bookings', {
     preHandler: [authenticate],
     handler: async (request, reply) => {
@@ -33,10 +253,7 @@ export default async function bookingRoutes(fastify) {
 
       const bookings = await prisma.booking.findMany({
         where,
-        include: {
-          customer: true,
-          batch: { select: { id: true, name: true, expectedDate: true, status: true, wholesalePrice: true, retailPrice: true } },
-        },
+        include: buildBookingInclude(),
         orderBy: { createdAt: 'desc' },
       });
 
@@ -44,17 +261,12 @@ export default async function bookingRoutes(fastify) {
     },
   });
 
-  // ─── GET SINGLE BOOKING ───────────────────────────────────────
   fastify.get('/bookings/:id', {
     preHandler: [authenticate],
     handler: async (request, reply) => {
       const booking = await prisma.booking.findUnique({
         where: { id: request.params.id },
-        include: {
-          customer: true,
-          batch: { select: { id: true, name: true, expectedDate: true, status: true, wholesalePrice: true, retailPrice: true, costPrice: true } },
-          sale: true,
-        },
+        include: buildBookingInclude(),
       });
 
       if (!booking) return reply.code(404).send({ error: 'Booking not found' });
@@ -62,104 +274,136 @@ export default async function bookingRoutes(fastify) {
     },
   });
 
-  // ─── CREATE BOOKING ───────────────────────────────────────────
+  fastify.get('/bookings/customer-funds/:customerId', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER')],
+    handler: async (request, reply) => {
+      const customer = await prisma.customer.findUnique({
+        where: { id: request.params.customerId },
+        select: { id: true, name: true, phone: true, isFirstTime: true },
+      });
+
+      if (!customer) return reply.code(404).send({ error: 'Customer not found' });
+
+      const payments = await getAvailableCustomerPayments(customer.id);
+      const totalAvailable = payments.reduce((sum, payment) => sum + payment.availableAmount, 0);
+
+      return reply.send({
+        customer,
+        totalAvailable,
+        payments: payments.map((payment) => ({
+          ...payment,
+          bankAccount: payment.bankAccount ? {
+            ...payment.bankAccount,
+          } : null,
+        })),
+      });
+    },
+  });
+
   fastify.post('/bookings', {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'CUSTOMER')],
     handler: async (request, reply) => {
-      const { customerId, batchId, quantity, amountPaid, channel, notes } = request.body;
+      const { customerId, batchId, quantity, paymentAllocations, amountPaid, channel, notes } = request.body;
 
-      // Validate required fields
-      if (!customerId || !batchId || !quantity || amountPaid == null) {
-        return reply.code(400).send({ error: 'Missing required fields: customerId, batchId, quantity, amountPaid' });
+      if (!customerId || !batchId || !quantity) {
+        return reply.code(400).send({ error: 'Missing required fields: customerId, batchId, quantity' });
       }
 
-      if (quantity <= 0 || !Number.isInteger(quantity)) {
-        return reply.code(400).send({ error: 'Quantity must be a positive integer' });
-      }
-
-      // 1. Batch must be open
-      const batch = await prisma.batch.findUnique({ where: { id: batchId } });
-      if (!batch) return reply.code(404).send({ error: 'Batch not found' });
-      if (batch.status !== 'OPEN') {
-        return reply.code(400).send({ error: 'Batch is not open for booking' });
-      }
-
-      // 2. Check available quantity
-      const totalBooked = await prisma.booking.aggregate({
-        where: { batchId, status: { not: 'CANCELLED' } },
-        _sum: { quantity: true },
+      const basics = await validateBookingBasics({
+        customerId,
+        batchId,
+        quantity: Number(quantity),
       });
-      const currentlyBooked = totalBooked._sum.quantity || 0;
-      const remaining = batch.availableForBooking - currentlyBooked;
+      if (basics.error) {
+        return reply.code(400).send(basics);
+      }
 
-      if (quantity > remaining) {
+      const { batch, customer } = basics;
+      const orderValue = Number(quantity) * Number(batch.wholesalePrice);
+      const minimumPayment = orderValue * 0.8;
+
+      let finalAmountPaid = amountPaid == null ? null : Number(amountPaid);
+      let normalizedAllocations = [];
+
+      if (Array.isArray(paymentAllocations) && paymentAllocations.length > 0) {
+        try {
+          const result = await normalizePaymentAllocations({
+            customerId,
+            paymentAllocations,
+            orderValue,
+          });
+          normalizedAllocations = result.allocations;
+          finalAmountPaid = result.totalAllocated;
+        } catch (error) {
+          return reply.code(400).send({ error: error.message });
+        }
+      }
+
+      if (finalAmountPaid == null) {
+        return reply.code(400).send({ error: 'Select customer payments to fund this booking' });
+      }
+
+      if (finalAmountPaid < minimumPayment) {
         return reply.code(400).send({
-          error: `Only ${remaining} crates available for booking in this batch`,
-          remaining,
+          error: `Minimum payment is 80% of order value (₦${minimumPayment.toLocaleString()})`,
+          orderValue,
+          minimumPayment,
+          amountPaid: finalAmountPaid,
         });
       }
 
-      // 3. Max 100 crates per booking
-      if (quantity > 100) {
-        return reply.code(400).send({ error: 'Maximum booking is 100 crates per order' });
+      if (finalAmountPaid > orderValue + 0.009) {
+        return reply.code(400).send({ error: 'Allocated amount cannot be more than the booking value' });
       }
 
-      // 4. First-time customer max 20 crates
-      const customer = await prisma.customer.findUnique({ where: { id: customerId } });
-      if (!customer) {
-        return reply.code(404).send({ error: 'Customer not found' });
-      }
-      if (customer.isFirstTime && quantity > 20) {
-        return reply.code(400).send({ error: 'First-time customers can book a maximum of 20 crates' });
-      }
-
-      // 5. Minimum 80% payment
-      const orderValue = quantity * Number(batch.wholesalePrice);
-      const minPayment = orderValue * 0.8;
-      if (Number(amountPaid) < minPayment) {
-        return reply.code(400).send({
-          error: `Minimum payment is 80% of order value (₦${minPayment.toLocaleString()})`,
-          orderValue,
-          minimumPayment: minPayment,
-          amountPaid: Number(amountPaid),
+      const booking = await prisma.$transaction(async (tx) => {
+        const created = await tx.booking.create({
+          data: {
+            customerId,
+            batchId,
+            quantity: Number(quantity),
+            amountPaid: finalAmountPaid,
+            orderValue,
+            channel: channel || 'backend',
+            notes: notes || null,
+          },
+          include: buildBookingInclude(),
         });
-      }
 
-      const booking = await prisma.booking.create({
-        data: {
-          customerId,
-          batchId,
-          quantity,
-          amountPaid,
-          orderValue,
-          channel: channel || 'backend',
-          notes: notes || null,
-        },
-        include: {
-          customer: true,
-          batch: { select: { id: true, name: true, wholesalePrice: true } },
-        },
+        if (normalizedAllocations.length > 0) {
+          await tx.bookingPaymentAllocation.createMany({
+            data: normalizedAllocations.map((allocation) => ({
+              bookingId: created.id,
+              bankTransactionId: allocation.bankTransactionId,
+              amount: allocation.amount,
+              allocatedById: request.user.sub,
+            })),
+          });
+        }
+
+        if (customer.isFirstTime) {
+          await tx.customer.update({
+            where: { id: customer.id },
+            data: { isFirstTime: false },
+          });
+        }
+
+        return tx.booking.findUnique({
+          where: { id: created.id },
+          include: buildBookingInclude(),
+        });
       });
-
-      // If customer was first-time, mark as repeat for next time
-      if (customer.isFirstTime) {
-        await prisma.customer.update({
-          where: { id: customerId },
-          data: { isFirstTime: false },
-        });
-      }
 
       return reply.code(201).send({ booking: enrichBooking(booking) });
     },
   });
 
-  // ─── UPDATE BOOKING (only CONFIRMED bookings) ────────────────
   fastify.patch('/bookings/:id', {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER')],
     handler: async (request, reply) => {
       const existing = await prisma.booking.findUnique({
         where: { id: request.params.id },
-        include: { batch: true },
+        include: { batch: true, allocations: true },
       });
 
       if (!existing) return reply.code(404).send({ error: 'Booking not found' });
@@ -167,58 +411,88 @@ export default async function bookingRoutes(fastify) {
         return reply.code(400).send({ error: 'Can only edit confirmed bookings' });
       }
 
-      const { quantity, amountPaid, notes } = request.body;
-      const updates = {};
+      const { quantity, amountPaid, notes, paymentAllocations } = request.body;
+      const nextQuantity = quantity !== undefined ? Number(quantity) : existing.quantity;
 
-      if (quantity !== undefined) {
-        if (quantity <= 0 || !Number.isInteger(quantity)) {
-          return reply.code(400).send({ error: 'Quantity must be a positive integer' });
+      const basics = await validateBookingBasics({
+        customerId: existing.customerId,
+        batchId: existing.batchId,
+        quantity: nextQuantity,
+        excludeBookingId: existing.id,
+      });
+      if (basics.error) {
+        return reply.code(400).send(basics);
+      }
+
+      const orderValue = nextQuantity * Number(existing.batch.wholesalePrice);
+      const minimumPayment = orderValue * 0.8;
+
+      let nextAmountPaid = Number(existing.amountPaid);
+      let normalizedAllocations = null;
+
+      if (Array.isArray(paymentAllocations)) {
+        try {
+          const result = await normalizePaymentAllocations({
+            customerId: existing.customerId,
+            paymentAllocations,
+            orderValue,
+            excludeBookingId: existing.id,
+          });
+          normalizedAllocations = result.allocations;
+          nextAmountPaid = result.totalAllocated;
+        } catch (error) {
+          return reply.code(400).send({ error: error.message });
+        }
+      } else if (amountPaid !== undefined) {
+        nextAmountPaid = Number(amountPaid);
+      }
+
+      if (nextAmountPaid < minimumPayment) {
+        return reply.code(400).send({ error: `Minimum payment is 80% (₦${minimumPayment.toLocaleString()})` });
+      }
+
+      if (nextAmountPaid > orderValue + 0.009) {
+        return reply.code(400).send({ error: 'Allocated amount cannot be more than the booking value' });
+      }
+
+      const booking = await prisma.$transaction(async (tx) => {
+        if (normalizedAllocations !== null) {
+          await tx.bookingPaymentAllocation.deleteMany({
+            where: { bookingId: existing.id },
+          });
+
+          if (normalizedAllocations.length > 0) {
+            await tx.bookingPaymentAllocation.createMany({
+              data: normalizedAllocations.map((allocation) => ({
+                bookingId: existing.id,
+                bankTransactionId: allocation.bankTransactionId,
+                amount: allocation.amount,
+                allocatedById: request.user.sub,
+              })),
+            });
+          }
         }
 
-        // Check available quantity (excluding current booking)
-        const totalBooked = await prisma.booking.aggregate({
-          where: { batchId: existing.batchId, status: { not: 'CANCELLED' }, id: { not: existing.id } },
-          _sum: { quantity: true },
+        await tx.booking.update({
+          where: { id: existing.id },
+          data: {
+            quantity: nextQuantity,
+            orderValue,
+            amountPaid: nextAmountPaid,
+            ...(notes !== undefined ? { notes } : {}),
+          },
         });
-        const othersBooked = totalBooked._sum.quantity || 0;
-        const remaining = existing.batch.availableForBooking - othersBooked;
 
-        if (quantity > remaining) {
-          return reply.code(400).send({ error: `Only ${remaining} crates available` });
-        }
-        if (quantity > 100) {
-          return reply.code(400).send({ error: 'Maximum booking is 100 crates' });
-        }
-
-        updates.quantity = quantity;
-        updates.orderValue = quantity * Number(existing.batch.wholesalePrice);
-      }
-
-      if (amountPaid !== undefined) {
-        const orderVal = updates.orderValue || Number(existing.orderValue);
-        const minPayment = orderVal * 0.8;
-        if (Number(amountPaid) < minPayment) {
-          return reply.code(400).send({ error: `Minimum payment is 80% (₦${minPayment.toLocaleString()})` });
-        }
-        updates.amountPaid = amountPaid;
-      }
-
-      if (notes !== undefined) updates.notes = notes;
-
-      const booking = await prisma.booking.update({
-        where: { id: request.params.id },
-        data: updates,
-        include: {
-          customer: true,
-          batch: { select: { id: true, name: true, wholesalePrice: true } },
-        },
+        return tx.booking.findUnique({
+          where: { id: existing.id },
+          include: buildBookingInclude(),
+        });
       });
 
       return reply.send({ booking: enrichBooking(booking) });
     },
   });
 
-  // ─── BATCH BOOKING STATUS OVERVIEW ────────────────────────────
   fastify.get('/bookings/batch-status/:batchId', {
     preHandler: [authenticate],
     handler: async (request, reply) => {
@@ -230,10 +504,13 @@ export default async function bookingRoutes(fastify) {
 
       const bookings = await prisma.booking.findMany({
         where: { batchId: batch.id, status: { not: 'CANCELLED' } },
-        include: { customer: { select: { name: true, phone: true } } },
+        include: {
+          customer: { select: { name: true, phone: true } },
+          allocations: true,
+        },
       });
 
-      const totalBooked = bookings.reduce((s, b) => s + b.quantity, 0);
+      const totalBooked = bookings.reduce((sum, booking) => sum + booking.quantity, 0);
 
       return reply.send({
         batch: { id: batch.id, name: batch.name, status: batch.status },
@@ -241,21 +518,21 @@ export default async function bookingRoutes(fastify) {
         availableForBooking: batch.availableForBooking,
         totalBooked,
         remainingAvailable: batch.availableForBooking - totalBooked,
-        bookers: bookings.map(b => ({
-          id: b.id,
-          customer: b.customer.name,
-          phone: b.customer.phone,
-          quantity: b.quantity,
-          amountPaid: Number(b.amountPaid),
-          orderValue: Number(b.orderValue),
-          status: b.status,
-          date: b.createdAt,
+        bookers: bookings.map((booking) => ({
+          id: booking.id,
+          customer: booking.customer.name,
+          phone: booking.customer.phone,
+          quantity: booking.quantity,
+          amountPaid: Number(booking.amountPaid),
+          orderValue: Number(booking.orderValue),
+          balance: Math.max(0, Number(booking.orderValue) - Number(booking.amountPaid)),
+          status: booking.status,
+          date: booking.createdAt,
         })),
       });
     },
   });
 
-  // ─── CANCEL BOOKING ───────────────────────────────────────────
   fastify.patch('/bookings/:id/cancel', {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER')],
     handler: async (request, reply) => {
@@ -268,14 +545,13 @@ export default async function bookingRoutes(fastify) {
       const booking = await prisma.booking.update({
         where: { id: request.params.id },
         data: { status: 'CANCELLED' },
-        include: { customer: true, batch: { select: { name: true } } },
+        include: buildBookingInclude(),
       });
 
       return reply.send({ booking: enrichBooking(booking) });
     },
   });
 
-  // ─── OPEN BATCHES FOR BOOKING (customer-facing) ───────────────
   fastify.get('/bookings/open-batches', {
     preHandler: [authenticate],
     handler: async (request, reply) => {
@@ -284,13 +560,8 @@ export default async function bookingRoutes(fastify) {
         orderBy: { expectedDate: 'asc' },
       });
 
-      // Calculate remaining availability for each
       const result = await Promise.all(openBatches.map(async (batch) => {
-        const totalBooked = await prisma.booking.aggregate({
-          where: { batchId: batch.id, status: { not: 'CANCELLED' } },
-          _sum: { quantity: true },
-        });
-        const booked = totalBooked._sum.quantity || 0;
+        const booked = await getBookedQuantityForBatch(batch.id);
         const remaining = batch.availableForBooking - booked;
 
         return {
@@ -305,7 +576,7 @@ export default async function bookingRoutes(fastify) {
         };
       }));
 
-      return reply.send({ batches: result.filter(b => b.remainingAvailable > 0) });
+      return reply.send({ batches: result.filter((batch) => batch.remainingAvailable > 0) });
     },
   });
 }
