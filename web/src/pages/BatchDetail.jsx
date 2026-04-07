@@ -33,6 +33,10 @@ function formatPercent(n) {
   return `${Number(n || 0).toFixed(1)}%`;
 }
 
+function normalizeEggCode(code) {
+  return String(code || '').trim().toUpperCase();
+}
+
 function OverviewCard({ label, value, subtext, tone = 'gray' }) {
   const tones = {
     gray: 'bg-white border-gray-200 text-gray-900',
@@ -825,18 +829,43 @@ function AnalysisTab({ analysis }) {
 // ─── RECEIVE BATCH MODAL ──────────────────────────────────────
 
 function ReceiveBatchModal({ batch, onClose, onReceived }) {
+  const defaultCode = `FE${Math.round(batch.costPrice)}`;
   const [eggCodes, setEggCodes] = useState([
-    { code: `FE${Math.round(batch.costPrice)}`, costPrice: batch.costPrice, quantity: batch.expectedQuantity, freeQty: 3 },
+    { code: defaultCode, costPrice: batch.costPrice, quantity: batch.expectedQuantity, freeQty: 3 },
   ]);
+  const [catalogItems, setCatalogItems] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
   const totalPaid = eggCodes.reduce((s, ec) => s + (Number(ec.quantity) || 0), 0);
   const totalFree = eggCodes.reduce((s, ec) => s + (Number(ec.freeQty) || 0), 0);
   const actualQuantity = totalPaid + totalFree;
+  const expectedGap = actualQuantity - Number(batch.expectedQuantity || 0);
+  const knownItemsByCode = new Map(
+    catalogItems
+      .filter((item) => item.code)
+      .map((item) => [normalizeEggCode(item.code), item]),
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCatalogItems() {
+      try {
+        const data = await api.get('/items?category=FE_EGGS');
+        if (!cancelled) setCatalogItems(data.items || []);
+      } catch {
+        if (!cancelled) setCatalogItems([]);
+      }
+    }
+
+    loadCatalogItems();
+    return () => { cancelled = true; };
+  }, []);
 
   function addEggCode() {
-    setEggCodes([...eggCodes, { code: 'FE', costPrice: '', quantity: '', freeQty: 0 }]);
+    const fallbackCode = catalogItems.find((item) => item.code)?.code || 'FE';
+    setEggCodes([...eggCodes, { code: fallbackCode, costPrice: '', quantity: '', freeQty: 0 }]);
   }
 
   function removeEggCode(index) {
@@ -846,7 +875,18 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
 
   function updateEggCode(index, field, value) {
     const updated = [...eggCodes];
-    updated[index] = { ...updated[index], [field]: value };
+    const nextValue = field === 'code' ? normalizeEggCode(value) : value;
+    updated[index] = { ...updated[index], [field]: nextValue };
+
+    if (field === 'code') {
+      const matchedItem = knownItemsByCode.get(normalizeEggCode(nextValue));
+      if (matchedItem) {
+        updated[index] = {
+          ...updated[index],
+          costPrice: updated[index].costPrice || matchedItem.defaultWholesalePrice || batch.costPrice,
+        };
+      }
+    }
     setEggCodes(updated);
   }
 
@@ -856,19 +896,27 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
     setError('');
 
     // Validate egg codes
+    const seenCodes = new Set();
     for (const ec of eggCodes) {
-      if (!ec.code || !/^FE\d+$/.test(ec.code)) {
+      const normalizedCode = normalizeEggCode(ec.code);
+      if (!normalizedCode || !/^FE\d+$/.test(normalizedCode)) {
         setError(`Invalid egg code: "${ec.code}". Must be FE followed by numbers (e.g. FE4600)`);
         setSubmitting(false);
         return;
       }
+      if (seenCodes.has(normalizedCode)) {
+        setError(`You entered ${normalizedCode} more than once. Use one row per FE code.`);
+        setSubmitting(false);
+        return;
+      }
+      seenCodes.add(normalizedCode);
       if (!ec.costPrice || Number(ec.costPrice) <= 0) {
-        setError(`Cost price for ${ec.code} must be positive`);
+        setError(`Cost price for ${normalizedCode} must be positive`);
         setSubmitting(false);
         return;
       }
       if (!ec.quantity || Number(ec.quantity) <= 0) {
-        setError(`Quantity for ${ec.code} must be positive`);
+        setError(`Quantity for ${normalizedCode} must be positive`);
         setSubmitting(false);
         return;
       }
@@ -879,7 +927,7 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
         actualQuantity,
         freeCrates: totalFree,
         eggCodes: eggCodes.map(ec => ({
-          code: ec.code,
+          code: normalizeEggCode(ec.code),
           costPrice: Number(ec.costPrice),
           quantity: Number(ec.quantity),
           freeQty: Number(ec.freeQty) || 0,
@@ -898,7 +946,7 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="px-4 sm:px-6 py-4 border-b border-gray-100">
           <h2 className="text-lg font-semibold text-gray-900">Receive Batch: {batch.name}</h2>
-          <p className="text-xs sm:text-sm text-gray-500">Enter the actual quantities and egg codes received from the farm.</p>
+          <p className="text-xs sm:text-sm text-gray-500">Record what actually arrived from the farm, including FE mix, paid crates, and any extra free crates.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-5">
@@ -906,26 +954,54 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
             <div className="bg-red-50 text-red-600 px-3 py-2 rounded-lg text-sm">{error}</div>
           )}
 
-          {/* Summary bar */}
-          <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 items-start sm:items-center bg-gray-50 rounded-lg p-3">
-            <div className="text-xs sm:text-sm">
-              <span className="text-gray-500">Paid:</span>{' '}
-              <span className="font-semibold">{totalPaid.toLocaleString()}</span>
-            </div>
-            <div className="text-xs sm:text-sm">
-              <span className="text-gray-500">Free:</span>{' '}
-              <span className="font-semibold text-green-600">{totalFree.toLocaleString()}</span>
-            </div>
-            <div className="text-xs sm:text-sm">
-              <span className="text-gray-500">Total:</span>{' '}
-              <span className="font-bold text-gray-900">{actualQuantity.toLocaleString()} crates</span>
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+            <p className="text-sm font-semibold text-blue-900">What to enter here</p>
+            <div className="mt-2 space-y-2 text-sm text-blue-800">
+              <p>1. Add one row for each FE code that arrived in this batch.</p>
+              <p>2. Enter the paid crates for each FE code.</p>
+              <p>3. Add any extra free crates from the farm in the same row.</p>
             </div>
           </div>
 
-          {/* Egg codes entry */}
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+              <p className="text-xs uppercase tracking-wider text-gray-500">Expected</p>
+              <p className="mt-1 text-lg font-bold text-gray-900">{formatNumber(batch.expectedQuantity)} crates</p>
+            </div>
+            <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+              <p className="text-xs uppercase tracking-wider text-gray-500">Paid</p>
+              <p className="mt-1 text-lg font-bold text-gray-900">{formatNumber(totalPaid)} crates</p>
+            </div>
+            <div className="rounded-xl border border-green-200 bg-green-50 p-3">
+              <p className="text-xs uppercase tracking-wider text-green-700">Free</p>
+              <p className="mt-1 text-lg font-bold text-green-900">{formatNumber(totalFree)} crates</p>
+            </div>
+            <div className={`rounded-xl border p-3 ${
+              expectedGap >= 0 ? 'border-blue-200 bg-blue-50' : 'border-amber-200 bg-amber-50'
+            }`}>
+              <p className={`text-xs uppercase tracking-wider ${expectedGap >= 0 ? 'text-blue-700' : 'text-amber-700'}`}>Total arrived</p>
+              <p className={`mt-1 text-lg font-bold ${expectedGap >= 0 ? 'text-blue-900' : 'text-amber-900'}`}>{formatNumber(actualQuantity)} crates</p>
+            </div>
+          </div>
+
+          <div className={`rounded-xl border px-4 py-3 text-sm ${
+            expectedGap === 0
+              ? 'border-green-200 bg-green-50 text-green-800'
+              : expectedGap > 0
+                ? 'border-blue-200 bg-blue-50 text-blue-800'
+                : 'border-amber-200 bg-amber-50 text-amber-800'
+          }`}>
+            {expectedGap === 0 && 'The total received matches the expected batch quantity exactly.'}
+            {expectedGap > 0 && `This batch arrived with ${formatNumber(expectedGap)} more crate${expectedGap === 1 ? '' : 's'} than expected.`}
+            {expectedGap < 0 && `This batch is short by ${formatNumber(Math.abs(expectedGap))} crate${Math.abs(expectedGap) === 1 ? '' : 's'} compared with what was expected.`}
+          </div>
+
           <div>
             <div className="flex items-center justify-between mb-3">
-              <label className="block text-sm font-medium text-gray-700">Egg Codes</label>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">FE mix that arrived</label>
+                <p className="mt-1 text-xs text-gray-500">Known FE items will auto-fill their usual price when possible. New FE codes are allowed.</p>
+              </div>
               <button
                 type="button"
                 onClick={addEggCode}
@@ -937,10 +1013,12 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
 
             <div className="space-y-3">
               {eggCodes.map((ec, i) => (
-                <div key={i} className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-end">
+                <div key={i} className="rounded-xl border border-gray-200 p-3 sm:p-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 sm:items-end">
                   <div className="sm:col-span-3">
                     {i === 0 && <label className="block text-xs text-gray-500 mb-1">Code</label>}
                     <input
+                      list="batch-receive-fe-codes"
                       type="text"
                       required
                       placeholder="FE4600"
@@ -995,9 +1073,33 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
                       </button>
                     )}
                   </div>
+                  </div>
+                  <div className="mt-3 flex flex-col gap-2 text-xs sm:flex-row sm:items-center sm:justify-between">
+                    <div className="text-gray-500">
+                      {knownItemsByCode.get(normalizeEggCode(ec.code)) ? (
+                        <>Matched item: <span className="font-medium text-gray-700">{knownItemsByCode.get(normalizeEggCode(ec.code)).displayName || knownItemsByCode.get(normalizeEggCode(ec.code)).name}</span></>
+                      ) : normalizeEggCode(ec.code) ? (
+                        <>This FE code will be created as a new item if it does not already exist.</>
+                      ) : (
+                        <>Enter the FE code from the farm sheet.</>
+                      )}
+                    </div>
+                    <div className="text-gray-500">
+                      Row total: <span className="font-medium text-gray-900">{formatNumber((Number(ec.quantity) || 0) + (Number(ec.freeQty) || 0))} crates</span>
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
+            <datalist id="batch-receive-fe-codes">
+              {catalogItems
+                .filter((item) => item.code)
+                .map((item) => (
+                  <option key={item.id} value={item.code}>
+                    {item.displayName || item.name}
+                  </option>
+                ))}
+            </datalist>
           </div>
 
           <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-2">
@@ -1009,7 +1111,7 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
               disabled={submitting}
               className="w-full sm:w-auto bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors"
             >
-              {submitting ? 'Receiving...' : 'Confirm Receipt'}
+              {submitting ? 'Receiving...' : 'Save Receipt Details'}
             </button>
           </div>
         </form>

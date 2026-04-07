@@ -409,13 +409,19 @@ export default async function batchRoutes(fastify) {
       }
 
       // Validate egg codes
+      const seenCodes = new Set();
       for (const ec of eggCodes) {
         if (!ec.code || !ec.costPrice || !ec.quantity) {
           return reply.code(400).send({ error: 'Each egg code needs code, costPrice, and quantity' });
         }
-        if (!/^FE\d+$/.test(ec.code)) {
-          return reply.code(400).send({ error: `Invalid egg code format: ${ec.code}. Must be FE followed by numbers (e.g. FE4600)` });
+        const normalizedCode = normalizeItemCode(ec.code);
+        if (!/^FE\d+$/.test(normalizedCode)) {
+          return reply.code(400).send({ error: `Invalid egg code format: ${ec.code}. Use FE followed by numbers, for example FE4600.` });
         }
+        if (seenCodes.has(normalizedCode)) {
+          return reply.code(400).send({ error: `You entered ${normalizedCode} more than once. Use one row per FE code.` });
+        }
+        seenCodes.add(normalizedCode);
       }
 
       // Verify total quantities add up

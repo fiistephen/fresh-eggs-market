@@ -1014,3 +1014,29 @@ Minimum update format:
   - this is only Phase A of Batch V2
   - receive flow, count/write-off flow, and deeper batch analysis refinement still remain
   - after local verification, the next step for this slice is commit, push, deploy to staging, then visual review on `/batches`
+
+## 26. 2026-04-07 Batch Receive Flow Upgrade
+
+- Upgraded the batch receive flow in:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/pages/BatchDetail.jsx`
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/src/routes/batches.js`
+- UX improvements made:
+  - rewrote the receive modal copy to speak more clearly to staff
+  - added a simple “what to enter here” guide at the top of the receive modal
+  - added expected vs paid vs free vs total-arrived summary cards
+  - added a clear message when the received total is short, exact, or above expected quantity
+  - FE rows now show a matched catalog item when the FE code already exists
+  - FE code inputs now use known FE codes from the Items catalog as suggestions
+  - when an FE code matches an existing item, the modal tries to prefill the usual price
+  - each FE row now shows its own total crates
+  - submit button wording changed from `Confirm Receipt` to `Save Receipt Details`
+- Backend improvements made:
+  - duplicate FE rows in batch receiving are now blocked with a clear validation message
+  - FE format validation message was made simpler and more staff-friendly
+- Local verification completed:
+  - `node --check` passed for `batches.js`
+  - Prisma schema validation passed
+  - frontend build passed
+- What future Codex sessions should remember:
+  - this upgrade improves the current receive flow without changing schema
+  - next likely Batch V2 work is count/write-off refinement or deeper batch analysis polish
