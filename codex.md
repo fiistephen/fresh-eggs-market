@@ -1040,3 +1040,26 @@ Minimum update format:
 - What future Codex sessions should remember:
   - this upgrade improves the current receive flow without changing schema
   - next likely Batch V2 work is count/write-off refinement or deeper batch analysis polish
+
+## 27. 2026-04-07 Count And Write-off Refinement
+
+- Improved the count and write-off workflow in:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/pages/Inventory.jsx`
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/pages/BatchDetail.jsx`
+- Main UX changes:
+  - added a direct `Record Count` action to received batches in the batch workspace
+  - shop-floor users can now reach the count flow directly from a received batch
+  - inventory cards now include a `Record count for this batch` action
+  - the count modal wording now explains:
+    - physical count means full crates still on the floor
+    - write-off is only for badly damaged crates that cannot be sold at all
+    - mildly cracked crates that may still be sold later should not be written off here
+  - added clearer system-count and before-write-off comparison panels
+  - improved success state wording after saving a count
+- Implementation note:
+  - this pass did not change schema or count math
+  - it focused on clearer entry points and clearer staff guidance around write-offs
+- Local verification completed:
+  - frontend build passed
+- What future Codex sessions should remember:
+  - the next likely Batch V2 step is deeper batch analysis polish and monthly batch reporting tie-in

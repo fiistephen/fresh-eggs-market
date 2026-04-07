@@ -67,11 +67,13 @@ export default function BatchDetail() {
 
   // Modal states
   const [showReceive, setShowReceive] = useState(false);
+  const [showCount, setShowCount] = useState(false);
   const [showClose, setShowClose] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
 
   const canManage = ['ADMIN', 'MANAGER'].includes(user?.role);
+  const canCount = ['ADMIN', 'MANAGER', 'SHOP_FLOOR'].includes(user?.role);
   const canDelete = user?.role === 'ADMIN';
 
   useEffect(() => { loadBatch(); }, [id]);
@@ -174,13 +176,23 @@ export default function BatchDetail() {
               </button>
             </>
           )}
-          {canManage && batch.status === 'RECEIVED' && (
+          {canCount && batch.status === 'RECEIVED' && (
             <button
-              onClick={() => setShowClose(true)}
-              className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-white bg-gray-600 hover:bg-gray-700 rounded-lg transition-colors"
+              onClick={() => setShowCount(true)}
+              className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
             >
-              Close Batch
+              Record Count
             </button>
+          )}
+          {canManage && batch.status === 'RECEIVED' && (
+            <>
+              <button
+                onClick={() => setShowClose(true)}
+                className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-white bg-gray-600 hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                Close Batch
+              </button>
+            </>
           )}
           {canDelete && batch.status === 'OPEN' && (batch._count?.bookings || 0) === 0 && (
             <button
@@ -298,6 +310,13 @@ export default function BatchDetail() {
           batch={batch}
           onClose={() => setShowReceive(false)}
           onReceived={() => { setShowReceive(false); loadBatch(); }}
+        />
+      )}
+      {showCount && (
+        <BatchCountModal
+          batch={batch}
+          onClose={() => setShowCount(false)}
+          onSaved={() => { setShowCount(false); loadBatch(); }}
         />
       )}
       {showClose && (
@@ -1112,6 +1131,170 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
               className="w-full sm:w-auto bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors"
             >
               {submitting ? 'Receiving...' : 'Save Receipt Details'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function BatchCountModal({ batch, onClose, onSaved }) {
+  const overview = batch.overview || {};
+  const [physicalCount, setPhysicalCount] = useState(String(overview.onHand ?? ''));
+  const [crackedWriteOff, setCrackedWriteOff] = useState('0');
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [result, setResult] = useState(null);
+
+  const differenceBeforeWriteOff = Number(physicalCount || 0) - Number(overview.onHand || 0);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setSaving(true);
+    setError('');
+    try {
+      const response = await api.post('/inventory/count', {
+        batchId: batch.id,
+        physicalCount: parseInt(physicalCount, 10),
+        crackedWriteOff: parseInt(crackedWriteOff, 10) || 0,
+        notes: notes.trim() || undefined,
+      });
+      setResult(response);
+    } catch (err) {
+      setError(err.error || 'Failed to save count');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (result) {
+    const count = result.count;
+    return (
+      <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+        <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+          <div className="text-center mb-4">
+            <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-2">
+              <span className="text-green-600 text-xl">✓</span>
+            </div>
+            <h3 className="text-lg font-bold">Count Saved</h3>
+            <p className="text-sm text-gray-500">{batch.name}</p>
+          </div>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between"><span className="text-gray-500">System count</span><span className="font-medium">{formatNumber(count.systemCount)} crates</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">Physical count</span><span className="font-medium">{formatNumber(count.physicalCount)} crates</span></div>
+            <div className={`flex justify-between ${count.discrepancy === 0 ? 'text-green-600' : 'text-red-600 font-bold'}`}>
+              <span>Discrepancy</span>
+              <span>{count.discrepancy > 0 ? '+' : ''}{formatNumber(count.discrepancy)}</span>
+            </div>
+            {count.crackedWriteOff > 0 && (
+              <div className="flex justify-between text-amber-600">
+                <span>Damaged write-off</span>
+                <span>{formatNumber(count.crackedWriteOff)} crates</span>
+              </div>
+            )}
+          </div>
+          <button
+            onClick={() => { onSaved(); }}
+            className="mt-4 w-full rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="px-4 sm:px-6 py-4 border-b border-gray-100">
+          <h2 className="text-lg font-semibold text-gray-900">Record Count: {batch.name}</h2>
+          <p className="text-xs sm:text-sm text-gray-500">Capture the floor count and any badly damaged crates for this batch.</p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4">
+          {error && (
+            <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>
+          )}
+
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+            <p className="font-semibold text-blue-900">How to use this</p>
+            <div className="mt-2 space-y-2">
+              <p>1. Enter the full crates still physically present.</p>
+              <p>2. Add only the badly damaged crates that should be written off now.</p>
+              <p>3. Mildly cracked crates that can still be sold later should not go into write-off.</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
+              <p className="text-xs uppercase tracking-wider text-blue-700">System count</p>
+              <p className="mt-1 text-lg font-bold text-blue-900">{formatNumber(overview.onHand)} crates</p>
+              <p className="mt-1 text-xs text-blue-700">Booked: {formatNumber(overview.totalBooked)} · Sale-ready: {formatNumber(overview.availableForSale)}</p>
+            </div>
+            <div className={`rounded-xl border p-3 ${
+              differenceBeforeWriteOff === 0
+                ? 'border-green-200 bg-green-50'
+                : 'border-amber-200 bg-amber-50'
+            }`}>
+              <p className={`text-xs uppercase tracking-wider ${differenceBeforeWriteOff === 0 ? 'text-green-700' : 'text-amber-700'}`}>Before write-off</p>
+              <p className={`mt-1 text-lg font-bold ${differenceBeforeWriteOff === 0 ? 'text-green-900' : 'text-amber-900'}`}>
+                {physicalCount === '' ? '—' : `${differenceBeforeWriteOff > 0 ? '+' : ''}${formatNumber(differenceBeforeWriteOff)}`}
+              </p>
+              <p className={`mt-1 text-xs ${differenceBeforeWriteOff === 0 ? 'text-green-700' : 'text-amber-700'}`}>
+                {physicalCount === '' ? 'Enter the physical count to compare it with the system.' : 'Difference between the floor count and the current system count.'}
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Physical Count (crates)</label>
+            <input
+              type="number"
+              min="0"
+              required
+              value={physicalCount}
+              onChange={(e) => setPhysicalCount(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500"
+            />
+            <p className="mt-1 text-xs text-gray-400">Count only full crates that are still on the floor.</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Badly Damaged Crates to Write Off</label>
+            <input
+              type="number"
+              min="0"
+              value={crackedWriteOff}
+              onChange={(e) => setCrackedWriteOff(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500"
+            />
+            <p className="mt-1 text-xs text-gray-400">Use this only for crates that can no longer be sold at all.</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+            <textarea
+              rows={3}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Optional note, for example where the loss happened or what the team observed..."
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500"
+            />
+          </div>
+
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-2">
+            <button type="button" onClick={onClose} className="w-full sm:w-auto px-4 py-2 text-sm text-gray-600 hover:text-gray-800 transition-colors">
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving || physicalCount === ''}
+              className="w-full sm:w-auto rounded-lg bg-green-600 px-6 py-2 text-sm font-medium text-white transition-colors hover:bg-green-700 disabled:opacity-50"
+            >
+              {saving ? 'Saving...' : 'Save Count'}
             </button>
           </div>
         </form>

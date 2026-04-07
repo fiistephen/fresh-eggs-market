@@ -49,8 +49,8 @@ function StockBar({ sold, writeOff, booked, available, total }) {
 }
 
 // ─── RECORD COUNT MODAL ──────────────────────────────────────────
-function RecordCountModal({ batches, onClose, onSaved }) {
-  const [batchId, setBatchId] = useState('');
+function RecordCountModal({ batches, initialBatchId = '', onClose, onSaved }) {
+  const [batchId, setBatchId] = useState(initialBatchId);
   const [physicalCount, setPhysicalCount] = useState('');
   const [crackedWriteOff, setCrackedWriteOff] = useState('0');
   const [notes, setNotes] = useState('');
@@ -59,6 +59,7 @@ function RecordCountModal({ batches, onClose, onSaved }) {
   const [result, setResult] = useState(null);
 
   const selectedBatch = batches.find(b => b.batch.id === batchId);
+  const differenceBeforeWriteOff = selectedBatch ? (Number(physicalCount || 0) - Number(selectedBatch.onHand || 0)) : 0;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -90,7 +91,7 @@ function RecordCountModal({ batches, onClose, onSaved }) {
             <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-2">
               <span className="text-green-600 text-xl">✓</span>
             </div>
-            <h3 className="text-lg font-bold">Count Recorded</h3>
+            <h3 className="text-lg font-bold">Count Saved</h3>
             <p className="text-sm text-gray-500">{c.batch?.name || 'Batch'}</p>
           </div>
           <div className="space-y-2 text-sm">
@@ -103,6 +104,11 @@ function RecordCountModal({ batches, onClose, onSaved }) {
               <div className="flex justify-between text-amber-600"><span>Write-off</span><span>{c.crackedWriteOff} crates</span></div>
             )}
           </div>
+          {c.crackedWriteOff > 0 && (
+            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
+              These crates have been recorded as badly damaged and removed from this batch's usable stock.
+            </div>
+          )}
           <div className="mt-3 p-3 bg-gray-50 rounded-lg text-xs text-gray-500 space-y-1">
             <div className="flex justify-between"><span>Total Received</span><span>{fmt(comp.totalReceived)}</span></div>
             <div className="flex justify-between"><span>Total Sold</span><span>{fmt(comp.totalSold)}</span></div>
@@ -119,9 +125,18 @@ function RecordCountModal({ batches, onClose, onSaved }) {
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
-        <h3 className="text-lg font-bold mb-4">Record Physical Count</h3>
+        <h3 className="text-lg font-bold mb-4">Record Count and Damaged Crates</h3>
         {error && <div className="mb-3 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{error}</div>}
         <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+            <p className="font-semibold text-blue-900">What this form does</p>
+            <div className="mt-2 space-y-2">
+              <p>1. Enter the full-crate count the team can still see on the floor.</p>
+              <p>2. Add any badly damaged crates that should be written off now.</p>
+              <p>3. Mildly cracked crates that can still be sold later should not go into write-off.</p>
+            </div>
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Batch *</label>
             <select value={batchId} onChange={e => setBatchId(e.target.value)} required className="w-full border rounded-lg px-3 py-2 text-sm">
@@ -135,32 +150,54 @@ function RecordCountModal({ batches, onClose, onSaved }) {
           </div>
 
           {selectedBatch && (
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm">
-              <div className="flex justify-between"><span className="text-blue-700">System count (auto-computed)</span><span className="font-bold text-blue-900">{fmt(selectedBatch.onHand)} crates</span></div>
-              <div className="flex justify-between text-blue-600 text-xs mt-1"><span>Booked: {fmt(selectedBatch.booked)}</span><span>Available: {fmt(selectedBatch.available)}</span></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm">
+                <div className="flex justify-between"><span className="text-blue-700">System count</span><span className="font-bold text-blue-900">{fmt(selectedBatch.onHand)} crates</span></div>
+                <div className="flex justify-between text-blue-600 text-xs mt-1"><span>Booked</span><span>{fmt(selectedBatch.booked)}</span></div>
+                <div className="flex justify-between text-blue-600 text-xs mt-1"><span>Available</span><span>{fmt(selectedBatch.available)}</span></div>
+              </div>
+              <div className={`rounded-xl border p-3 text-sm ${
+                physicalCount === ''
+                  ? 'border-gray-200 bg-gray-50 text-gray-600'
+                  : differenceBeforeWriteOff === 0
+                    ? 'border-green-200 bg-green-50 text-green-700'
+                    : 'border-amber-200 bg-amber-50 text-amber-700'
+              }`}>
+                <div className="flex justify-between"><span>Before write-off</span><span className="font-bold">
+                  {physicalCount === '' ? '—' : `${differenceBeforeWriteOff > 0 ? '+' : ''}${fmt(differenceBeforeWriteOff)}`}
+                </span></div>
+                <p className="mt-2 text-xs">
+                  {physicalCount === ''
+                    ? 'Enter the physical count to compare it with the system.'
+                    : differenceBeforeWriteOff === 0
+                      ? 'The floor count matches the system before write-off.'
+                      : 'This shows the difference between the floor count and the current system count.'}
+                </p>
+              </div>
             </div>
           )}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Physical Count (crates) *</label>
             <input type="number" min="0" value={physicalCount} onChange={e => setPhysicalCount(e.target.value)} required placeholder="Enter the count from floor" className="w-full border rounded-lg px-3 py-2 text-sm" />
+            <p className="text-xs text-gray-400 mt-1">Count only full crates that are still physically present.</p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Cracked / Write-off (crates)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Badly Damaged Crates to Write Off</label>
             <input type="number" min="0" value={crackedWriteOff} onChange={e => setCrackedWriteOff(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm" />
-            <p className="text-xs text-gray-400 mt-1">Number of unsellable crates to write off from this batch</p>
+            <p className="text-xs text-gray-400 mt-1">Use this only for crates that can no longer be sold at all.</p>
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Optional notes about this count..." className="w-full border rounded-lg px-3 py-2 text-sm" />
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Optional note, for example where the loss happened or what the team observed..." className="w-full border rounded-lg px-3 py-2 text-sm" />
           </div>
 
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={onClose} className="flex-1 py-2 border rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
             <button type="submit" disabled={saving || !batchId || !physicalCount} className="flex-1 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50">
-              {saving ? 'Saving...' : 'Record Count'}
+              {saving ? 'Saving...' : 'Save Count'}
             </button>
           </div>
         </form>
@@ -276,7 +313,7 @@ function BatchDetailModal({ batchId, onClose }) {
 
 // ─── INVENTORY OVERVIEW TAB ──────────────────────────────────────
 function OverviewTab({ inventory, totals, policy, loading, onRefresh }) {
-  const [showCount, setShowCount] = useState(false);
+  const [countBatchId, setCountBatchId] = useState(null);
   const [detailBatchId, setDetailBatchId] = useState(null);
 
   if (loading) return <div className="flex justify-center py-12"><div className="animate-spin w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full" /></div>;
@@ -310,7 +347,7 @@ function OverviewTab({ inventory, totals, policy, loading, onRefresh }) {
       {/* Action button */}
       <div className="flex justify-between items-center mb-4">
         <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Active Batches</h3>
-        <button onClick={() => setShowCount(true)} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 flex items-center gap-2">
+        <button onClick={() => setCountBatchId('')} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 flex items-center gap-2">
           <span>📝</span> Record Count
         </button>
       </div>
@@ -324,9 +361,9 @@ function OverviewTab({ inventory, totals, policy, loading, onRefresh }) {
       ) : (
         <div className="space-y-3">
           {inventory.map(item => (
-            <div key={item.batch.id} className="bg-white border rounded-xl p-4 hover:shadow-md transition-shadow cursor-pointer" onClick={() => setDetailBatchId(item.batch.id)}>
+            <div key={item.batch.id} className="bg-white border rounded-xl p-4 hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between mb-3">
-                <div>
+                <div className="cursor-pointer" onClick={() => setDetailBatchId(item.batch.id)}>
                   <div className="flex flex-wrap items-center gap-2">
                     <h4 className="font-bold text-lg">{item.batch.name}</h4>
                     <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${crackTone[item.crackAlert?.level] || crackTone.OK}`}>
@@ -341,9 +378,11 @@ function OverviewTab({ inventory, totals, policy, loading, onRefresh }) {
                 </div>
               </div>
 
-              <StockBar sold={item.totalSold} writeOff={item.totalWrittenOff} booked={item.booked} available={item.available} total={item.totalReceived} />
+              <div className="cursor-pointer" onClick={() => setDetailBatchId(item.batch.id)}>
+                <StockBar sold={item.totalSold} writeOff={item.totalWrittenOff} booked={item.booked} available={item.available} total={item.totalReceived} />
+              </div>
 
-              <div className="flex gap-6 mt-3 text-xs text-gray-500">
+              <div className="flex gap-6 mt-3 text-xs text-gray-500 cursor-pointer" onClick={() => setDetailBatchId(item.batch.id)}>
                 <span>Received: <b>{fmt(item.totalReceived)}</b></span>
                 <span>Sold: <b className="text-green-600">{fmt(item.totalSold)}</b></span>
                 <span>Booked: <b className="text-amber-600">{fmt(item.booked)}</b></span>
@@ -353,18 +392,35 @@ function OverviewTab({ inventory, totals, policy, loading, onRefresh }) {
               </div>
 
               {item.latestCount && (
-                <div className={`mt-3 p-2 rounded-lg text-xs ${item.latestCount.discrepancy !== 0 ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+                <div className={`mt-3 p-2 rounded-lg text-xs cursor-pointer ${item.latestCount.discrepancy !== 0 ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`} onClick={() => setDetailBatchId(item.batch.id)}>
                   Last count: {fmtDate(item.latestCount.countDate)} — Physical: {fmt(item.latestCount.physicalCount)}, System: {fmt(item.latestCount.systemCount)}
                   {item.latestCount.discrepancy !== 0 && <span className="font-bold"> (discrepancy: {item.latestCount.discrepancy > 0 ? '+' : ''}{item.latestCount.discrepancy})</span>}
                   <span className="text-gray-400 ml-2">by {item.latestCount.enteredBy}</span>
                 </div>
               )}
+
+              <div className="mt-3 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setCountBatchId(item.batch.id)}
+                  className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm font-medium text-green-700 hover:bg-green-100"
+                >
+                  Record count for this batch
+                </button>
+              </div>
             </div>
           ))}
         </div>
       )}
 
-      {showCount && <RecordCountModal batches={inventory} onClose={() => setShowCount(false)} onSaved={onRefresh} />}
+      {countBatchId !== null && (
+        <RecordCountModal
+          batches={inventory}
+          initialBatchId={countBatchId}
+          onClose={() => setCountBatchId(null)}
+          onSaved={onRefresh}
+        />
+      )}
       {detailBatchId && <BatchDetailModal batchId={detailBatchId} onClose={() => setDetailBatchId(null)} />}
     </div>
   );
