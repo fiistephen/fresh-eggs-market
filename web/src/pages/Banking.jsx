@@ -98,9 +98,26 @@ function todayStr() {
 
 function accountLabel(account) {
   if (!account) return '—';
+  const displayName = displayAccountName(account);
   return account.lastFour === 'CASH'
-    ? account.name
-    : `${account.name} • ••••${account.lastFour}`;
+    ? displayName
+    : `${displayName} • ••••${account.lastFour}`;
+}
+
+function displayAccountName(account) {
+  if (!account) return '—';
+  if (account.accountType === 'CASH_ON_HAND') return 'Cash Account';
+  return account.name;
+}
+
+function accountPurpose(accountType) {
+  const purposes = {
+    CUSTOMER_DEPOSIT: 'Money paid into the bank should land here first.',
+    SALES: 'Move money here when you are ready to separate sales funds.',
+    PROFIT: 'Move profit here before paying expenses.',
+    CASH_ON_HAND: 'Record cash received here first, then move it to Customer Deposit after banking it.',
+  };
+  return purposes[accountType] || 'Use this account for banking entries and transfers.';
 }
 
 function importCount(importRecord, key) {
@@ -279,7 +296,7 @@ export default function Banking() {
   const views = [
     { key: 'workspace', label: 'Workspace' },
     { key: 'transactions', label: 'Transactions' },
-    { key: 'imports', label: 'Statement imports' },
+    { key: 'imports', label: 'Bank statements' },
     { key: 'reconciliation', label: 'Reconciliation' },
     ...(canViewReports ? [
       { key: 'unbooked', label: 'Unbooked deposits' },
@@ -294,17 +311,17 @@ export default function Banking() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Banking</h1>
           <p className="mt-1 max-w-3xl text-sm text-gray-500">
-            Run the money trail from one place: accounts, cash ledger, bulk entry, statement imports, and reconciliation.
+            Record money received, move cash after bank deposit, import bank statements, and check balances here.
           </p>
         </div>
 
         {canRecord && (
           <div className="flex flex-wrap gap-2">
-            <ActionButton label="Manual entry" onClick={() => setShowRecordModal(true)} />
-            <ActionButton label="Bulk entry" onClick={() => setShowBulkModal(true)} />
-            <ActionButton label="Internal transfer" onClick={() => setShowTransferModal(true)} />
-            <ActionButton label="Import statement" onClick={() => setShowImportModal(true)} />
-            {canViewReports && <ActionButton label="New reconciliation" onClick={() => setShowReconcileModal(true)} />}
+            <ActionButton label="Add one entry" onClick={() => setShowRecordModal(true)} />
+            <ActionButton label="Add many entries" onClick={() => setShowBulkModal(true)} />
+            <ActionButton label="Move money" onClick={() => setShowTransferModal(true)} />
+            <ActionButton label="Import bank statement" onClick={() => setShowImportModal(true)} />
+            {canViewReports && <ActionButton label="Reconcile balance" onClick={() => setShowReconcileModal(true)} />}
           </div>
         )}
       </div>
@@ -462,6 +479,15 @@ function WorkspaceView({ loading, accounts, imports, reconciliations, transactio
 
   return (
     <div className="space-y-6">
+      <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+        <h2 className="text-sm font-semibold text-blue-900">How to use this page</h2>
+        <div className="mt-2 grid grid-cols-1 gap-2 text-sm text-blue-900 lg:grid-cols-3">
+          <p><span className="font-semibold">1.</span> Record money received. If it is cash, record it in <span className="font-semibold">Cash Account</span>.</p>
+          <p><span className="font-semibold">2.</span> When cash is deposited in the bank, use <span className="font-semibold">Move money</span> from <span className="font-semibold">Cash Account</span> to <span className="font-semibold">Customer Deposit Account</span>.</p>
+          <p><span className="font-semibold">3.</span> Import the bank statement and reconcile the balance to make sure the records match the bank.</p>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         {accounts.map((account) => {
           const latest = account.latestReconciliation;
@@ -473,14 +499,15 @@ function WorkspaceView({ loading, accounts, imports, reconciliations, transactio
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-xs font-medium uppercase tracking-[0.2em] text-gray-500">{account.accountType.replaceAll('_', ' ')}</p>
-                  <h3 className="mt-1 text-lg font-semibold text-gray-900">{account.name}</h3>
+                  <h3 className="mt-1 text-lg font-semibold text-gray-900">{displayAccountName(account)}</h3>
                   <p className="mt-1 text-xs text-gray-500">
                     {account.isVirtual ? 'Virtual ledger' : `${account.bankName} • ••••${account.lastFour}`}
                   </p>
+                  <p className="mt-2 max-w-xs text-xs text-gray-600">{accountPurpose(account.accountType)}</p>
                 </div>
                 <div className="flex flex-col gap-1 text-right">
                   {!account.supportsStatementImport && (
-                    <span className="rounded-full bg-amber-100 px-2 py-1 text-[11px] font-medium text-amber-700">No import</span>
+                    <span className="rounded-full bg-amber-100 px-2 py-1 text-[11px] font-medium text-amber-700">No statement import</span>
                   )}
                   {latest && (
                     <span className={`rounded-full px-2 py-1 text-[11px] font-medium ${RECONCILIATION_STYLES[latest.status] || 'bg-gray-100 text-gray-600'}`}>
@@ -510,12 +537,12 @@ function WorkspaceView({ loading, accounts, imports, reconciliations, transactio
         <div className="rounded-2xl border border-gray-200 bg-white p-5">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">Recent money movement</h2>
-              <p className="text-sm text-gray-500">See what has hit the ledger most recently across bank and cash accounts.</p>
+              <h2 className="text-lg font-semibold text-gray-900">Recent entries</h2>
+              <p className="text-sm text-gray-500">See the latest money recorded across the bank accounts and the cash account.</p>
             </div>
           </div>
           {transactions.length === 0 ? (
-            <EmptyState title="No transactions yet" body="Once you record entries, import statements, or transfer cash, they will appear here." />
+            <EmptyState title="No entries yet" body="When you add an entry, move money, or import a bank statement, it will show here." />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[720px]">
@@ -552,12 +579,12 @@ function WorkspaceView({ loading, accounts, imports, reconciliations, transactio
           <div className="rounded-2xl border border-gray-200 bg-white p-5">
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-gray-900">Statement imports</h2>
-                <p className="text-sm text-gray-500">Review what came in from real bank statements before posting.</p>
+                <h2 className="text-lg font-semibold text-gray-900">Bank statements</h2>
+                <p className="text-sm text-gray-500">Import the bank statement, review each line, then post the correct ones.</p>
               </div>
             </div>
             {imports.length === 0 ? (
-              <EmptyState title="No imports yet" body="Import a Providus statement to start reviewing bank lines." />
+              <EmptyState title="No bank statements yet" body="Import a Providus statement to review each bank line before posting it." />
             ) : (
               <div className="space-y-3">
                 {imports.slice(0, 4).map((importRecord) => (
@@ -570,7 +597,7 @@ function WorkspaceView({ loading, accounts, imports, reconciliations, transactio
                       <div>
                         <p className="text-sm font-semibold text-gray-900">{importRecord.originalFilename}</p>
                         <p className="mt-1 text-xs text-gray-500">
-                          {importRecord.bankAccount?.name} • {fmtDate(importRecord.statementDateFrom)} to {fmtDate(importRecord.statementDateTo)}
+                          {displayAccountName(importRecord.bankAccount)} • {fmtDate(importRecord.statementDateFrom)} to {fmtDate(importRecord.statementDateTo)}
                         </p>
                       </div>
                       <span className={`rounded-full px-2 py-1 text-[11px] font-medium ${RECONCILIATION_STYLES[importRecord.status === 'POSTED' ? 'BALANCED' : importRecord.status === 'PARTIALLY_POSTED' ? 'OPEN' : 'VARIANCE']}`}>
@@ -591,16 +618,16 @@ function WorkspaceView({ loading, accounts, imports, reconciliations, transactio
           {canViewReports && (
             <div className="rounded-2xl border border-gray-200 bg-white p-5">
               <h2 className="text-lg font-semibold text-gray-900">Latest reconciliations</h2>
-              <p className="mt-1 text-sm text-gray-500">Variance should be obvious at a glance, especially before month-end reporting.</p>
+              <p className="mt-1 text-sm text-gray-500">Use this to check whether your records match the bank balance.</p>
               {reconciliations.length === 0 ? (
-                <EmptyState title="No reconciliations yet" body="Create one from a statement import or a manual statement balance." compact />
+                <EmptyState title="No balance checks yet" body="Create one from a bank statement or type the bank balance manually." compact />
               ) : (
                 <div className="mt-4 space-y-3">
                   {reconciliations.slice(0, 4).map((reconciliation) => (
                     <div key={reconciliation.id} className="rounded-xl border border-gray-200 p-3">
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="text-sm font-semibold text-gray-900">{reconciliation.bankAccount?.name}</p>
+                          <p className="text-sm font-semibold text-gray-900">{displayAccountName(reconciliation.bankAccount)}</p>
                           <p className="mt-1 text-xs text-gray-500">Statement date {fmtDate(reconciliation.statementDate)}</p>
                         </div>
                         <span className={`rounded-full px-2 py-1 text-[11px] font-medium ${RECONCILIATION_STYLES[reconciliation.status] || 'bg-gray-100 text-gray-600'}`}>
@@ -637,7 +664,7 @@ function TransactionsView({ accounts, transactions, total, loading, filters, onF
             >
               <option value="">All accounts</option>
               {accounts.map((account) => (
-                <option key={account.id} value={account.id}>{account.name}</option>
+                <option key={account.id} value={account.id}>{displayAccountName(account)}</option>
               ))}
             </select>
           </FilterField>
@@ -787,7 +814,7 @@ function ImportsView({
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-gray-900">{importRecord.originalFilename}</p>
-                    <p className="mt-1 text-xs text-gray-500">{importRecord.bankAccount?.name || 'Unknown account'}</p>
+                    <p className="mt-1 text-xs text-gray-500">{displayAccountName(importRecord.bankAccount) || 'Unknown account'}</p>
                   </div>
                   <span className={`rounded-full px-2 py-1 text-[11px] font-medium ${RECONCILIATION_STYLES[importRecord.status === 'POSTED' ? 'BALANCED' : importRecord.status === 'PARTIALLY_POSTED' ? 'OPEN' : 'VARIANCE']}`}>
                     {importRecord.status.toLowerCase()}
@@ -820,7 +847,7 @@ function ImportsView({
               <div>
                 <h2 className="text-xl font-semibold text-gray-900">{selectedImport.originalFilename}</h2>
                 <p className="mt-1 text-sm text-gray-500">
-                  {selectedImport.bankAccount?.name} • {fmtDate(selectedImport.statementDateFrom)} to {fmtDate(selectedImport.statementDateTo)}
+                  {displayAccountName(selectedImport.bankAccount)} • {fmtDate(selectedImport.statementDateFrom)} to {fmtDate(selectedImport.statementDateTo)}
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2 text-xs">
                   <StatusChip label={`${selectedImport.parsedRowCount} parsed`} />
@@ -895,7 +922,7 @@ function ReconciliationView({ accounts, reconciliations, loading }) {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-medium uppercase tracking-[0.2em] text-gray-500">{account.accountType.replaceAll('_', ' ')}</p>
-                <p className="mt-1 text-sm font-semibold text-gray-900">{account.name}</p>
+                <p className="mt-1 text-sm font-semibold text-gray-900">{displayAccountName(account)}</p>
               </div>
               {account.latestReconciliation && (
                 <span className={`rounded-full px-2 py-1 text-[11px] font-medium ${RECONCILIATION_STYLES[account.latestReconciliation.status] || 'bg-gray-100 text-gray-600'}`}>
@@ -953,7 +980,7 @@ function ReconciliationView({ accounts, reconciliations, loading }) {
                 {reconciliations.map((reconciliation) => (
                   <tr key={reconciliation.id} className="border-b border-gray-50">
                     <td className="px-4 py-3 text-sm text-gray-600">{fmtDate(reconciliation.statementDate)}</td>
-                    <td className="px-4 py-3 text-sm font-medium text-gray-800">{reconciliation.bankAccount?.name || '—'}</td>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-800">{displayAccountName(reconciliation.bankAccount)}</td>
                     <td className="px-4 py-3 text-right text-sm text-gray-800">{fmtMoney(reconciliation.closingBalance)}</td>
                     <td className="px-4 py-3 text-right text-sm text-gray-800">{fmtMoney(reconciliation.systemBalance)}</td>
                     <td className={`px-4 py-3 text-right text-sm font-semibold ${Math.abs(reconciliation.variance) > 0.009 ? 'text-red-600' : 'text-green-600'}`}>
@@ -1011,7 +1038,7 @@ function UnbookedDepositsView() {
               <tr key={deposit.id} className="border-b border-gray-50">
                 <td className="px-4 py-3 text-sm text-gray-600">{fmtDate(deposit.transactionDate)}</td>
                 <td className="px-4 py-3 text-sm text-gray-800">{deposit.customer?.name || '—'}</td>
-                <td className="px-4 py-3 text-sm text-gray-500">{deposit.bankAccount?.name || '—'}</td>
+                <td className="px-4 py-3 text-sm text-gray-500">{displayAccountName(deposit.bankAccount)}</td>
                 <td className="px-4 py-3 text-right text-sm font-semibold text-green-600">{fmtMoney(deposit.amount)}</td>
                 <td className="px-4 py-3 text-sm text-gray-500">{deposit.enteredBy?.firstName || '—'}</td>
               </tr>
@@ -1149,7 +1176,7 @@ function ExpensesView() {
                     <td className="px-4 py-3 text-sm text-gray-600">{fmtDate(expense.transactionDate)}</td>
                     <td className="px-4 py-3 text-sm text-gray-700">{CATEGORY_LABELS[expense.category] || expense.category}</td>
                     <td className="px-4 py-3 text-sm text-gray-500">{expense.description || expense.reference || '—'}</td>
-                    <td className="px-4 py-3 text-sm text-gray-500">{expense.bankAccount?.name || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500">{displayAccountName(expense.bankAccount)}</td>
                     <td className="px-4 py-3 text-right text-sm font-semibold text-red-600">{fmtMoney(expense.amount)}</td>
                   </tr>
                 ))}
@@ -1227,9 +1254,13 @@ function RecordTransactionModal({ accounts, onClose, onRecorded }) {
   }
 
   return (
-    <ModalShell title="Manual banking entry" onClose={onClose}>
+    <ModalShell title="Add one entry" onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+
+        <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+          Use this when you want to record one payment or one expense.
+        </div>
 
         <div>
           <label className="mb-2 block text-sm font-medium text-gray-700">Direction</label>
@@ -1248,7 +1279,7 @@ function RecordTransactionModal({ accounts, onClose, onRecorded }) {
               required
             >
               {accounts.map((account) => (
-                <option key={account.id} value={account.id}>{account.name}</option>
+                <option key={account.id} value={account.id}>{displayAccountName(account)}</option>
               ))}
             </select>
           </Field>
@@ -1393,12 +1424,12 @@ function BulkTransactionModal({ accounts, onClose, onRecorded }) {
   }
 
   return (
-    <ModalShell title="Bulk banking entry" onClose={onClose} maxWidth="max-w-6xl">
+    <ModalShell title="Add many entries" onClose={onClose} maxWidth="max-w-6xl">
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
 
         <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
-          Use this for quick line-by-line entry when staff are transcribing several transactions at once.
+          Use this when you want to enter many payments or expenses at once.
         </div>
 
         <div className="overflow-x-auto">
@@ -1440,7 +1471,7 @@ function BulkTransactionModal({ accounts, onClose, onRecorded }) {
                         className="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
                       >
                         {accounts.map((account) => (
-                          <option key={account.id} value={account.id}>{account.name}</option>
+                          <option key={account.id} value={account.id}>{displayAccountName(account)}</option>
                         ))}
                       </select>
                     </td>
@@ -1510,9 +1541,11 @@ function BulkTransactionModal({ accounts, onClose, onRecorded }) {
 }
 
 function InternalTransferModal({ accounts, onClose, onRecorded }) {
+  const cashAccount = accounts.find((account) => account.accountType === 'CASH_ON_HAND');
+  const customerDepositAccount = accounts.find((account) => account.accountType === 'CUSTOMER_DEPOSIT');
   const [form, setForm] = useState({
-    fromAccountId: accounts[0]?.id || '',
-    toAccountId: accounts[1]?.id || accounts[0]?.id || '',
+    fromAccountId: cashAccount?.id || accounts[0]?.id || '',
+    toAccountId: customerDepositAccount?.id || accounts[1]?.id || accounts[0]?.id || '',
     amount: '',
     description: '',
     transactionDate: todayStr(),
@@ -1538,12 +1571,12 @@ function InternalTransferModal({ accounts, onClose, onRecorded }) {
   }
 
   return (
-    <ModalShell title="Internal transfer" onClose={onClose}>
+    <ModalShell title="Move money" onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
 
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Use this for account-to-account movements such as Cash on Hand into a real bank account, or customer deposit into sales.
+          Use this when money moves from one account to another. Example: after you deposit cash in the bank, move it from <span className="font-semibold">Cash Account</span> to <span className="font-semibold">Customer Deposit Account</span>.
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -1554,7 +1587,7 @@ function InternalTransferModal({ accounts, onClose, onRecorded }) {
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
             >
               {accounts.map((account) => (
-                <option key={account.id} value={account.id}>{account.name}</option>
+                <option key={account.id} value={account.id}>{displayAccountName(account)}</option>
               ))}
             </select>
           </Field>
@@ -1565,7 +1598,7 @@ function InternalTransferModal({ accounts, onClose, onRecorded }) {
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
             >
               {accounts.map((account) => (
-                <option key={account.id} value={account.id}>{account.name}</option>
+                <option key={account.id} value={account.id}>{displayAccountName(account)}</option>
               ))}
             </select>
           </Field>
@@ -1651,12 +1684,12 @@ function StatementImportModal({ accounts, onClose, onImported }) {
   }
 
   return (
-    <ModalShell title="Import Providus statement" onClose={onClose} maxWidth="max-w-4xl">
+    <ModalShell title="Import bank statement" onClose={onClose} maxWidth="max-w-4xl">
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
 
         <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-          Upload the raw CSV or paste the statement text. The system will parse rows, detect duplicates, and create a review queue before anything posts to the ledger.
+          Upload the Providus CSV or paste the statement text. The app will read each line, flag duplicates, and let you review it before anything is posted.
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -1667,7 +1700,7 @@ function StatementImportModal({ accounts, onClose, onImported }) {
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
             >
               {accounts.map((account) => (
-                <option key={account.id} value={account.id}>{account.name}</option>
+                <option key={account.id} value={account.id}>{displayAccountName(account)}</option>
               ))}
             </select>
           </Field>
@@ -1755,7 +1788,7 @@ function ReconciliationModal({ accounts, imports, onClose, onSaved }) {
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
             >
               {accounts.map((account) => (
-                <option key={account.id} value={account.id}>{account.name}</option>
+                <option key={account.id} value={account.id}>{displayAccountName(account)}</option>
               ))}
             </select>
           </Field>

@@ -67,7 +67,7 @@ async function main() {
       sortOrder: 30,
     },
     {
-      name: 'Cash on Hand',
+      name: 'Cash Account',
       accountType: 'CASH_ON_HAND',
       lastFour: 'CASH',
       bankName: 'Internal Ledger',
