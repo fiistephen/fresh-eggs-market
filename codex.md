@@ -393,3 +393,119 @@ Minimum update format:
   - Phase 1 foundation is implemented in code, but database migration and live deployment are still separate steps
   - bookings and sales have not yet been rewritten to use allocations or auto-flow into the new banking foundation
   - the next logical build step is Phase 2: payment allocation plus booking rewrite
+
+## 12. 2026-04-07 Staging Deployment Update
+
+- Deployed the Phase 1 banking foundation to staging from branch:
+  - `codex/phase1-banking-foundation`
+- Staging source checkout on VPS was moved to that branch at:
+  - `/opt/fresh-eggs-market-src`
+- Staging deploy completed successfully after:
+  - rebuilding the staging API container
+  - pushing Prisma schema changes to the staging database
+  - rebuilding the staging frontend
+  - syncing the built frontend into the staging docroot
+- Verified on staging:
+  - `https://staging.fresheggsmarket.hiddekellabs.com` returns HTTP 200
+  - staging API is healthy internally on `127.0.0.1:3003/health`
+  - new tables exist in staging Postgres:
+    - `bank_statement_imports`
+    - `bank_statement_lines`
+    - `bank_reconciliations`
+- Important deployment nuance discovered:
+  - `prisma db push` for staging required `--accept-data-loss` because Prisma warned about the new unique constraint on `bank_transactions.source_fingerprint`
+  - this was safe in staging because `bank_transactions` had `0` rows
+- Important VPS/Docker quirk discovered:
+  - a dead staging API container got stuck in `Removal In Progress`
+  - root cause was a stale `virtfs` overlay mount under:
+    - `/home/virtfs/digivlrx/var/lib/docker/overlay2/.../merged`
+  - unmounting that stale path allowed Docker to remove the dead staging API container cleanly
+- What future Codex sessions should remember:
+  - if staging API container removal hangs again on this VPS, check for a stale `virtfs` overlay mount before assuming the app is broken
+  - production is still untouched
+
+## 13. 2026-04-07 Phase 2 Booking Allocation Update
+
+- Implemented the Phase 2 foundation that connects bookings to real money already recorded in Banking.
+- Added a new Prisma model:
+  - `booking_payment_allocations`
+- Added relations so:
+  - one bank transaction can fund multiple bookings
+  - one booking can be funded by multiple bank transactions
+- Rebuilt the booking backend in:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/src/routes/bookings.js`
+- New booking backend behavior:
+  - booking creation now supports `paymentAllocations`
+  - booking updates can replace allocations
+  - customer funds lookup endpoint added:
+    - `GET /bookings/customer-funds/:customerId`
+  - bookings still store `amountPaid` for compatibility, but it now reflects applied allocations when allocations are used
+- Updated banking and alert logic to stop treating allocated deposits as fully unbooked:
+  - `/api/src/routes/banking.js`
+  - `/api/src/routes/alerts.js`
+- Rebuilt the Bookings UI in:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/pages/Bookings.jsx`
+- New booking UI flow:
+  - choose customer
+  - choose batch and quantity
+  - apply money from real available customer payments
+  - no manual typed payment in the normal backend booking flow
+- The new Bookings screen copy is intentionally simpler and more operational:
+  - tells staff to record money in Banking first
+  - then come to Bookings to apply that money
+- Deployed this Phase 2 work to staging from:
+  - `codex/phase1-banking-foundation`
+- Verified on staging:
+  - site returns HTTP 200
+  - API health is OK on `127.0.0.1:3003/health`
+  - `booking_payment_allocations` table exists in staging Postgres
+- Important deployment note:
+  - the same staging Docker `virtfs` overlay mount issue happened again during API recreation
+  - the safe recovery remained:
+    - unmount stale `virtfs` overlay path for the dead staging API container
+    - remove dead staging API container
+    - rerun staging deploy
+- What future Codex sessions should remember:
+  - bookings are now moving toward banking-first workflow
+  - portal booking flow and sales fulfillment flow are still not upgraded to allocations yet
+  - next logical step is Phase 3: sales fulfillment tied to booking allocations and payment proof
+
+## 14. 2026-04-07 Phase 3 Sales Fulfillment Update
+
+- Implemented the next sales workflow upgrade so the Sales screen starts from the customer and makes staff choose the right path:
+  - complete an already-paid booking pickup
+  - or record a direct sale
+- Rebuilt the sales backend in:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/src/routes/sales.js`
+- New sales backend behavior:
+  - added `GET /sales/customer-workspace/:customerId`
+  - sales list and single-sale responses now include booking context
+  - sale responses now expose `sourceType` as `BOOKING` or `DIRECT`
+  - booking pickup can infer the batch from the booking instead of forcing staff to reselect it
+  - booking pickup is now protected so it only works when the booking is fully paid
+  - booking pickup requires the sale quantity to match the booked quantity exactly
+  - direct sales still allow `CASH`, `TRANSFER`, and `POS_CARD`
+  - booking pickups are saved as `PRE_ORDER`
+- Rebuilt the Sales UI in:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/pages/Sales.jsx`
+- New sales UI flow:
+  - search and choose customer first
+  - review any open bookings for that customer
+  - if a booking is fully paid, continue with booking pickup
+  - if not, staff are told clearly to finish payment in Banking first
+  - if there is no booking to use, choose a received batch for a direct sale
+  - item entry now happens after the correct sales path is chosen
+- UX direction for this step:
+  - clearer staff language
+  - less accounting jargon
+  - stronger guidance at the point of action
+  - lower chance of recording a pickup as the wrong type of sale
+- Local verification completed:
+  - `node --check` passed for `/api/src/routes/sales.js`
+  - dynamic module import passed for `/api/src/routes/sales.js`
+  - frontend build passed after the UI rewrite
+- What future Codex sessions should remember:
+  - this is the first safe Phase 3 slice, not the final sales model
+  - cash and transfer proof still need deeper linkage back into Banking transactions
+  - sales are still single-batch at the schema level for now
+  - next logical step after validation is staging deploy and review, then deeper sales-to-banking proof and reporting work

@@ -2,6 +2,10 @@ import prisma from '../plugins/prisma.js';
 import { authenticate } from '../plugins/auth.js';
 import { authorize } from '../middleware/authorize.js';
 
+const VALID_SALE_TYPES = ['WHOLESALE', 'RETAIL', 'CRACKED', 'WRITE_OFF'];
+const VALID_PAYMENT_METHODS = ['CASH', 'TRANSFER', 'POS_CARD', 'PRE_ORDER'];
+const DIRECT_SALE_PAYMENT_METHODS = ['CASH', 'TRANSFER', 'POS_CARD'];
+
 // Auto-generate receipt number: FE-YYYYMMDD-XXXX
 function generateReceiptNumber() {
   const now = new Date();
@@ -10,42 +14,103 @@ function generateReceiptNumber() {
   return `FE-${date}-${rand}`;
 }
 
-// Convert Prisma Decimals to Numbers
-function enrichSale(s) {
+function mapBatchForSale(batch) {
   return {
-    ...s,
-    totalAmount: Number(s.totalAmount),
-    totalCost: Number(s.totalCost),
-    ...(s.lineItems && {
-      lineItems: s.lineItems.map(li => ({
-        ...li,
-        unitPrice: Number(li.unitPrice),
-        costPrice: Number(li.costPrice),
-        lineTotal: Number(li.lineTotal),
-        ...(li.batchEggCode && {
+    id: batch.id,
+    name: batch.name,
+    receivedDate: batch.receivedDate,
+    actualQuantity: batch.actualQuantity,
+    wholesalePrice: Number(batch.wholesalePrice),
+    retailPrice: Number(batch.retailPrice),
+    eggCodes: batch.eggCodes.map((eggCode) => ({
+      id: eggCode.id,
+      code: eggCode.code,
+      costPrice: Number(eggCode.costPrice),
+      quantity: eggCode.quantity,
+      freeQty: eggCode.freeQty,
+    })),
+  };
+}
+
+function mapBookingForWorkspace(booking) {
+  const amountPaid = Number(booking.amountPaid);
+  const orderValue = Number(booking.orderValue);
+  const balance = Math.max(0, orderValue - amountPaid);
+
+  return {
+    id: booking.id,
+    customerId: booking.customerId,
+    batchId: booking.batchId,
+    quantity: booking.quantity,
+    amountPaid,
+    orderValue,
+    balance,
+    isFullyPaid: balance <= 0.009,
+    createdAt: booking.createdAt,
+    notes: booking.notes,
+    batch: booking.batch ? mapBatchForSale(booking.batch) : null,
+  };
+}
+
+function enrichSale(sale) {
+  return {
+    ...sale,
+    totalAmount: Number(sale.totalAmount),
+    totalCost: Number(sale.totalCost),
+    sourceType: sale.bookingId ? 'BOOKING' : 'DIRECT',
+    booking: sale.booking ? {
+      ...sale.booking,
+      amountPaid: Number(sale.booking.amountPaid),
+      orderValue: Number(sale.booking.orderValue),
+    } : undefined,
+    ...(sale.lineItems && {
+      lineItems: sale.lineItems.map((lineItem) => ({
+        ...lineItem,
+        unitPrice: Number(lineItem.unitPrice),
+        costPrice: Number(lineItem.costPrice),
+        lineTotal: Number(lineItem.lineTotal),
+        ...(lineItem.batchEggCode && {
           batchEggCode: {
-            ...li.batchEggCode,
-            costPrice: Number(li.batchEggCode.costPrice),
+            ...lineItem.batchEggCode,
+            costPrice: Number(lineItem.batchEggCode.costPrice),
           },
         }),
       })),
     }),
-    ...(s.batch && {
+    ...(sale.batch && {
       batch: {
-        ...s.batch,
-        ...(s.batch.wholesalePrice !== undefined && { wholesalePrice: Number(s.batch.wholesalePrice) }),
-        ...(s.batch.retailPrice !== undefined && { retailPrice: Number(s.batch.retailPrice) }),
-        ...(s.batch.costPrice !== undefined && { costPrice: Number(s.batch.costPrice) }),
+        ...sale.batch,
+        ...(sale.batch.wholesalePrice !== undefined && { wholesalePrice: Number(sale.batch.wholesalePrice) }),
+        ...(sale.batch.retailPrice !== undefined && { retailPrice: Number(sale.batch.retailPrice) }),
+        ...(sale.batch.costPrice !== undefined && { costPrice: Number(sale.batch.costPrice) }),
       },
     }),
   };
 }
 
-const VALID_SALE_TYPES = ['WHOLESALE', 'RETAIL', 'CRACKED', 'WRITE_OFF'];
-const VALID_PAYMENT_METHODS = ['CASH', 'TRANSFER', 'POS_CARD', 'PRE_ORDER'];
+function buildSaleInclude() {
+  return {
+    customer: { select: { id: true, name: true, phone: true } },
+    batch: { select: { id: true, name: true } },
+    booking: {
+      select: {
+        id: true,
+        quantity: true,
+        amountPaid: true,
+        orderValue: true,
+        status: true,
+      },
+    },
+    lineItems: {
+      include: {
+        batchEggCode: { select: { code: true, costPrice: true } },
+      },
+    },
+    recordedBy: { select: { firstName: true, lastName: true } },
+  };
+}
 
 export default async function salesRoutes(fastify) {
-
   // ─── LIST SALES ───────────────────────────────────────────────
   fastify.get('/sales', {
     preHandler: [authenticate],
@@ -74,15 +139,10 @@ export default async function salesRoutes(fastify) {
       const [sales, total] = await Promise.all([
         prisma.sale.findMany({
           where,
-          include: {
-            customer: { select: { id: true, name: true, phone: true } },
-            batch: { select: { id: true, name: true } },
-            lineItems: { include: { batchEggCode: { select: { code: true, costPrice: true } } } },
-            recordedBy: { select: { firstName: true, lastName: true } },
-          },
+          include: buildSaleInclude(),
           orderBy: { saleDate: 'desc' },
-          take: parseInt(limit),
-          skip: parseInt(offset),
+          take: parseInt(limit, 10),
+          skip: parseInt(offset, 10),
         }),
         prisma.sale.count({ where }),
       ]);
@@ -97,17 +157,59 @@ export default async function salesRoutes(fastify) {
     handler: async (request, reply) => {
       const sale = await prisma.sale.findUnique({
         where: { id: request.params.id },
-        include: {
-          customer: true,
-          batch: { select: { id: true, name: true, wholesalePrice: true, retailPrice: true } },
-          booking: true,
-          lineItems: { include: { batchEggCode: true } },
-          recordedBy: { select: { firstName: true, lastName: true } },
-        },
+        include: buildSaleInclude(),
       });
 
       if (!sale) return reply.code(404).send({ error: 'Sale not found' });
       return reply.send({ sale: enrichSale(sale) });
+    },
+  });
+
+  // ─── CUSTOMER SALES WORKSPACE ─────────────────────────────────
+  fastify.get('/sales/customer-workspace/:customerId', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'SHOP_FLOOR')],
+    handler: async (request, reply) => {
+      const { customerId } = request.params;
+
+      const customer = await prisma.customer.findUnique({
+        where: { id: customerId },
+        select: { id: true, name: true, phone: true, isFirstTimeBuyer: true },
+      });
+
+      if (!customer) {
+        return reply.code(404).send({ error: 'Customer not found' });
+      }
+
+      const [bookings, batches] = await Promise.all([
+        prisma.booking.findMany({
+          where: { customerId, status: 'CONFIRMED' },
+          include: {
+            batch: {
+              include: {
+                eggCodes: true,
+              },
+            },
+          },
+          orderBy: [{ createdAt: 'asc' }],
+        }),
+        prisma.batch.findMany({
+          where: { status: 'RECEIVED' },
+          include: {
+            eggCodes: true,
+            _count: { select: { sales: true } },
+          },
+          orderBy: { receivedDate: 'desc' },
+        }),
+      ]);
+
+      return reply.send({
+        customer,
+        bookings: bookings.map(mapBookingForWorkspace),
+        directSaleBatches: batches.map((batch) => ({
+          ...mapBatchForSale(batch),
+          salesCount: batch._count.sales,
+        })),
+      });
     },
   });
 
@@ -117,54 +219,80 @@ export default async function salesRoutes(fastify) {
     handler: async (request, reply) => {
       const { customerId, batchId, bookingId, paymentMethod, lineItems, saleDate } = request.body;
 
-      // ── Validation ────────────────────────────────────────────
       if (!customerId) return reply.code(400).send({ error: 'Customer is required' });
-      if (!batchId) return reply.code(400).send({ error: 'Batch is required' });
-      if (!paymentMethod || !VALID_PAYMENT_METHODS.includes(paymentMethod)) {
-        return reply.code(400).send({ error: `Payment method must be one of: ${VALID_PAYMENT_METHODS.join(', ')}` });
-      }
       if (!lineItems || !Array.isArray(lineItems) || lineItems.length === 0) {
         return reply.code(400).send({ error: 'At least one line item is required' });
       }
 
-      // Validate customer exists
       const customer = await prisma.customer.findUnique({ where: { id: customerId } });
       if (!customer) return reply.code(404).send({ error: 'Customer not found' });
 
-      // Validate batch exists and is RECEIVED (can sell from received batches)
-      const batch = await prisma.batch.findUnique({
-        where: { id: batchId },
+      let booking = null;
+      if (bookingId) {
+        booking = await prisma.booking.findUnique({
+          where: { id: bookingId },
+          include: {
+            batch: {
+              include: { eggCodes: true },
+            },
+          },
+        });
+
+        if (!booking) return reply.code(404).send({ error: 'Booking not found' });
+        if (booking.status !== 'CONFIRMED') {
+          return reply.code(400).send({ error: 'This booking is no longer open for pickup' });
+        }
+        if (booking.customerId !== customerId) {
+          return reply.code(400).send({ error: 'Booking does not belong to this customer' });
+        }
+        if (batchId && booking.batchId !== batchId) {
+          return reply.code(400).send({ error: 'Booking is linked to a different batch' });
+        }
+
+        const bookingBalance = Number(booking.orderValue) - Number(booking.amountPaid);
+        if (bookingBalance > 0.009) {
+          return reply.code(400).send({
+            error: 'This booking still has a balance. Record the remaining payment in Banking and update the booking before pickup.',
+          });
+        }
+      }
+
+      const resolvedBatchId = booking ? booking.batchId : batchId;
+      if (!resolvedBatchId) {
+        return reply.code(400).send({ error: 'Choose a batch or select a booking to fulfill' });
+      }
+
+      const batch = booking?.batch || await prisma.batch.findUnique({
+        where: { id: resolvedBatchId },
         include: { eggCodes: true },
       });
+
       if (!batch) return reply.code(404).send({ error: 'Batch not found' });
       if (batch.status !== 'RECEIVED') {
         return reply.code(400).send({ error: 'Can only record sales against received batches' });
       }
 
-      // Validate booking if provided
-      if (bookingId) {
-        const booking = await prisma.booking.findUnique({ where: { id: bookingId } });
-        if (!booking) return reply.code(404).send({ error: 'Booking not found' });
-        if (booking.status !== 'CONFIRMED') {
-          return reply.code(400).send({ error: 'Booking is not in CONFIRMED status' });
-        }
-        if (booking.customerId !== customerId) {
-          return reply.code(400).send({ error: 'Booking does not belong to this customer' });
-        }
-        if (booking.batchId !== batchId) {
-          return reply.code(400).send({ error: 'Booking is for a different batch' });
-        }
+      let resolvedPaymentMethod = paymentMethod;
+      if (booking) {
+        resolvedPaymentMethod = 'PRE_ORDER';
+      } else if (!resolvedPaymentMethod || !DIRECT_SALE_PAYMENT_METHODS.includes(resolvedPaymentMethod)) {
+        return reply.code(400).send({
+          error: `Payment method must be one of: ${DIRECT_SALE_PAYMENT_METHODS.join(', ')}`,
+        });
       }
 
-      // Validate line items and calculate totals
+      if (!VALID_PAYMENT_METHODS.includes(resolvedPaymentMethod)) {
+        return reply.code(400).send({ error: `Payment method must be one of: ${VALID_PAYMENT_METHODS.join(', ')}` });
+      }
+
       let totalQuantity = 0;
       let totalAmount = 0;
       let totalCost = 0;
-
       const enrichedItems = [];
+
       for (const item of lineItems) {
         if (!item.batchEggCodeId) {
-          return reply.code(400).send({ error: 'Each line item must have a batchEggCodeId' });
+          return reply.code(400).send({ error: 'Each line item must have a batch egg code' });
         }
         if (!item.saleType || !VALID_SALE_TYPES.includes(item.saleType)) {
           return reply.code(400).send({ error: `Sale type must be one of: ${VALID_SALE_TYPES.join(', ')}` });
@@ -179,54 +307,57 @@ export default async function salesRoutes(fastify) {
         const eggCode = await prisma.batchEggCode.findUnique({
           where: { id: item.batchEggCodeId },
         });
+
         if (!eggCode) {
           return reply.code(400).send({ error: `Egg code not found: ${item.batchEggCodeId}` });
         }
-        if (eggCode.batchId !== batchId) {
-          return reply.code(400).send({ error: `Egg code does not belong to this batch` });
+        if (eggCode.batchId !== resolvedBatchId) {
+          return reply.code(400).send({ error: 'One of the selected egg codes belongs to a different batch' });
         }
 
-        const lineTotal = item.quantity * item.unitPrice;
-        totalQuantity += item.quantity;
+        const quantity = Number(item.quantity);
+        const unitPriceNumber = Number(item.unitPrice);
+        const lineTotal = quantity * unitPriceNumber;
+
+        totalQuantity += quantity;
         totalAmount += lineTotal;
-        totalCost += item.quantity * Number(eggCode.costPrice);
+        totalCost += quantity * Number(eggCode.costPrice);
 
         enrichedItems.push({
           batchEggCodeId: item.batchEggCodeId,
           saleType: item.saleType,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
+          quantity,
+          unitPrice: unitPriceNumber,
           costPrice: eggCode.costPrice,
           lineTotal,
         });
       }
 
-      // Create the sale
+      if (booking && totalQuantity !== booking.quantity) {
+        return reply.code(400).send({
+          error: `This booking is for ${booking.quantity} crates. Enter exactly that quantity or update the booking first.`,
+        });
+      }
+
       const sale = await prisma.sale.create({
         data: {
           receiptNumber: generateReceiptNumber(),
           customerId,
-          batchId,
+          batchId: resolvedBatchId,
           bookingId: bookingId || null,
           recordedById: request.user.sub,
           totalQuantity,
           totalAmount,
           totalCost,
-          paymentMethod,
+          paymentMethod: resolvedPaymentMethod,
           saleDate: saleDate ? new Date(saleDate) : new Date(),
           lineItems: {
             createMany: { data: enrichedItems },
           },
         },
-        include: {
-          customer: { select: { id: true, name: true, phone: true } },
-          lineItems: { include: { batchEggCode: { select: { code: true, costPrice: true } } } },
-          batch: { select: { id: true, name: true } },
-          recordedBy: { select: { firstName: true, lastName: true } },
-        },
+        include: buildSaleInclude(),
       });
 
-      // If fulfilling a booking, mark it picked up
       if (bookingId) {
         await prisma.booking.update({
           where: { id: bookingId },
@@ -257,11 +388,10 @@ export default async function salesRoutes(fastify) {
         },
       });
 
-      const totalSales = sales.reduce((s, sale) => s + Number(sale.totalAmount), 0);
-      const totalCost = sales.reduce((s, sale) => s + Number(sale.totalCost), 0);
+      const totalSales = sales.reduce((sum, sale) => sum + Number(sale.totalAmount), 0);
+      const totalCost = sales.reduce((sum, sale) => sum + Number(sale.totalCost), 0);
       const grossProfit = totalSales - totalCost;
 
-      // By payment method
       const byPaymentMethod = {};
       for (const sale of sales) {
         const key = sale.paymentMethod;
@@ -270,14 +400,13 @@ export default async function salesRoutes(fastify) {
         byPaymentMethod[key].total += Number(sale.totalAmount);
       }
 
-      // By sale type
       const bySaleType = {};
       for (const sale of sales) {
-        for (const li of sale.lineItems) {
-          if (!bySaleType[li.saleType]) bySaleType[li.saleType] = { count: 0, quantity: 0, total: 0 };
-          bySaleType[li.saleType].count += 1;
-          bySaleType[li.saleType].quantity += li.quantity;
-          bySaleType[li.saleType].total += Number(li.lineTotal);
+        for (const lineItem of sale.lineItems) {
+          if (!bySaleType[lineItem.saleType]) bySaleType[lineItem.saleType] = { count: 0, quantity: 0, total: 0 };
+          bySaleType[lineItem.saleType].count += 1;
+          bySaleType[lineItem.saleType].quantity += lineItem.quantity;
+          bySaleType[lineItem.saleType].total += Number(lineItem.lineTotal);
         }
       }
 
@@ -289,22 +418,22 @@ export default async function salesRoutes(fastify) {
           grossProfit,
           margin: totalSales > 0 ? Math.round((grossProfit / totalSales) * 100 * 100) / 100 : 0,
           transactionCount: sales.length,
-          totalQuantity: sales.reduce((s, sale) => s + sale.totalQuantity, 0),
+          totalQuantity: sales.reduce((sum, sale) => sum + sale.totalQuantity, 0),
         },
         byPaymentMethod,
         bySaleType,
-        detail: sales.map(s => ({
-          id: s.id,
-          receiptNumber: s.receiptNumber,
-          customer: s.customer.name,
-          customerPhone: s.customer.phone,
-          batch: s.batch.name,
-          totalQuantity: s.totalQuantity,
-          totalAmount: Number(s.totalAmount),
-          totalCost: Number(s.totalCost),
-          grossProfit: Number(s.totalAmount) - Number(s.totalCost),
-          paymentMethod: s.paymentMethod,
-          saleDate: s.saleDate,
+        detail: sales.map((sale) => ({
+          id: sale.id,
+          receiptNumber: sale.receiptNumber,
+          customer: sale.customer.name,
+          customerPhone: sale.customer.phone,
+          batch: sale.batch.name,
+          totalQuantity: sale.totalQuantity,
+          totalAmount: Number(sale.totalAmount),
+          totalCost: Number(sale.totalCost),
+          grossProfit: Number(sale.totalAmount) - Number(sale.totalCost),
+          paymentMethod: sale.paymentMethod,
+          saleDate: sale.saleDate,
         })),
       });
     },
@@ -316,6 +445,7 @@ export default async function salesRoutes(fastify) {
     handler: async (request, reply) => {
       const { dateFrom, dateTo } = request.query;
       const where = {};
+
       if (dateFrom || dateTo) {
         where.saleDate = {};
         if (dateFrom) where.saleDate.gte = new Date(dateFrom);
@@ -332,19 +462,19 @@ export default async function salesRoutes(fastify) {
       });
 
       const report = {};
-      for (const s of sales) {
-        const key = s.paymentMethod;
+      for (const sale of sales) {
+        const key = sale.paymentMethod;
         if (!report[key]) report[key] = { count: 0, totalAmount: 0, totalQuantity: 0 };
         report[key].count += 1;
-        report[key].totalAmount += Number(s.totalAmount);
-        report[key].totalQuantity += s.totalQuantity;
+        report[key].totalAmount += Number(sale.totalAmount);
+        report[key].totalQuantity += sale.totalQuantity;
       }
 
       return reply.send({ report, totalTransactions: sales.length });
     },
   });
 
-  // ─── RECEIVABLE BATCHES FOR SALE (batches with egg codes) ─────
+  // ─── RECEIVABLE BATCHES FOR DIRECT SALE ──────────────────────
   fastify.get('/sales/available-batches', {
     preHandler: [authenticate],
     handler: async (request, reply) => {
@@ -357,24 +487,12 @@ export default async function salesRoutes(fastify) {
         orderBy: { receivedDate: 'desc' },
       });
 
-      const result = batches.map(b => ({
-        id: b.id,
-        name: b.name,
-        receivedDate: b.receivedDate,
-        actualQuantity: b.actualQuantity,
-        wholesalePrice: Number(b.wholesalePrice),
-        retailPrice: Number(b.retailPrice),
-        eggCodes: b.eggCodes.map(ec => ({
-          id: ec.id,
-          code: ec.code,
-          costPrice: Number(ec.costPrice),
-          quantity: ec.quantity,
-          freeQty: ec.freeQty,
+      return reply.send({
+        batches: batches.map((batch) => ({
+          ...mapBatchForSale(batch),
+          salesCount: batch._count.sales,
         })),
-        salesCount: b._count.sales,
-      }));
-
-      return reply.send({ batches: result });
+      });
     },
   });
 }
