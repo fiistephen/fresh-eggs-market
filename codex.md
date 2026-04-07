@@ -276,10 +276,10 @@ Future improvements Codex should consider when appropriate:
   - staging frontend is served by Apache
   - staging is isolated from production
 - Remaining blocker for public staging URL:
-  - public DNS for `staging.fresheggsmarket.hiddekellabs.com` is not present yet
-  - `hiddekellabs.com` is publicly managed by Cloudflare (`hope.ns.cloudflare.com`, `chris.ns.cloudflare.com`)
-  - the staging record exists only in the server's local cPanel zone right now
-  - AutoSSL cannot issue the correct certificate until public DNS is added
+  - resolved on 2026-04-07 after Cloudflare DNS was added
+  - staging now resolves publicly to `203.161.42.197`
+  - Let's Encrypt certificate is active for `staging.fresheggsmarket.hiddekellabs.com`
+  - public staging URL is live
 
 ---
 
