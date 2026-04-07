@@ -257,6 +257,29 @@ Future improvements Codex should consider when appropriate:
 - Created Codex project memory files:
   - `/Users/fiistephen/Downloads/Fresh Eggs Operations/codex.md`
   - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/codex.md`
+- Created a staging subdomain in cPanel:
+  - `staging.fresheggsmarket.hiddekellabs.com`
+- Added staging Apache proxy config to route `/api` to `127.0.0.1:3003`.
+- Added staging deployment assets to the repo:
+  - `docker-compose.staging.yml`
+  - `scripts/deploy_vps_staging.sh`
+- Fixed the repo API Dockerfile so Git-based builds work without an API lockfile.
+- Deployed a fully isolated staging stack on the VPS:
+  - project name: `fresh-eggs-staging`
+  - API port: `127.0.0.1:3003`
+  - DB port: `127.0.0.1:5434`
+  - DB volume: `fresh-eggs-staging_pgdata`
+- Built and published the staging frontend into:
+  - `/home/digivlrx/staging.fresheggsmarket.hiddekellabs.com`
+- Verified:
+  - staging API health is OK
+  - staging frontend is served by Apache
+  - staging is isolated from production
+- Remaining blocker for public staging URL:
+  - public DNS for `staging.fresheggsmarket.hiddekellabs.com` is not present yet
+  - `hiddekellabs.com` is publicly managed by Cloudflare (`hope.ns.cloudflare.com`, `chris.ns.cloudflare.com`)
+  - the staging record exists only in the server's local cPanel zone right now
+  - AutoSSL cannot issue the correct certificate until public DNS is added
 
 ---
 
@@ -278,4 +301,3 @@ Minimum update format:
 - what changed
 - why it changed
 - what future Codex sessions should remember
-
