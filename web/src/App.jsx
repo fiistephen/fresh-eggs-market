@@ -13,6 +13,7 @@ import Inventory from './pages/Inventory';
 import Customers from './pages/Customers';
 import Portal from './pages/Portal';
 import Reports from './pages/Reports';
+import ReportDetail from './pages/ReportDetail';
 
 export default function App() {
   return (
@@ -63,6 +64,14 @@ export default function App() {
               element={
                 <ProtectedRoute roles={['ADMIN', 'MANAGER']}>
                   <Reports />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="reports/:reportType"
+              element={
+                <ProtectedRoute roles={['ADMIN', 'MANAGER']}>
+                  <ReportDetail />
                 </ProtectedRoute>
               }
             />

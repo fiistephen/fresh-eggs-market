@@ -42,6 +42,7 @@ export default async function reportsRoutes(fastify) {
           customer: { select: { id: true, name: true, phone: true } },
           batch: { select: { id: true, name: true } },
           booking: { select: { id: true } },
+          recordedBy: { select: { id: true, firstName: true, lastName: true } },
           lineItems: {
             include: {
               batchEggCode: { select: { id: true, code: true } },
@@ -70,6 +71,7 @@ export default async function reportsRoutes(fastify) {
       const byItemMap = new Map();
       const byCategoryMap = new Map();
       const byPaymentMethodMap = new Map();
+      const byEmployeeMap = new Map();
 
       const receipts = sales.map((sale) => {
         const totalAmount = Number(sale.totalAmount);
@@ -110,6 +112,30 @@ export default async function reportsRoutes(fastify) {
         paymentEntry.totalAmount += totalAmount;
         paymentEntry.grossProfit += grossProfit;
         byPaymentMethodMap.set(sale.paymentMethod, paymentEntry);
+
+        const employeeName = sale.recordedBy
+          ? `${sale.recordedBy.firstName} ${sale.recordedBy.lastName}`.trim()
+          : 'Unknown staff';
+        const employeeKey = sale.recordedBy?.id || `unknown:${employeeName}`;
+        const employeeEntry = byEmployeeMap.get(employeeKey) || {
+          employeeId: sale.recordedBy?.id || null,
+          employeeName,
+          transactionCount: 0,
+          totalQuantity: 0,
+          totalAmount: 0,
+          totalCost: 0,
+          grossProfit: 0,
+          bookingPickupCount: 0,
+          directSaleCount: 0,
+        };
+        employeeEntry.transactionCount += 1;
+        employeeEntry.totalQuantity += sale.totalQuantity;
+        employeeEntry.totalAmount += totalAmount;
+        employeeEntry.totalCost += totalCost;
+        employeeEntry.grossProfit += grossProfit;
+        if (sourceType === 'BOOKING') employeeEntry.bookingPickupCount += 1;
+        else employeeEntry.directSaleCount += 1;
+        byEmployeeMap.set(employeeKey, employeeEntry);
 
         for (const lineItem of sale.lineItems) {
           const quantity = lineItem.quantity;
@@ -196,6 +222,13 @@ export default async function reportsRoutes(fastify) {
         }))
         .sort((a, b) => b.totalAmount - a.totalAmount);
 
+      const byEmployee = [...byEmployeeMap.values()]
+        .map((entry) => ({
+          ...entry,
+          averageTicket: safeDivide(entry.totalAmount, entry.transactionCount),
+        }))
+        .sort((a, b) => b.totalAmount - a.totalAmount);
+
       return reply.send({
         filters: {
           dateFrom: dateFrom || null,
@@ -209,6 +242,7 @@ export default async function reportsRoutes(fastify) {
         byItem,
         byCategory,
         byPaymentMethod,
+        byEmployee,
         receipts,
       });
     },

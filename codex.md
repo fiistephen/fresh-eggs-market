@@ -603,3 +603,36 @@ Minimum update format:
   - this is the first reports slice, not the full V2 reporting suite yet
   - customer deposit/liability and expense reports still live inside Banking for now
   - monthly batch reporting, investor reporting, and deeper POS charge reporting are still to come
+
+## 17. 2026-04-07 Reports Center Restructure
+
+- Refined the new Reports module so it now behaves like a report center instead of one long report page.
+- New user-facing structure:
+  - `/reports` is now a landing page with cards for each report type
+  - each report type has its own page and URL
+- New frontend routing:
+  - `/reports/sales-summary`
+  - `/reports/sales-by-item`
+  - `/reports/sales-by-category`
+  - `/reports/sales-by-payment-type`
+  - `/reports/sales-by-employee`
+  - `/reports/receipts`
+- New frontend files:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/pages/ReportDetail.jsx`
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/pages/reportsCatalog.js`
+- Updated frontend files:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/pages/Reports.jsx`
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/App.jsx`
+- Backend refinement:
+  - expanded `/api/src/routes/reports.js` to add `byEmployee`
+- UX direction for this reports-center pass:
+  - open one report at a time
+  - less clutter on first load
+  - clearer mental model for managers
+  - report cards act as the navigation layer
+- Screenshot influence:
+  - used the shared screenshots as workflow references for separate report destinations
+  - did not copy the original visual design directly
+- What future Codex sessions should remember:
+  - Reports is now a hub plus individual report pages
+  - next reporting steps should deepen content, not collapse everything back into one screen
