@@ -1,119 +1,104 @@
 # Fresh Eggs Operations — Deployment Guide
 
-## Prerequisites on VPS
-- Ubuntu 22+ (or Debian 11+)
-- Root or sudo access
-- Domain `fresheggsmarket.hiddekellabs.com` pointed to VPS IP
+## Current production topology
 
-## Step 1: Install Docker + Docker Compose
+Production currently runs in two separate VPS locations:
+
+- Live backend Docker project: `/opt/fresh-eggs-ops`
+- Git-tracked source clone: `/opt/fresh-eggs-market-src`
+- Live frontend docroot: `/home/digivlrx/fresheggsmarket.hiddekellabs.com`
+
+This split is intentional. The working production app stays where it is, while Git-based updates flow through the tracked clone.
+
+## What must be preserved
+
+The current production deployment is working and should not be replaced blindly.
+
+These items stay in place during normal deploys:
+
+- `/opt/fresh-eggs-ops/.env`
+- `/opt/fresh-eggs-ops/docker-compose.yml`
+- Docker project name and ports
+- Existing PostgreSQL Docker volume
+- `/home/digivlrx/fresheggsmarket.hiddekellabs.com/.htaccess`
+
+## Safe Git-based workflow
+
+The VPS clone is the tracked source of truth for server-side pulls:
 
 ```bash
-# Update system
-apt update && apt upgrade -y
+cd /opt/fresh-eggs-market-src
+git pull
+```
 
-# Install Docker
-curl -fsSL https://get.docker.com | sh
+Deploy from the clone into the existing live locations:
 
-# Install Docker Compose plugin
-apt install docker-compose-plugin -y
+```bash
+cd /opt/fresh-eggs-market-src
+sudo bash scripts/deploy_vps.sh
+```
 
-# Verify
+Targeted deploys are also supported:
+
+```bash
+sudo bash scripts/deploy_vps.sh api
+sudo bash scripts/deploy_vps.sh web
+```
+
+## What the deploy script does
+
+`scripts/deploy_vps.sh` performs a production-safe sync:
+
+1. Pulls the latest Git changes in `/opt/fresh-eggs-market-src`
+2. Backs up the files it is about to replace
+3. Syncs `api/` into `/opt/fresh-eggs-ops/api`
+4. Rebuilds and restarts the live API container from `/opt/fresh-eggs-ops`
+5. Builds the frontend in the clone
+6. Syncs built frontend assets into the cPanel docroot
+
+It does **not** overwrite the live `.env`, the live `docker-compose.yml`, the Postgres volume, frontend `.htaccess`, or frontend `.well-known`.
+
+## First-time VPS setup
+
+Prerequisites:
+
+- Docker + Docker Compose plugin
+- Node.js + npm
+- `rsync`
+- A GitHub deploy key configured for `/opt/fresh-eggs-market-src`
+
+Useful checks:
+
+```bash
 docker --version
 docker compose version
+node -v
+npm -v
+rsync --version
 ```
 
-## Step 2: Install Certbot (SSL)
+## Database notes
 
-```bash
-apt install certbot -y
+The database lives in the existing Docker volume attached to the live project. Normal deploys do not replace or recreate that volume.
 
-# Get SSL cert (make sure domain points to this server first)
-certbot certonly --standalone -d fresheggsmarket.hiddekellabs.com
-```
+If a release includes Prisma schema changes, apply the database step deliberately after review. Do not assume every code deploy should mutate the database automatically.
 
-## Step 3: Upload project to VPS
-
-```bash
-# From your local machine (or clone from git)
-scp -r fresh-eggs-ops/ root@YOUR_VPS_IP:/opt/fresh-eggs-ops/
-```
-
-## Step 4: Configure environment
+Example manual DB command when needed:
 
 ```bash
 cd /opt/fresh-eggs-ops
-
-# Copy and edit environment file
-cp .env.example .env
-nano .env
-# Set real values for DB_PASSWORD and JWT_SECRET
-```
-
-Generate a strong JWT secret:
-```bash
-openssl rand -base64 48
-```
-
-## Step 5: Build and start
-
-```bash
-cd /opt/fresh-eggs-ops
-
-# Build all containers
-docker compose build
-
-# Start everything
-docker compose up -d
-
-# Run database migrations
 docker compose exec api npx prisma migrate deploy
-
-# Seed initial data (admin user, bank accounts)
-docker compose exec api node prisma/seed.js
-
-# Check everything is running
-docker compose ps
 ```
 
-## Step 6: Verify
+If production is still using `db push`-style changes rather than checked-in migrations, handle that as an explicit release step instead of baking it into every deploy.
 
-- Visit https://fresheggsmarket.hiddekellabs.com
-- Login with: chioma@fresheggs.com / admin12345
-- **Change the admin password immediately after first login**
-
-## Useful commands
+## Useful production commands
 
 ```bash
-# View logs
+cd /opt/fresh-eggs-ops
+docker compose ps
 docker compose logs -f api
 docker compose logs -f db
-
-# Restart a service
-docker compose restart api
-
-# Rebuild after code changes
 docker compose build api && docker compose up -d api
-
-# Database backup
 docker compose exec db pg_dump -U fresheggs fresh_eggs > backup_$(date +%Y%m%d).sql
-
-# Database restore
-cat backup.sql | docker compose exec -T db psql -U fresheggs fresh_eggs
-
-# Open Prisma Studio (DB browser)
-docker compose exec api npx prisma studio
-```
-
-## Auto-restart on server reboot
-
-Docker's `restart: unless-stopped` policy handles this automatically.
-
-## SSL certificate renewal
-
-```bash
-# Test renewal
-certbot renew --dry-run
-
-# Auto-renewal is set up by default, but add a cron to restart nginx after renewal:
-echo '0 3 * * * certbot renew --quiet && docker compose -f /opt/fresh-eggs-ops/docker-compose.yml restart nginx' | crontab -
 ```
