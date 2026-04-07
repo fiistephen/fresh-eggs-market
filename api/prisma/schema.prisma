@@ -116,17 +116,44 @@ model Batch {
 model BatchEggCode {
   id          String  @id @default(cuid())
   batchId     String  @map("batch_id")
+  itemId      String? @map("item_id")
   code        String  // e.g. "FE4600"
   costPrice   Decimal @map("cost_price") @db.Decimal(12, 2) // ₦ per crate for this code
   quantity    Int     // Paid crates of this code
   freeQty     Int     @default(0) @map("free_qty") // Free crates of this code
 
   batch Batch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  item  Item? @relation(fields: [itemId], references: [id])
 
   saleLineItems SaleLineItem[]
 
   @@unique([batchId, code])
   @@map("batch_egg_codes")
+}
+
+enum ItemCategory {
+  FE_EGGS
+  CRATES
+  DELIVERY
+  LEGACY_MISC
+}
+
+model Item {
+  id                    String       @id @default(cuid())
+  code                  String?      @unique
+  name                  String
+  category              ItemCategory @default(FE_EGGS)
+  unitLabel             String       @default("crate") @map("unit_label")
+  description           String?
+  defaultWholesalePrice Decimal?     @map("default_wholesale_price") @db.Decimal(12, 2)
+  defaultRetailPrice    Decimal?     @map("default_retail_price") @db.Decimal(12, 2)
+  isActive              Boolean      @default(true) @map("is_active")
+  createdAt             DateTime     @default(now()) @map("created_at")
+  updatedAt             DateTime     @updatedAt @map("updated_at")
+
+  batchEggCodes         BatchEggCode[]
+
+  @@map("items")
 }
 
 // ─── BOOKINGS ──────────────────────────────────────────────────

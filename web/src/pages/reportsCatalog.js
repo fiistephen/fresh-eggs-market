@@ -16,14 +16,14 @@ export const REPORT_CARDS = [
   {
     key: 'sales-by-item',
     title: 'Sales By Item',
-    description: 'Compare egg codes and sale types to see what sold best.',
+    description: 'Compare item codes, names, and sale types to see what sold best.',
     icon: '🥚',
     accent: 'from-blue-50 to-white border-blue-200',
   },
   {
     key: 'sales-by-category',
     title: 'Sales By Category',
-    description: 'Review wholesale, retail, cracked, and write-off performance.',
+    description: 'Review sales value by product category such as FE eggs, crates, or delivery.',
     icon: '🗂️',
     accent: 'from-amber-50 to-white border-amber-200',
   },

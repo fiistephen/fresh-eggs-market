@@ -46,7 +46,20 @@ export default async function reportsRoutes(fastify) {
           recordedBy: { select: { id: true, firstName: true, lastName: true } },
           lineItems: {
             include: {
-              batchEggCode: { select: { id: true, code: true } },
+              batchEggCode: {
+                select: {
+                  id: true,
+                  code: true,
+                  item: {
+                    select: {
+                      id: true,
+                      code: true,
+                      name: true,
+                      category: true,
+                    },
+                  },
+                },
+              },
             },
           },
           paymentTransaction: {
@@ -143,11 +156,19 @@ export default async function reportsRoutes(fastify) {
           const lineTotal = Number(lineItem.lineTotal);
           const lineCost = quantity * Number(lineItem.costPrice);
           const lineProfit = lineTotal - lineCost;
+          const item = lineItem.batchEggCode?.item;
+          const category = item?.category || 'UNCATEGORIZED';
+          const itemLabel = item?.code && item?.name && item.name !== item.code
+            ? `${item.name} (${item.code})`
+            : item?.name || item?.code || lineItem.batchEggCode?.code || 'Unknown item';
 
-          const itemKey = `${lineItem.batchEggCode?.id || 'unknown'}:${lineItem.saleType}`;
+          const itemKey = `${item?.id || lineItem.batchEggCode?.code || 'unknown'}:${lineItem.saleType}`;
           const itemEntry = byItemMap.get(itemKey) || {
-            itemCode: lineItem.batchEggCode?.code || 'Unknown item',
+            itemCode: item?.code || lineItem.batchEggCode?.code || 'Unknown item',
+            itemName: item?.name || lineItem.batchEggCode?.code || 'Unknown item',
+            itemLabel,
             saleType: lineItem.saleType,
+            category,
             quantity: 0,
             totalAmount: 0,
             totalCost: 0,
@@ -159,8 +180,8 @@ export default async function reportsRoutes(fastify) {
           itemEntry.grossProfit += lineProfit;
           byItemMap.set(itemKey, itemEntry);
 
-          const categoryEntry = byCategoryMap.get(lineItem.saleType) || {
-            saleType: lineItem.saleType,
+          const categoryEntry = byCategoryMap.get(category) || {
+            category,
             lineCount: 0,
             quantity: 0,
             totalAmount: 0,
@@ -172,7 +193,7 @@ export default async function reportsRoutes(fastify) {
           categoryEntry.totalAmount += lineTotal;
           categoryEntry.totalCost += lineCost;
           categoryEntry.grossProfit += lineProfit;
-          byCategoryMap.set(lineItem.saleType, categoryEntry);
+          byCategoryMap.set(category, categoryEntry);
         }
 
         return {

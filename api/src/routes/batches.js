@@ -7,6 +7,7 @@ import {
   safeDivide,
 } from '../utils/operationsPolicy.js';
 import { getOperationsPolicy } from '../utils/appSettings.js';
+import { ensureItemForEggCode, normalizeItemCode } from '../utils/items.js';
 
 async function findSalesForBatch(batchId) {
   return prisma.sale.findMany({
@@ -295,6 +296,19 @@ export default async function batchRoutes(fastify) {
         });
       }
 
+      const itemByCode = new Map();
+      for (const eggCode of eggCodes) {
+        const normalizedCode = normalizeItemCode(eggCode.code);
+        if (!itemByCode.has(normalizedCode)) {
+          const item = await ensureItemForEggCode({
+            code: normalizedCode,
+            wholesalePrice: existing.wholesalePrice,
+            retailPrice: existing.retailPrice,
+          });
+          itemByCode.set(normalizedCode, item);
+        }
+      }
+
       const batch = await prisma.batch.update({
         where: { id: request.params.id },
         data: {
@@ -306,7 +320,8 @@ export default async function batchRoutes(fastify) {
             deleteMany: {}, // Clear any existing (shouldn't be any)
             createMany: {
               data: eggCodes.map(ec => ({
-                code: ec.code,
+                itemId: itemByCode.get(normalizeItemCode(ec.code))?.id || null,
+                code: normalizeItemCode(ec.code),
                 costPrice: ec.costPrice,
                 quantity: ec.quantity,
                 freeQty: ec.freeQty || 0,

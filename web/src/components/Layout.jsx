@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { to: '/inventory', label: 'Inventory', icon: '🏬', roles: null },
   { to: '/customers', label: 'Customers', icon: '👥', roles: ['ADMIN', 'MANAGER', 'SHOP_FLOOR'] },
   { to: '/reports', label: 'Reports', icon: '🧾', roles: ['ADMIN', 'MANAGER'] },
+  { to: '/items', label: 'Items', icon: '🥚', roles: ['ADMIN', 'MANAGER'] },
   { to: '/admin', label: 'Admin', icon: '⚙️', roles: ['ADMIN'] },
 ];
 

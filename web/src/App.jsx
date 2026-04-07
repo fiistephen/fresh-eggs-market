@@ -15,6 +15,7 @@ import Portal from './pages/Portal';
 import Reports from './pages/Reports';
 import ReportDetail from './pages/ReportDetail';
 import AdminConfig from './pages/AdminConfig';
+import Items from './pages/Items';
 
 export default function App() {
   return (
@@ -73,6 +74,14 @@ export default function App() {
               element={
                 <ProtectedRoute roles={['ADMIN', 'MANAGER']}>
                   <ReportDetail />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="items"
+              element={
+                <ProtectedRoute roles={['ADMIN', 'MANAGER']}>
+                  <Items />
                 </ProtectedRoute>
               }
             />

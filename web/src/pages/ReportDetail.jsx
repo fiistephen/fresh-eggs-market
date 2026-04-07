@@ -22,6 +22,14 @@ const SOURCE_LABELS = {
   DIRECT: 'Direct sale',
 };
 
+const ITEM_CATEGORY_LABELS = {
+  FE_EGGS: 'FE Eggs',
+  CRATES: 'Crates',
+  DELIVERY: 'Delivery',
+  LEGACY_MISC: 'Legacy / Misc',
+  UNCATEGORIZED: 'Uncategorized',
+};
+
 const CRACK_ALERT_STYLES = {
   OK: 'bg-green-50 text-green-700 border-green-200',
   WATCH: 'bg-amber-50 text-amber-700 border-amber-200',
@@ -324,8 +332,10 @@ function SalesByItemReport({ data }) {
             {data.byItem.slice(0, 5).map((row) => (
               <div key={`${row.itemCode}-${row.saleType}`} className="flex items-center justify-between gap-4 rounded-xl border border-gray-200 p-4">
                 <div>
-                  <p className="font-medium text-gray-900">{row.itemCode}</p>
-                  <p className="text-sm text-gray-500">{SALE_TYPE_LABELS[row.saleType] || row.saleType}</p>
+                  <p className="font-medium text-gray-900">{row.itemLabel || row.itemCode}</p>
+                  <p className="text-sm text-gray-500">
+                    {SALE_TYPE_LABELS[row.saleType] || row.saleType} · {ITEM_CATEGORY_LABELS[row.category] || row.category}
+                  </p>
                 </div>
                 <p className="font-semibold text-gray-900">{formatCurrency(row.totalAmount)}</p>
               </div>
@@ -335,8 +345,8 @@ function SalesByItemReport({ data }) {
 
         <Panel title="Sales by item chart" body="This visual makes it easier to spot the items driving the most sales value.">
           <BarComparisonChart
-            data={data.byItem.slice(0, 8)}
-            labelKey="itemCode"
+          data={data.byItem.slice(0, 8)}
+            labelKey="itemLabel"
             valueKey="totalAmount"
             valueFormatter={formatCurrency}
           />
@@ -347,7 +357,7 @@ function SalesByItemReport({ data }) {
         <DataTable
           columns={['Item', 'Type', 'Items sold', 'Net sales', 'Cost of goods', 'Gross profit']}
           rows={data.byItem.map((row) => [
-            row.itemCode,
+            row.itemLabel || row.itemCode,
             SALE_TYPE_LABELS[row.saleType] || row.saleType,
             row.quantity.toLocaleString(),
             formatCurrency(row.totalAmount),
@@ -367,18 +377,18 @@ function SalesByCategoryReport({ data }) {
       <Panel title="Category comparison" body="This visual compares the sales value across the main categories.">
         <BarComparisonChart
           data={data.byCategory}
-          labelKey="saleType"
-          labelFormatter={(value) => SALE_TYPE_LABELS[value] || value}
+          labelKey="category"
+          labelFormatter={(value) => ITEM_CATEGORY_LABELS[value] || value}
           valueKey="totalAmount"
           valueFormatter={formatCurrency}
         />
       </Panel>
 
-      <Panel title="Sales by category" body="This compares the main sales categories for the selected period.">
+      <Panel title="Sales by category" body="This compares the main product categories for the selected period.">
         <DataTable
           columns={['Category', 'Items sold', 'Net sales', 'Cost of goods', 'Gross profit']}
           rows={data.byCategory.map((row) => [
-            SALE_TYPE_LABELS[row.saleType] || row.saleType,
+            ITEM_CATEGORY_LABELS[row.category] || row.category,
             row.quantity.toLocaleString(),
             formatCurrency(row.totalAmount),
             formatCurrency(row.totalCost),

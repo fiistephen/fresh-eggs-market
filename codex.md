@@ -812,3 +812,72 @@ Minimum update format:
   - booking fulfillment is still single-batch by design
   - mixed-batch support currently applies to direct sales
   - this slice should be staged and reviewed before moving on to portal v2 or fuller admin coverage
+
+## 22. 2026-04-07 Items Module Foundation
+
+- Added a dedicated `Items` module so the product catalog is separate from system settings.
+- Product decision locked in:
+  - `Items` = what the business sells
+  - `Batches` = where stock comes from
+  - `Banking` = where money comes from
+- New schema foundation:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/prisma/schema.prisma`
+  - added `Item` model with:
+    - code
+    - name
+    - category
+    - unit label
+    - default prices
+    - active state
+  - added `ItemCategory` enum with:
+    - `FE_EGGS`
+    - `CRATES`
+    - `DELIVERY`
+    - `LEGACY_MISC`
+  - added optional `itemId` link on `BatchEggCode`
+- New backend utilities:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/src/utils/items.js`
+  - includes:
+    - catalog validation
+    - FE code normalization
+    - batch egg code -> item sync
+    - auto-create support for FE items when new batches are received
+- New backend route file:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/src/routes/items.js`
+  - endpoints:
+    - `GET /items`
+    - `POST /items`
+    - `PATCH /items/:id`
+- Integration changes:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/src/routes/batches.js`
+    - receiving a batch now links each egg code to a catalog item
+    - missing FE items are created automatically the first time they appear in a batch
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/src/routes/reports.js`
+    - sales by item now groups around the catalog item identity instead of only raw batch egg code rows
+    - sales by category now reads item category instead of treating sale type as category
+- New frontend module page:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/pages/Items.jsx`
+  - staff can now:
+    - search items
+    - filter by category
+    - show inactive items
+    - add items
+    - edit items
+    - retire items by making them inactive
+- Frontend shell updates:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/App.jsx`
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/components/Layout.jsx`
+  - `Items` now appears in navigation for `ADMIN` and `MANAGER`
+- Report copy updates:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/pages/ReportDetail.jsx`
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/pages/reportsCatalog.js`
+  - wording now reflects real product categories instead of pricing modes
+- Local verification completed:
+  - `node --check` passed for `items.js`, `items` utility, `batches.js`, and `reports.js`
+  - Prisma schema validated
+  - Prisma client generated successfully
+  - frontend build passed
+- What future Codex sessions should remember:
+  - this is the catalog foundation, not the final non-egg sales workflow yet
+  - current sales entry still sells batch egg codes, but reporting and batch linkage now understand catalog items
+  - the next likely admin/config follow-up is transaction category management and fuller item usage in future sales flows
