@@ -11,6 +11,11 @@ const SALE_TYPE_COLORS = {
   WRITE_OFF: 'bg-red-100 text-red-700',
 };
 const SOURCE_LABELS = { BOOKING: 'Booking pickup', DIRECT: 'Direct sale' };
+const DIRECT_PAYMENT_TRAIL_HINTS = {
+  CASH: 'This sale will add money to Cash Account automatically.',
+  TRANSFER: 'This sale will add money to Customer Deposit Account automatically.',
+  POS_CARD: 'This sale will add a POS settlement record to Customer Deposit Account automatically.',
+};
 
 function formatCurrency(n) {
   if (n == null) return '—';
@@ -32,6 +37,15 @@ function formatDate(d) {
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function paymentAccountLabel(paymentTransaction) {
+  if (!paymentTransaction?.bankAccount) return '—';
+  const account = paymentTransaction.bankAccount;
+  if (account.accountType === 'CASH_ON_HAND' || account.lastFour === 'CASH') {
+    return 'Cash Account';
+  }
+  return `${account.name} • ••••${account.lastFour}`;
 }
 
 export default function Sales() {
@@ -792,6 +806,13 @@ function RecordSaleModal({ onClose, onRecorded }) {
                         </button>
                       ))}
                   </div>
+                  <div className="mt-3 rounded-lg bg-gray-50 px-3 py-3 text-sm">
+                    <p className="font-medium text-gray-900">What happens when you save</p>
+                    <p className="text-gray-600 mt-1">{DIRECT_PAYMENT_TRAIL_HINTS[paymentMethod]}</p>
+                    <p className="text-xs text-gray-500 mt-2">
+                      You do not need to enter this same direct sale again in Banking.
+                    </p>
+                  </div>
                 </div>
               ) : (
                 <div className="bg-gray-50 rounded-lg p-4 text-sm">
@@ -922,6 +943,15 @@ function SaleDetailModal({ sale, onClose }) {
                 <p className="text-gray-400">Booking</p>
                 <p className="font-medium text-gray-900">{sale.booking.quantity} crates</p>
                 <p className="text-xs text-gray-500">Paid {formatCurrency(sale.booking.amountPaid)}</p>
+              </div>
+            )}
+            {sale.paymentTransaction && (
+              <div>
+                <p className="text-gray-400">Money trail</p>
+                <p className="font-medium text-gray-900">{paymentAccountLabel(sale.paymentTransaction)}</p>
+                <p className="text-xs text-gray-500">
+                  {formatCurrency(sale.paymentTransaction.amount)} recorded automatically
+                </p>
               </div>
             )}
           </div>

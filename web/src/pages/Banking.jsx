@@ -30,6 +30,7 @@ const RECONCILIATION_STYLES = {
 const CATEGORY_LABELS = {
   CUSTOMER_DEPOSIT: 'Customer deposit',
   CUSTOMER_BOOKING: 'Customer booking',
+  DIRECT_SALE_TRANSFER: 'Direct sale transfer',
   SALES_TRANSFER_IN: 'Sales transfer in',
   PROFIT_TRANSFER_IN: 'Profit transfer in',
   POS_SETTLEMENT: 'POS settlement',
@@ -53,6 +54,7 @@ const CATEGORY_LABELS = {
 const INFLOW_CATEGORIES = [
   'CUSTOMER_DEPOSIT',
   'CUSTOMER_BOOKING',
+  'DIRECT_SALE_TRANSFER',
   'SALES_TRANSFER_IN',
   'PROFIT_TRANSFER_IN',
   'POS_SETTLEMENT',

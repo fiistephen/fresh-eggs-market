@@ -509,3 +509,53 @@ Minimum update format:
   - cash and transfer proof still need deeper linkage back into Banking transactions
   - sales are still single-batch at the schema level for now
   - next logical step after validation is staging deploy and review, then deeper sales-to-banking proof and reporting work
+
+## 15. 2026-04-07 Direct Sale Money Trail Update
+
+- Added the next sales-to-banking bridge so direct sales now create their own money record automatically.
+- Prisma changes in:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/prisma/schema.prisma`
+- New schema behavior:
+  - `bank_transactions` now supports an optional `sale_id`
+  - `sales` now support an optional linked payment transaction
+  - added new banking category:
+    - `DIRECT_SALE_TRANSFER`
+- Direct sale money trail rules implemented:
+  - `CASH` direct sale:
+    - create system inflow in `Cash Account`
+    - category: `CASH_SALE`
+  - `TRANSFER` direct sale:
+    - create system inflow in `Customer Deposit Account`
+    - category: `DIRECT_SALE_TRANSFER`
+  - `POS_CARD` direct sale:
+    - create system inflow in `Customer Deposit Account`
+    - category: `POS_SETTLEMENT`
+- Booking pickups still do not create a new payment record:
+  - they remain `PRE_ORDER`
+  - the sale is treated as fulfillment of money already recorded earlier
+- Rebuilt sales backend behavior in:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/src/routes/sales.js`
+- Backend additions:
+  - direct sale save now creates both:
+    - the sale record
+    - the linked banking transaction
+  - sale responses now include `paymentTransaction`
+- Rebuilt UX copy in:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/pages/Sales.jsx`
+- Sales UX updates:
+  - direct sale payment buttons now explain what account will be updated automatically
+  - staff are told not to enter the same direct sale again in Banking
+  - sale detail now shows the linked money trail when one exists
+- Banking labels updated in:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/src/utils/banking.js`
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/pages/Banking.jsx`
+- Local verification completed:
+  - Prisma schema validate passed
+  - Prisma client generate passed
+  - `node --check` passed for `/api/src/routes/sales.js`
+  - dynamic route import passed for `/api/src/routes/sales.js`
+  - frontend build passed
+- What future Codex sessions should remember:
+  - this is a practical first money trail, not the final reconciliation model
+  - POS settlement timing/fees still need a deeper reconciliation pass against imported Medusa and bank statement data
+  - direct sales now have a cleaner single-entry workflow than before

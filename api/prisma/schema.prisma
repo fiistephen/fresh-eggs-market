@@ -194,6 +194,7 @@ model Sale {
   booking    Booking?      @relation(fields: [bookingId], references: [id])
   recordedBy User          @relation("SaleRecordedBy", fields: [recordedById], references: [id])
   lineItems  SaleLineItem[]
+  paymentTransaction BankTransaction? @relation("SalePaymentTransaction")
 
   @@map("sales")
 }
@@ -251,6 +252,7 @@ enum TransactionCategory {
   // Inflows
   CUSTOMER_DEPOSIT    // Money in, no booking yet
   CUSTOMER_BOOKING    // Money in + booking made
+  DIRECT_SALE_TRANSFER // Direct sale paid by bank transfer
   SALES_TRANSFER_IN   // Weekly transfer from Customer Deposit → Sales account
   PROFIT_TRANSFER_IN  // Monthly transfer from Sales → Profit account
   POS_SETTLEMENT      // Medusa/bank settlement of card transactions
@@ -321,6 +323,7 @@ model BankTransaction {
   postedAt        DateTime?            @map("posted_at")
 
   // Optional links — depends on category
+  saleId          String?              @unique @map("sale_id")
   customerId      String?              @map("customer_id")
   bookingId       String?              @map("booking_id_ref") // For CUSTOMER_BOOKING category
   enteredById     String               @map("entered_by_id")
@@ -329,6 +332,7 @@ model BankTransaction {
   updatedAt       DateTime             @updatedAt @map("updated_at")
 
   bankAccount BankAccount @relation(fields: [bankAccountId], references: [id])
+  sale        Sale?       @relation("SalePaymentTransaction", fields: [saleId], references: [id])
   customer    Customer?   @relation(fields: [customerId], references: [id])
   enteredBy   User        @relation("TransactionEnteredBy", fields: [enteredById], references: [id])
   statementLine BankStatementLine?

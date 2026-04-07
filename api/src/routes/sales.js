@@ -5,6 +5,20 @@ import { authorize } from '../middleware/authorize.js';
 const VALID_SALE_TYPES = ['WHOLESALE', 'RETAIL', 'CRACKED', 'WRITE_OFF'];
 const VALID_PAYMENT_METHODS = ['CASH', 'TRANSFER', 'POS_CARD', 'PRE_ORDER'];
 const DIRECT_SALE_PAYMENT_METHODS = ['CASH', 'TRANSFER', 'POS_CARD'];
+const DIRECT_SALE_PAYMENT_CONFIG = {
+  CASH: {
+    accountType: 'CASH_ON_HAND',
+    category: 'CASH_SALE',
+  },
+  TRANSFER: {
+    accountType: 'CUSTOMER_DEPOSIT',
+    category: 'DIRECT_SALE_TRANSFER',
+  },
+  POS_CARD: {
+    accountType: 'CUSTOMER_DEPOSIT',
+    category: 'POS_SETTLEMENT',
+  },
+};
 
 // Auto-generate receipt number: FE-YYYYMMDD-XXXX
 function generateReceiptNumber() {
@@ -58,6 +72,10 @@ function enrichSale(sale) {
     totalAmount: Number(sale.totalAmount),
     totalCost: Number(sale.totalCost),
     sourceType: sale.bookingId ? 'BOOKING' : 'DIRECT',
+    paymentTransaction: sale.paymentTransaction ? {
+      ...sale.paymentTransaction,
+      amount: Number(sale.paymentTransaction.amount),
+    } : undefined,
     booking: sale.booking ? {
       ...sale.booking,
       amountPaid: Number(sale.booking.amountPaid),
@@ -106,8 +124,54 @@ function buildSaleInclude() {
         batchEggCode: { select: { code: true, costPrice: true } },
       },
     },
+    paymentTransaction: {
+      include: {
+        bankAccount: { select: { id: true, name: true, accountType: true, lastFour: true, isVirtual: true } },
+      },
+    },
     recordedBy: { select: { firstName: true, lastName: true } },
   };
+}
+
+async function resolveDirectSalePaymentDestination(paymentMethod) {
+  const config = DIRECT_SALE_PAYMENT_CONFIG[paymentMethod];
+  if (!config) {
+    throw new Error('Unsupported direct sale payment method');
+  }
+
+  const account = await prisma.bankAccount.findFirst({
+    where: {
+      accountType: config.accountType,
+      isActive: true,
+    },
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+  });
+
+  if (!account) {
+    throw new Error(`No active ${config.accountType} account is available for direct sales`);
+  }
+
+  return {
+    account,
+    category: config.category,
+  };
+}
+
+function directSalePaymentDescription({ paymentMethod, customer, batch, receiptNumber }) {
+  const paymentLabels = {
+    CASH: 'Cash sale',
+    TRANSFER: 'Transfer sale',
+    POS_CARD: 'POS/Card sale',
+  };
+
+  const parts = [
+    paymentLabels[paymentMethod] || 'Direct sale',
+    receiptNumber,
+    customer?.name,
+    batch?.name,
+  ].filter(Boolean);
+
+  return parts.join(' · ');
 }
 
 export default async function salesRoutes(fastify) {
@@ -339,31 +403,69 @@ export default async function salesRoutes(fastify) {
         });
       }
 
-      const sale = await prisma.sale.create({
-        data: {
-          receiptNumber: generateReceiptNumber(),
-          customerId,
-          batchId: resolvedBatchId,
-          bookingId: bookingId || null,
-          recordedById: request.user.sub,
-          totalQuantity,
-          totalAmount,
-          totalCost,
-          paymentMethod: resolvedPaymentMethod,
-          saleDate: saleDate ? new Date(saleDate) : new Date(),
-          lineItems: {
-            createMany: { data: enrichedItems },
-          },
-        },
-        include: buildSaleInclude(),
-      });
+      const effectiveSaleDate = saleDate ? new Date(saleDate) : new Date();
+      const receiptNumber = generateReceiptNumber();
+      const directSaleDestination = !bookingId
+        ? await resolveDirectSalePaymentDestination(resolvedPaymentMethod)
+        : null;
 
-      if (bookingId) {
-        await prisma.booking.update({
-          where: { id: bookingId },
-          data: { status: 'PICKED_UP' },
+      const sale = await prisma.$transaction(async (tx) => {
+        const createdSale = await tx.sale.create({
+          data: {
+            receiptNumber,
+            customerId,
+            batchId: resolvedBatchId,
+            bookingId: bookingId || null,
+            recordedById: request.user.sub,
+            totalQuantity,
+            totalAmount,
+            totalCost,
+            paymentMethod: resolvedPaymentMethod,
+            saleDate: effectiveSaleDate,
+            lineItems: {
+              createMany: { data: enrichedItems },
+            },
+          },
         });
-      }
+
+        if (!bookingId) {
+          const { account, category } = directSaleDestination;
+          await tx.bankTransaction.create({
+            data: {
+              bankAccountId: account.id,
+              direction: 'INFLOW',
+              category,
+              amount: totalAmount,
+              description: directSalePaymentDescription({
+                paymentMethod: resolvedPaymentMethod,
+                customer,
+                batch,
+                receiptNumber,
+              }),
+              reference: receiptNumber,
+              transactionDate: effectiveSaleDate,
+              sourceType: 'SYSTEM',
+              sourceFingerprint: `sale:${createdSale.id}:payment`,
+              saleId: createdSale.id,
+              customerId,
+              enteredById: request.user.sub,
+              postedAt: new Date(),
+            },
+          });
+        }
+
+        if (bookingId) {
+          await tx.booking.update({
+            where: { id: bookingId },
+            data: { status: 'PICKED_UP' },
+          });
+        }
+
+        return tx.sale.findUnique({
+          where: { id: createdSale.id },
+          include: buildSaleInclude(),
+        });
+      });
 
       return reply.code(201).send({ sale: enrichSale(sale) });
     },
