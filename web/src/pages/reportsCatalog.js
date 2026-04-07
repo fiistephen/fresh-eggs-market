@@ -1,5 +1,12 @@
 export const REPORT_CARDS = [
   {
+    key: 'executive-summary',
+    title: 'Executive Summary',
+    description: 'Open a high-level investor and funder view with the key numbers for the period.',
+    icon: '📌',
+    accent: 'from-rose-50 to-white border-rose-200',
+  },
+  {
     key: 'sales-summary',
     title: 'Sales Summary',
     description: 'See total sales, profit, and day-by-day movement for the period.',

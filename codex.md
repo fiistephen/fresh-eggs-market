@@ -636,3 +636,42 @@ Minimum update format:
 - What future Codex sessions should remember:
   - Reports is now a hub plus individual report pages
   - next reporting steps should deepen content, not collapse everything back into one screen
+
+## 18. 2026-04-07 Reports Visualization And Executive Summary
+
+- Strengthened the Reports experience by making the main summary pages feel closer to management-ready reporting instead of plain data dumps.
+- Product decision confirmed in this pass:
+  - yes, the app should include an Executive Summary report for investors and funders
+  - it should live inside Reports as a first-class report, not as a hidden export or admin-only view
+- New report card added:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/pages/reportsCatalog.js`
+  - new route key: `executive-summary`
+- Main frontend report detail file upgraded:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/pages/ReportDetail.jsx`
+- UX direction for this pass:
+  - keep language simple for managers and operators
+  - use visuals to make trends easier to understand at a glance
+  - keep tables for exact figures underneath the visuals
+  - improve the Sales Summary page instead of making users piece the story together themselves
+- New visual/reporting improvements:
+  - stronger Sales Summary page with daily trend chart and clearer summary cards
+  - Sales By Item chart for top-selling items
+  - Sales By Category chart
+  - Sales By Payment Type chart
+  - Sales By Employee chart
+  - Executive Summary page with:
+    - headline KPI cards
+    - sales trend
+    - top item
+    - main payment channel
+    - best sales day
+    - direct sale vs booking pickup mix
+- Screenshot usage in this pass:
+  - used the shared screenshots to identify which report types benefit from visuals
+  - still did not copy the original visual style directly
+- Local verification completed:
+  - frontend build passed after adding the new charts and Executive Summary page
+- What future Codex sessions should remember:
+  - Executive Summary is now part of the core reporting plan
+  - this is the first investor/funder-facing report layer, not the final grant/investor reporting suite
+  - future reporting work should keep prioritizing clarity, plain language, and useful visuals over dense dashboards
