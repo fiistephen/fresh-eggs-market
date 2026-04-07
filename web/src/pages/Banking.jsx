@@ -78,6 +78,26 @@ const OUTFLOW_CATEGORIES = [
   'INTERNAL_TRANSFER_OUT',
 ];
 
+function buildCategoryMap(transactionCategories = []) {
+  return transactionCategories.reduce((acc, entry) => {
+    acc[entry.category] = entry;
+    return acc;
+  }, {});
+}
+
+function categoryLabel(category, categoryMap = {}) {
+  return categoryMap[category]?.label || CATEGORY_LABELS[category] || category;
+}
+
+function categoryDescription(category, categoryMap = {}) {
+  return categoryMap[category]?.description || '';
+}
+
+function categoryOptionsForDirection(direction, categoryMap = {}, currentCategory = '') {
+  const source = direction === 'OUTFLOW' ? OUTFLOW_CATEGORIES : INFLOW_CATEGORIES;
+  return source.filter((category) => categoryMap[category]?.isActive !== false || category === currentCategory);
+}
+
 function fmtMoney(n) {
   if (n == null) return '—';
   return new Intl.NumberFormat('en-NG', {
@@ -134,6 +154,7 @@ export default function Banking() {
   const [transactionsTotal, setTransactionsTotal] = useState(0);
   const [imports, setImports] = useState([]);
   const [reconciliations, setReconciliations] = useState([]);
+  const [transactionCategories, setTransactionCategories] = useState([]);
   const [selectedImportId, setSelectedImportId] = useState('');
   const [selectedImport, setSelectedImport] = useState(null);
   const [selectedImportLines, setSelectedImportLines] = useState([]);
@@ -161,6 +182,7 @@ export default function Banking() {
 
   const canRecord = ['ADMIN', 'MANAGER', 'RECORD_KEEPER'].includes(user?.role);
   const canViewReports = ['ADMIN', 'MANAGER'].includes(user?.role);
+  const categoryMap = buildCategoryMap(transactionCategories);
 
   useEffect(() => {
     loadWorkspace();
@@ -198,6 +220,7 @@ export default function Banking() {
     setError('');
     try {
       await Promise.all([
+        loadMeta(),
         loadAccounts(),
         loadImports(),
         canViewReports ? loadReconciliations() : Promise.resolve(),
@@ -213,6 +236,11 @@ export default function Banking() {
   async function loadAccounts() {
     const data = await api.get('/banking/accounts');
     setAccounts(data.accounts || []);
+  }
+
+  async function loadMeta() {
+    const data = await api.get('/banking/meta');
+    setTransactionCategories(data.transactionCategories || []);
   }
 
   async function loadTransactions(skipLoader = false) {
@@ -373,6 +401,7 @@ export default function Banking() {
       {activeView === 'imports' && (
         <ImportsView
           accounts={accounts}
+          categoryMap={categoryMap}
           imports={imports}
           importsLoading={importsLoading}
           selectedImportId={selectedImportId}
@@ -399,11 +428,12 @@ export default function Banking() {
 
       {activeView === 'unbooked' && <UnbookedDepositsView />}
       {activeView === 'liability' && <CustomerLiabilityView />}
-      {activeView === 'expenses' && <ExpensesView />}
+      {activeView === 'expenses' && <ExpensesView categoryMap={categoryMap} />}
 
       {showRecordModal && (
         <RecordTransactionModal
           accounts={accounts}
+          categoryMap={categoryMap}
           onClose={() => setShowRecordModal(false)}
           onRecorded={() => {
             setShowRecordModal(false);
@@ -415,6 +445,7 @@ export default function Banking() {
       {showBulkModal && (
         <BulkTransactionModal
           accounts={accounts}
+          categoryMap={categoryMap}
           onClose={() => setShowBulkModal(false)}
           onRecorded={() => {
             setShowBulkModal(false);
@@ -563,7 +594,7 @@ function WorkspaceView({ loading, accounts, imports, reconciliations, transactio
                     <tr key={transaction.id} className="border-b border-gray-50">
                       <td className="px-3 py-3 text-sm text-gray-600">{fmtDate(transaction.transactionDate)}</td>
                       <td className="px-3 py-3 text-sm text-gray-800">{accountLabel(transaction.bankAccount)}</td>
-                      <td className="px-3 py-3 text-sm text-gray-600">{CATEGORY_LABELS[transaction.category] || transaction.category}</td>
+                      <td className="px-3 py-3 text-sm text-gray-600">{categoryLabel(transaction.category, categoryMap)}</td>
                       <td className="px-3 py-3 text-sm text-gray-500">{SOURCE_LABELS[transaction.sourceType] || transaction.sourceType}</td>
                       <td className="px-3 py-3 text-sm text-gray-500">{transaction.description || transaction.reference || '—'}</td>
                       <td className={`px-3 py-3 text-right text-sm font-semibold ${DIRECTION_COLORS[transaction.direction]}`}>
@@ -757,7 +788,7 @@ function TransactionsView({ accounts, transactions, total, loading, filters, onF
                   <tr key={transaction.id} className="border-b border-gray-50 align-top">
                     <td className="px-4 py-3 text-sm text-gray-600">{fmtDate(transaction.transactionDate, true)}</td>
                     <td className="px-4 py-3 text-sm font-medium text-gray-800">{accountLabel(transaction.bankAccount)}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{CATEGORY_LABELS[transaction.category] || transaction.category}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">{categoryLabel(transaction.category, categoryMap)}</td>
                     <td className="px-4 py-3 text-sm text-gray-500">{SOURCE_LABELS[transaction.sourceType] || transaction.sourceType}</td>
                     <td className="px-4 py-3 text-sm text-gray-500">{transaction.description || transaction.reference || '—'}</td>
                     <td className="px-4 py-3 text-sm text-gray-500">{transaction.customer?.name || '—'}</td>
@@ -778,6 +809,7 @@ function TransactionsView({ accounts, transactions, total, loading, filters, onF
 
 function ImportsView({
   accounts,
+  categoryMap,
   imports,
   importsLoading,
   selectedImportId,
@@ -901,6 +933,7 @@ function ImportsView({
                       <ImportLineRow
                         key={line.id}
                         line={line}
+                        categoryMap={categoryMap}
                         onSaved={onLineUpdated}
                       />
                     ))}
@@ -1096,7 +1129,7 @@ function CustomerLiabilityView() {
   );
 }
 
-function ExpensesView() {
+function ExpensesView({ categoryMap }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [dateFrom, setDateFrom] = useState('');
@@ -1152,7 +1185,7 @@ function ExpensesView() {
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
             {Object.entries(data.byCategory || {}).map(([category, info]) => (
               <div key={category} className="rounded-2xl border border-gray-200 bg-white p-4">
-                <p className="text-xs font-medium uppercase tracking-[0.16em] text-gray-500">{CATEGORY_LABELS[category] || category}</p>
+                <p className="text-xs font-medium uppercase tracking-[0.16em] text-gray-500">{categoryLabel(category, categoryMap)}</p>
                 <p className="mt-2 text-2xl font-bold text-red-600">{fmtMoney(info.total)}</p>
                 <p className="mt-1 text-xs text-gray-500">{info.count} transaction{info.count !== 1 ? 's' : ''}</p>
               </div>
@@ -1176,7 +1209,7 @@ function ExpensesView() {
                 {data.expenses.map((expense) => (
                   <tr key={expense.id} className="border-b border-gray-50">
                     <td className="px-4 py-3 text-sm text-gray-600">{fmtDate(expense.transactionDate)}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{CATEGORY_LABELS[expense.category] || expense.category}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700">{categoryLabel(expense.category, categoryMap)}</td>
                     <td className="px-4 py-3 text-sm text-gray-500">{expense.description || expense.reference || '—'}</td>
                     <td className="px-4 py-3 text-sm text-gray-500">{displayAccountName(expense.bankAccount)}</td>
                     <td className="px-4 py-3 text-right text-sm font-semibold text-red-600">{fmtMoney(expense.amount)}</td>
@@ -1191,11 +1224,11 @@ function ExpensesView() {
   );
 }
 
-function RecordTransactionModal({ accounts, onClose, onRecorded }) {
+function RecordTransactionModal({ accounts, categoryMap, onClose, onRecorded }) {
   const [form, setForm] = useState({
     bankAccountId: accounts[0]?.id || '',
     direction: 'INFLOW',
-    category: INFLOW_CATEGORIES[0],
+    category: categoryOptionsForDirection('INFLOW', categoryMap)[0] || INFLOW_CATEGORIES[0],
     amount: '',
     description: '',
     reference: '',
@@ -1224,14 +1257,15 @@ function RecordTransactionModal({ accounts, onClose, onRecorded }) {
     return () => clearTimeout(timer);
   }, [customerSearch, selectedCustomer]);
 
-  const categoryOptions = form.direction === 'INFLOW' ? INFLOW_CATEGORIES : OUTFLOW_CATEGORIES;
+  const categoryOptions = categoryOptionsForDirection(form.direction, categoryMap, form.category);
   const needsCustomer = ['CUSTOMER_DEPOSIT', 'CUSTOMER_BOOKING', 'REFUND'].includes(form.category);
 
   function setDirection(direction) {
+    const nextCategories = categoryOptionsForDirection(direction, categoryMap);
     setForm((current) => ({
       ...current,
       direction,
-      category: direction === 'INFLOW' ? INFLOW_CATEGORIES[0] : OUTFLOW_CATEGORIES[0],
+      category: nextCategories[0] || (direction === 'INFLOW' ? INFLOW_CATEGORIES[0] : OUTFLOW_CATEGORIES[0]),
     }));
     setSelectedCustomer(null);
     setCustomerSearch('');
@@ -1304,9 +1338,10 @@ function RecordTransactionModal({ accounts, onClose, onRecorded }) {
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
             >
               {categoryOptions.map((category) => (
-                <option key={category} value={category}>{CATEGORY_LABELS[category]}</option>
+                <option key={category} value={category}>{categoryLabel(category, categoryMap)}</option>
               ))}
             </select>
+            <p className="mt-1 text-xs text-gray-500">{categoryDescription(form.category, categoryMap) || 'Choose the clearest category for this entry.'}</p>
           </Field>
           <Field label="Amount">
             <input
@@ -1383,11 +1418,11 @@ function RecordTransactionModal({ accounts, onClose, onRecorded }) {
   );
 }
 
-function BulkTransactionModal({ accounts, onClose, onRecorded }) {
+function BulkTransactionModal({ accounts, categoryMap, onClose, onRecorded }) {
   const [rows, setRows] = useState([
-    createBulkRow(accounts[0]?.id),
-    createBulkRow(accounts[0]?.id),
-    createBulkRow(accounts[0]?.id),
+    createBulkRow(accounts[0]?.id, categoryMap),
+    createBulkRow(accounts[0]?.id, categoryMap),
+    createBulkRow(accounts[0]?.id, categoryMap),
   ]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -1401,7 +1436,7 @@ function BulkTransactionModal({ accounts, onClose, onRecorded }) {
   }
 
   function addRow() {
-    setRows((current) => [...current, createBulkRow(accounts[0]?.id)]);
+    setRows((current) => [...current, createBulkRow(accounts[0]?.id, categoryMap)]);
   }
 
   async function handleSubmit(event) {
@@ -1450,7 +1485,7 @@ function BulkTransactionModal({ accounts, onClose, onRecorded }) {
             </thead>
             <tbody>
               {rows.map((row, index) => {
-                const categories = row.direction === 'INFLOW' ? INFLOW_CATEGORIES : OUTFLOW_CATEGORIES;
+                const categories = categoryOptionsForDirection(row.direction, categoryMap, row.category);
                 return (
                   <tr key={row.id} className="border-b border-gray-50">
                     <td className="px-3 py-3">
@@ -1458,7 +1493,8 @@ function BulkTransactionModal({ accounts, onClose, onRecorded }) {
                         value={row.direction}
                         onChange={(event) => updateRow(index, {
                           direction: event.target.value,
-                          category: event.target.value === 'INFLOW' ? INFLOW_CATEGORIES[0] : OUTFLOW_CATEGORIES[0],
+                          category: categoryOptionsForDirection(event.target.value, categoryMap)[0]
+                            || (event.target.value === 'INFLOW' ? INFLOW_CATEGORIES[0] : OUTFLOW_CATEGORIES[0]),
                         })}
                         className="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
                       >
@@ -1484,7 +1520,7 @@ function BulkTransactionModal({ accounts, onClose, onRecorded }) {
                         className="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
                       >
                         {categories.map((category) => (
-                          <option key={category} value={category}>{CATEGORY_LABELS[category]}</option>
+                          <option key={category} value={category}>{categoryLabel(category, categoryMap)}</option>
                         ))}
                       </select>
                     </td>
@@ -1861,14 +1897,14 @@ function ReconciliationModal({ accounts, imports, onClose, onSaved }) {
   );
 }
 
-function ImportLineRow({ line, onSaved }) {
+function ImportLineRow({ line, categoryMap, onSaved }) {
   const [draft, setDraft] = useState({
     selectedCategory: line.selectedCategory || line.suggestedCategory || '',
     reviewStatus: line.reviewStatus,
     notes: line.notes || '',
   });
   const [saving, setSaving] = useState(false);
-  const categories = line.direction === 'OUTFLOW' ? OUTFLOW_CATEGORIES : INFLOW_CATEGORIES;
+  const categories = categoryOptionsForDirection(line.direction, categoryMap, draft.selectedCategory);
   const amount = line.direction === 'OUTFLOW' ? line.debitAmount : line.creditAmount;
 
   async function saveLine() {
@@ -1904,7 +1940,7 @@ function ImportLineRow({ line, onSaved }) {
         >
           <option value="">Choose category</option>
           {categories.map((category) => (
-            <option key={category} value={category}>{CATEGORY_LABELS[category]}</option>
+            <option key={category} value={category}>{categoryLabel(category, categoryMap)}</option>
           ))}
         </select>
       </td>
@@ -2061,12 +2097,12 @@ function ImportCountCard({ label, value, tone }) {
   );
 }
 
-function createBulkRow(defaultAccountId) {
+function createBulkRow(defaultAccountId, categoryMap = {}) {
   return {
     id: crypto.randomUUID?.() || Math.random().toString(36).slice(2),
     bankAccountId: defaultAccountId || '',
     direction: 'INFLOW',
-    category: INFLOW_CATEGORIES[0],
+    category: categoryOptionsForDirection('INFLOW', categoryMap)[0] || INFLOW_CATEGORIES[0],
     transactionDate: todayStr(),
     amount: '',
     description: '',

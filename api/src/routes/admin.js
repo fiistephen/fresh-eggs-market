@@ -1,7 +1,12 @@
 import prisma from '../plugins/prisma.js';
 import { authenticate } from '../plugins/auth.js';
 import { authorize } from '../middleware/authorize.js';
-import { getOperationsPolicy, saveOperationsPolicy } from '../utils/appSettings.js';
+import {
+  getOperationsPolicy,
+  getTransactionCategoryConfig,
+  saveOperationsPolicy,
+  saveTransactionCategoryConfig,
+} from '../utils/appSettings.js';
 
 function serializeBankAccount(account) {
   return {
@@ -30,14 +35,16 @@ export default async function adminRoutes(fastify) {
   fastify.get('/admin/config', {
     preHandler: [authenticate, authorize('ADMIN')],
     handler: async () => {
-      const [policy, bankAccounts] = await Promise.all([
+      const [policy, bankAccounts, transactionCategories] = await Promise.all([
         getOperationsPolicy(),
         loadBankAccounts(),
+        getTransactionCategoryConfig(),
       ]);
 
       return {
         policy,
         bankAccounts,
+        transactionCategories,
       };
     },
   });
@@ -61,6 +68,19 @@ export default async function adminRoutes(fastify) {
       }, request.user.sub);
 
       return { policy };
+    },
+  });
+
+  fastify.patch('/admin/config/transaction-categories', {
+    preHandler: [authenticate, authorize('ADMIN')],
+    handler: async (request, reply) => {
+      const categories = Array.isArray(request.body?.categories) ? request.body.categories : null;
+      if (!categories) {
+        return reply.code(400).send({ error: 'categories must be an array.' });
+      }
+
+      const transactionCategories = await saveTransactionCategoryConfig(categories, request.user.sub);
+      return { transactionCategories };
     },
   });
 

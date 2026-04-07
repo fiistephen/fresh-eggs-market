@@ -51,6 +51,8 @@ export default function AdminConfig() {
     crackAllowancePercent: '',
   });
   const [policySaving, setPolicySaving] = useState(false);
+  const [transactionCategories, setTransactionCategories] = useState([]);
+  const [transactionCategorySaving, setTransactionCategorySaving] = useState(false);
 
   const [accounts, setAccounts] = useState([]);
   const [newAccount, setNewAccount] = useState(DEFAULT_NEW_ACCOUNT);
@@ -72,6 +74,7 @@ export default function AdminConfig() {
         targetProfitPerCrate: String(response.policy?.targetProfitPerCrate ?? ''),
         crackAllowancePercent: String(response.policy?.crackAllowancePercent ?? ''),
       });
+      setTransactionCategories(response.transactionCategories || []);
       setAccounts(response.bankAccounts || []);
       setAccountDrafts(buildDrafts(response.bankAccounts || []));
     } catch {
@@ -98,6 +101,12 @@ export default function AdminConfig() {
   function resetNotice() {
     setError('');
     setSuccess('');
+  }
+
+  function updateTransactionCategory(category, field, value) {
+    setTransactionCategories((current) => current.map((entry) => (
+      entry.category === category ? { ...entry, [field]: value } : entry
+    )));
   }
 
   async function savePolicy(e) {
@@ -139,6 +148,22 @@ export default function AdminConfig() {
       setError(err.error || 'Failed to create bank account');
     } finally {
       setCreatingAccount(false);
+    }
+  }
+
+  async function saveTransactionCategories() {
+    resetNotice();
+    setTransactionCategorySaving(true);
+    try {
+      const response = await api.patch('/admin/config/transaction-categories', {
+        categories: transactionCategories,
+      });
+      setTransactionCategories(response.transactionCategories || []);
+      setSuccess('Transaction categories updated.');
+    } catch (err) {
+      setError(err.error || 'Failed to update transaction categories');
+    } finally {
+      setTransactionCategorySaving(false);
     }
   }
 
@@ -451,6 +476,77 @@ export default function AdminConfig() {
               </button>
             </div>
           </form>
+        </div>
+      </section>
+
+      <section className="bg-white rounded-xl border border-gray-200 p-5">
+        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Transaction Categories</h2>
+            <p className="text-sm text-gray-500 mt-1">
+              Keep the banking category names clear for staff. Inactive categories stop showing in banking forms, but old records keep their original category.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={saveTransactionCategories}
+            disabled={transactionCategorySaving}
+            className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
+          >
+            {transactionCategorySaving ? 'Saving...' : 'Save categories'}
+          </button>
+        </div>
+
+        <div className="space-y-4 mt-5">
+          {transactionCategories.map((entry) => (
+            <div key={entry.category} className="rounded-xl border border-gray-200 p-4">
+              <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-semibold text-gray-900">{entry.label || entry.category}</p>
+                    <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${
+                      entry.direction === 'INFLOW'
+                        ? 'border-green-200 bg-green-50 text-green-700'
+                        : 'border-red-200 bg-red-50 text-red-700'
+                    }`}>
+                      {entry.direction === 'INFLOW' ? 'Money in' : 'Money out'}
+                    </span>
+                    {!entry.isActive ? (
+                      <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-500">
+                        Hidden from forms
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-2">{entry.category}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+                <input
+                  type="text"
+                  value={entry.label || ''}
+                  onChange={(e) => updateTransactionCategory(entry.category, 'label', e.target.value)}
+                  placeholder="Category label"
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+                <label className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(entry.isActive)}
+                    onChange={(e) => updateTransactionCategory(entry.category, 'isActive', e.target.checked)}
+                  />
+                  Show this category in banking forms
+                </label>
+                <textarea
+                  value={entry.description || ''}
+                  onChange={(e) => updateTransactionCategory(entry.category, 'description', e.target.value)}
+                  rows="2"
+                  placeholder="Short help text for staff"
+                  className="md:col-span-2 border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+          ))}
         </div>
       </section>
     </div>

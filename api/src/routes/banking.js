@@ -9,6 +9,7 @@ import {
   OUTFLOW_CATEGORIES,
   getCategoryDirection,
 } from '../utils/banking.js';
+import { getTransactionCategoryConfig } from '../utils/appSettings.js';
 import { parseProvidusStatement } from '../utils/providusStatement.js';
 
 function toNumber(value) {
@@ -147,6 +148,14 @@ async function createBankTransaction({
 }
 
 export default async function bankingRoutes(fastify) {
+  fastify.get('/banking/meta', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
+    handler: async () => {
+      const transactionCategories = await getTransactionCategoryConfig();
+      return { transactionCategories };
+    },
+  });
+
   fastify.get('/banking/accounts', {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
     handler: async (request, reply) => {

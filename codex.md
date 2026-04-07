@@ -881,3 +881,42 @@ Minimum update format:
   - this is the catalog foundation, not the final non-egg sales workflow yet
   - current sales entry still sells batch egg codes, but reporting and batch linkage now understand catalog items
   - the next likely admin/config follow-up is transaction category management and fuller item usage in future sales flows
+
+## 23. 2026-04-07 Admin Transaction Category Configuration
+
+- Extended Admin/config so banking categories can be managed without changing code.
+- Product behavior in this slice:
+  - category validation is still fixed in the backend
+  - Admin now controls:
+    - user-facing label
+    - staff help text
+    - whether a category appears in banking forms
+  - inactive categories no longer appear in manual banking forms, but old transactions keep their saved category
+- Backend utilities updated:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/src/utils/banking.js`
+    - added default category metadata with labels, descriptions, and directions
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/src/utils/appSettings.js`
+    - added persisted `TRANSACTION_CATEGORIES` app setting helpers
+- Backend routes updated:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/src/routes/admin.js`
+    - `GET /admin/config` now returns transaction categories
+    - added `PATCH /admin/config/transaction-categories`
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/src/routes/banking.js`
+    - added `GET /banking/meta` so banking screens can load the configured category labels and active states
+- Frontend admin page updates:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/pages/AdminConfig.jsx`
+  - new section:
+    - `Transaction Categories`
+  - admin can now rename categories, add clearer staff guidance, and hide unused categories from forms
+- Frontend banking page updates:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/pages/Banking.jsx`
+  - banking now loads category metadata from the server
+  - manual entry, bulk entry, import review, transaction tables, and expense views now use the configured labels
+  - category dropdowns now hide inactive options unless the current record already uses that category
+- Local verification completed:
+  - `node --check` passed for `admin.js`, `banking.js`, `appSettings.js`, and `banking.js` utility
+  - frontend build passed
+- What future Codex sessions should remember:
+  - this slice improves clarity and configuration, not accounting rules
+  - category codes remain enum-backed; Admin changes are presentation and workflow visibility controls
+  - next likely configuration work is customer-facing/business-facing settings that still live in code or repeated constants
