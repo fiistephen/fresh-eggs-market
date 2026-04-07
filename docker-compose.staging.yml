@@ -1,0 +1,35 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: fresh_eggs_staging
+      POSTGRES_USER: fresheggs
+      POSTGRES_PASSWORD: ${STAGING_DB_PASSWORD:?Set STAGING_DB_PASSWORD in .env.staging}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fresheggs"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: ./api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3003
+      DATABASE_URL: postgresql://fresheggs:${STAGING_DB_PASSWORD}@db:5432/fresh_eggs_staging?schema=public
+      JWT_SECRET: ${STAGING_JWT_SECRET:?Set STAGING_JWT_SECRET in .env.staging}
+      CORS_ORIGIN: https://staging.fresheggsmarket.hiddekellabs.com
+    ports:
+      - "127.0.0.1:3003:3003"
+
+volumes:
+  pgdata:

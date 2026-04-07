@@ -37,3 +37,28 @@ Web-only deploy:
 cd /opt/fresh-eggs-market-src
 sudo bash scripts/deploy_vps.sh web
 ```
+
+## Staging
+
+`deploy_vps_staging.sh` deploys the Git-tracked clone into a separate staging environment.
+
+Expected staging layout:
+
+- source clone: `/opt/fresh-eggs-market-src`
+- staging web root: `/home/digivlrx/staging.fresheggsmarket.hiddekellabs.com`
+- staging env file: `/opt/fresh-eggs-market-src/.env.staging`
+- staging compose file: `/opt/fresh-eggs-market-src/docker-compose.staging.yml`
+
+Typical usage:
+
+```bash
+cd /opt/fresh-eggs-market-src
+sudo SEED=1 bash scripts/deploy_vps_staging.sh
+```
+
+Later deploys:
+
+```bash
+cd /opt/fresh-eggs-market-src
+sudo bash scripts/deploy_vps_staging.sh
+```
