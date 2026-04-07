@@ -48,6 +48,20 @@ export const REPORT_CARDS = [
     icon: '🧾',
     accent: 'from-slate-50 to-white border-slate-200',
   },
+  {
+    key: 'batch-summary',
+    title: 'Batch Summary',
+    description: 'Review profit by batch, compare against company target, and spot weak batches quickly.',
+    icon: '📦',
+    accent: 'from-violet-50 to-white border-violet-200',
+  },
+  {
+    key: 'inventory-control',
+    title: 'Inventory Control',
+    description: 'Track active stock, crack alerts, and count issues that need attention.',
+    icon: '🚨',
+    accent: 'from-orange-50 to-white border-orange-200',
+  },
 ];
 
 export function getReportCard(reportType) {

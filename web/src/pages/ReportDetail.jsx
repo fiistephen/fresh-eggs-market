@@ -22,6 +22,12 @@ const SOURCE_LABELS = {
   DIRECT: 'Direct sale',
 };
 
+const CRACK_ALERT_STYLES = {
+  OK: 'bg-green-50 text-green-700 border-green-200',
+  WATCH: 'bg-amber-50 text-amber-700 border-amber-200',
+  ALERT: 'bg-red-50 text-red-700 border-red-200',
+};
+
 function formatCurrency(value) {
   if (value == null) return '—';
   return new Intl.NumberFormat('en-NG', {
@@ -51,6 +57,16 @@ function formatDateTime(value) {
   });
 }
 
+function formatSignedCurrency(value) {
+  const amount = Number(value || 0);
+  const formatted = formatCurrency(Math.abs(amount));
+  return amount > 0 ? `+${formatted}` : amount < 0 ? `-${formatted}` : formatted;
+}
+
+function formatPercent(value) {
+  return `${Number(value || 0).toFixed(2)}%`;
+}
+
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -58,6 +74,14 @@ function todayStr() {
 function monthStartStr() {
   const now = new Date();
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString().slice(0, 10);
+}
+
+function getReportEndpoint(reportType) {
+  if (['batch-summary', 'inventory-control'].includes(reportType)) {
+    return '/reports/operations';
+  }
+
+  return '/reports/sales';
 }
 
 export default function ReportDetail() {
@@ -92,7 +116,7 @@ export default function ReportDetail() {
       const params = new URLSearchParams();
       if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
       if (filters.dateTo) params.set('dateTo', filters.dateTo);
-      const response = await api.get(`/reports/sales?${params.toString()}`);
+      const response = await api.get(`${getReportEndpoint(reportType)}?${params.toString()}`);
       setData(response);
     } catch {
       setError('Failed to load this report');
@@ -176,6 +200,10 @@ function ReportBody({ reportType, data }) {
       return <SalesByEmployeeReport data={data} />;
     case 'receipts':
       return <ReceiptsReport data={data} />;
+    case 'batch-summary':
+      return <BatchSummaryReport data={data} />;
+    case 'inventory-control':
+      return <InventoryControlReport data={data} />;
     default:
       return null;
   }
@@ -493,6 +521,199 @@ function ReceiptsReport({ data }) {
   );
 }
 
+function BatchSummaryReport({ data }) {
+  const policy = data.policy || {};
+  const monthly = data.monthlySummary || {};
+  const batches = data.batchSummary || [];
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white rounded-xl border border-gray-200 p-4">
+        <p className="text-sm font-medium text-gray-900">How to read this report</p>
+        <p className="text-sm text-gray-600 mt-1">
+          This page compares each batch against the current company target of {formatCurrency(policy.targetProfitPerCrate)} profit per crate.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
+        <SummaryCard label="Batches" value={(monthly.totalBatches || 0).toLocaleString()} />
+        <SummaryCard label="Actual profit" value={formatCurrency(monthly.totalActualProfit)} />
+        <SummaryCard label="Policy target" value={formatCurrency(monthly.totalExpectedProfit)} />
+        <SummaryCard label="Variance" value={formatSignedCurrency(monthly.totalVarianceToPolicy)} hint={`${monthly.aboveTargetCount || 0} above target`} />
+        <SummaryCard label="Crack alerts" value={(monthly.crackAlertCount || 0).toLocaleString()} hint={`${formatPercent(monthly.averageCrackRatePercent)} average crack rate`} />
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <Panel title="Profit by batch" body="This shows which batches are carrying performance and which ones are below target.">
+          <BarComparisonChart
+            data={batches.slice(0, 8)}
+            labelKey="batchName"
+            valueKey="grossProfit"
+            valueFormatter={formatCurrency}
+          />
+        </Panel>
+
+        <Panel title="Policy notes" body="Use these figures when reviewing batch performance with management.">
+          <ExecutiveNote label="Average profit per crate" value={formatCurrency(monthly.averageProfitPerCrate)} />
+          <ExecutiveNote label="Above target batches" value={`${monthly.aboveTargetCount || 0} batches`} />
+          <ExecutiveNote label="Below target batches" value={`${monthly.belowTargetCount || 0} batches`} />
+          <ExecutiveNote label="Current crack allowance" value={`${policy.crackAllowancePercent || 0}% temporary threshold`} />
+        </Panel>
+      </div>
+
+      <Panel title="Batch summary" body="Open this when you need the full batch-by-batch picture for the selected period.">
+        <div className="space-y-3">
+          {batches.length === 0 ? (
+            <EmptyPanel text="No batches found for this period." />
+          ) : (
+            batches.map((batch) => (
+              <div key={batch.batchId} className="rounded-xl border border-gray-200 p-4">
+                <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-base font-semibold text-gray-900">{batch.batchName}</h3>
+                      <StatusPill label={batch.status} tone={batch.status === 'CLOSED' ? 'slate' : 'green'} />
+                      <CrackAlertPill alert={batch.crackAlert} />
+                    </div>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Batch date: {formatDate(batch.batchDate)} · Received: {batch.totalReceived.toLocaleString()} crates
+                    </p>
+                  </div>
+
+                  <div className="text-left lg:text-right">
+                    <p className={`text-lg font-bold ${batch.varianceToPolicy >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {formatSignedCurrency(batch.varianceToPolicy)}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">Variance to policy target</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 xl:grid-cols-6 gap-3 mt-4">
+                  <MiniMetric label="Revenue" value={formatCurrency(batch.totalRevenue)} />
+                  <MiniMetric label="Profit" value={formatCurrency(batch.grossProfit)} />
+                  <MiniMetric label="Target" value={formatCurrency(batch.expectedPolicyProfit)} />
+                  <MiniMetric label="Profit/crate" value={formatCurrency(batch.profitPerCrate)} />
+                  <MiniMetric label="Crack rate" value={formatPercent(batch.crackRatePercent)} />
+                  <MiniMetric label="Write-offs" value={`${batch.totalWriteOffs.toLocaleString()} crates`} />
+                </div>
+
+                {batch.latestCount && batch.latestCount.discrepancy !== 0 ? (
+                  <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    Last count on {formatDate(batch.latestCount.countDate)} shows a discrepancy of {batch.latestCount.discrepancy > 0 ? '+' : ''}{batch.latestCount.discrepancy} crates.
+                  </div>
+                ) : null}
+              </div>
+            ))
+          )}
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+function InventoryControlReport({ data }) {
+  const policy = data.policy || {};
+  const control = data.inventoryControl || {};
+  const activeInventory = control.activeInventory || [];
+  const flaggedBatches = control.flaggedBatches || [];
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white rounded-xl border border-gray-200 p-4">
+        <p className="text-sm font-medium text-gray-900">What needs attention</p>
+        <p className="text-sm text-gray-600 mt-1">
+          This report helps the team catch stock issues early. Batches are flagged when cracks move close to or above the current {policy.crackAllowancePercent || 0}% crack allowance, or when the last count has a discrepancy.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
+        <SummaryCard label="Active batches" value={(control.activeBatchCount || 0).toLocaleString()} />
+        <SummaryCard label="On hand" value={(control.totalOnHand || 0).toLocaleString()} hint="crates in stock" />
+        <SummaryCard label="Booked" value={(control.totalBooked || 0).toLocaleString()} hint="already promised" />
+        <SummaryCard label="Available" value={(control.totalAvailable || 0).toLocaleString()} hint="ready for sale" />
+        <SummaryCard label="Flagged batches" value={flaggedBatches.length.toLocaleString()} hint={`${control.totalWriteOffs || 0} write-off crates`} />
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <Panel title="Batches with alerts" body="These are the batches that need a closer look right now.">
+          {flaggedBatches.length === 0 ? (
+            <EmptyPanel text="No crack or count alerts in the selected period." />
+          ) : (
+            <div className="space-y-3">
+              {flaggedBatches.map((batch) => (
+                <div key={batch.batchId} className="rounded-xl border border-gray-200 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-gray-900">{batch.batchName}</p>
+                      <p className="text-sm text-gray-500 mt-1">
+                        On hand: {batch.onHand.toLocaleString()} · Available: {batch.available.toLocaleString()}
+                      </p>
+                    </div>
+                    <CrackAlertPill alert={batch.crackAlert} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 mt-4 text-sm">
+                    <MiniMetric label="Crack rate" value={formatPercent(batch.crackRatePercent)} />
+                    <MiniMetric label="Write-offs" value={`${batch.totalWriteOffs.toLocaleString()} crates`} />
+                  </div>
+                  {batch.latestCount && batch.latestCount.discrepancy !== 0 ? (
+                    <div className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+                      Last count discrepancy: {batch.latestCount.discrepancy > 0 ? '+' : ''}{batch.latestCount.discrepancy} crates on {formatDate(batch.latestCount.countDate)}.
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </Panel>
+
+        <Panel title="Stock by active batch" body="This makes it easier to see where the current stock is concentrated.">
+          <BarComparisonChart
+            data={activeInventory.slice(0, 8)}
+            labelKey="batchName"
+            valueKey="onHand"
+            valueFormatter={(value) => `${Number(value || 0).toLocaleString()} crates`}
+          />
+        </Panel>
+      </div>
+
+      <Panel title="Inventory control table" body="Use this table for the exact stock position and crack status of each active batch.">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[980px]">
+            <thead>
+              <tr className="border-b border-gray-100">
+                <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Batch</th>
+                <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">On hand</th>
+                <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Booked</th>
+                <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Available</th>
+                <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Cracked sold</th>
+                <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Write-offs</th>
+                <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Crack rate</th>
+                <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {activeInventory.map((batch) => (
+                <tr key={batch.batchId} className="border-b border-gray-50">
+                  <td className="py-3 px-4 text-sm font-medium text-gray-900">{batch.batchName}</td>
+                  <td className="py-3 px-4 text-sm text-right">{batch.onHand.toLocaleString()}</td>
+                  <td className="py-3 px-4 text-sm text-right">{batch.booked.toLocaleString()}</td>
+                  <td className="py-3 px-4 text-sm text-right">{batch.available.toLocaleString()}</td>
+                  <td className="py-3 px-4 text-sm text-right">{batch.crackedSoldQuantity.toLocaleString()}</td>
+                  <td className="py-3 px-4 text-sm text-right">{batch.totalWriteOffs.toLocaleString()}</td>
+                  <td className="py-3 px-4 text-sm text-right">{formatPercent(batch.crackRatePercent)}</td>
+                  <td className="py-3 px-4 text-sm">
+                    <CrackAlertPill alert={batch.crackAlert} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
 function Panel({ title, body, children }) {
   return (
     <section className="bg-white rounded-xl border border-gray-200 p-5">
@@ -656,6 +877,39 @@ function ExecutiveNote({ label, value }) {
       <p className="text-xs uppercase tracking-wide text-gray-400">{label}</p>
       <p className="text-sm font-medium text-gray-900 mt-2">{value}</p>
     </div>
+  );
+}
+
+function MiniMetric({ label, value }) {
+  return (
+    <div className="rounded-lg bg-gray-50 px-3 py-2">
+      <p className="text-xs uppercase tracking-wide text-gray-400">{label}</p>
+      <p className="text-sm font-semibold text-gray-900 mt-1">{value}</p>
+    </div>
+  );
+}
+
+function StatusPill({ label, tone = 'slate' }) {
+  const tones = {
+    slate: 'bg-slate-100 text-slate-700',
+    green: 'bg-green-100 text-green-700',
+    amber: 'bg-amber-100 text-amber-700',
+  };
+
+  return (
+    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${tones[tone] || tones.slate}`}>
+      {label}
+    </span>
+  );
+}
+
+function CrackAlertPill({ alert }) {
+  if (!alert) return null;
+
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${CRACK_ALERT_STYLES[alert.level] || CRACK_ALERT_STYLES.OK}`}>
+      {alert.label}
+    </span>
   );
 }
 

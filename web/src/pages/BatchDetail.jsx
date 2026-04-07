@@ -436,13 +436,13 @@ function SalesTab({ batch }) {
 // ─── ANALYSIS TAB ─────────────────────────────────────────────
 
 function AnalysisTab({ analysis }) {
-  const { batch, costs, sales, bookings, inventory, profit, prices } = analysis;
+  const { batch, costs, sales, bookings, inventory, profit, prices, cracks, policy } = analysis;
 
   return (
     <div className="space-y-6">
       {/* Profit headline */}
       <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 sm:gap-6">
           <div>
             <p className="text-xs text-gray-400 uppercase tracking-wider">Total Revenue</p>
             <p className="text-2xl font-bold text-gray-900 mt-1">{formatCurrency(sales.totalRevenue)}</p>
@@ -457,6 +457,18 @@ function AnalysisTab({ analysis }) {
               {formatCurrency(profit.grossProfit)}
             </p>
             <p className="text-xs text-gray-400 mt-0.5">{profit.margin}% margin</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400 uppercase tracking-wider">Policy Target</p>
+            <p className="text-2xl font-bold text-gray-900 mt-1">{formatCurrency(profit.expectedPolicyProfit)}</p>
+            <p className="text-xs text-gray-400 mt-0.5">{formatCurrency(policy.targetProfitPerCrate)} per crate</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400 uppercase tracking-wider">Variance To Policy</p>
+            <p className={`text-2xl font-bold mt-1 ${profit.varianceToPolicy >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {profit.varianceToPolicy >= 0 ? '+' : ''}{formatCurrency(Math.abs(profit.varianceToPolicy))}
+            </p>
+            <p className="text-xs text-gray-400 mt-0.5">{formatCurrency(profit.profitPerCrate)} per crate</p>
           </div>
         </div>
       </div>
@@ -534,6 +546,51 @@ function AnalysisTab({ analysis }) {
           <div>
             <p className="text-xs text-gray-400">Available for Sale</p>
             <p className="text-lg font-semibold text-green-600">{inventory.availableForSale.toLocaleString()}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
+          <div>
+            <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Crack Control</h3>
+            <p className="text-sm text-gray-500 mt-1">Track mildly cracked crates sold at discount separately from totally damaged write-offs.</p>
+          </div>
+          <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
+            cracks.crackAlert.level === 'ALERT'
+              ? 'bg-red-50 text-red-700'
+              : cracks.crackAlert.level === 'WATCH'
+                ? 'bg-amber-50 text-amber-700'
+                : 'bg-green-50 text-green-700'
+          }`}>
+            {cracks.crackAlert.label}
+          </span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+          <div>
+            <p className="text-xs text-gray-400">Cracked Sold</p>
+            <p className="text-lg font-semibold">{cracks.crackedSoldQuantity.toLocaleString()} crates</p>
+            <p className="text-xs text-gray-400 mt-0.5">{formatCurrency(cracks.crackedSoldValue)}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400">Damaged Write-off</p>
+            <p className="text-lg font-semibold text-red-600">{cracks.totalDamagedWriteOff.toLocaleString()} crates</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400">Total Crack Impact</p>
+            <p className="text-lg font-semibold">{cracks.totalCrackImpact.toLocaleString()} crates</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400">Crack Rate</p>
+            <p className={`text-lg font-semibold ${
+              cracks.crackAlert.level === 'ALERT'
+                ? 'text-red-600'
+                : cracks.crackAlert.level === 'WATCH'
+                  ? 'text-amber-600'
+                  : 'text-green-600'
+            }`}>
+              {cracks.crackRatePercent.toFixed(2)}%
+            </p>
           </div>
         </div>
       </div>

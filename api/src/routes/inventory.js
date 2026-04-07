@@ -1,6 +1,12 @@
 import prisma from '../plugins/prisma.js';
 import { authenticate } from '../plugins/auth.js';
 import { authorize } from '../middleware/authorize.js';
+import {
+  DEFAULT_CRACK_ALLOWANCE_PERCENT,
+  buildCrackAlert,
+  roundTo2,
+  safeDivide,
+} from '../utils/operationsPolicy.js';
 
 // Helper: compute system count for a batch (received - sold - written off)
 async function computeSystemCount(batchId) {
@@ -60,6 +66,15 @@ export default async function inventoryRoutes(fastify) {
         });
         const totalWrittenOff = writeOffAgg._sum.crackedWriteOff || 0;
 
+        const crackedSoldAgg = await prisma.saleLineItem.aggregate({
+          where: {
+            sale: { batchId: batch.id },
+            saleType: 'CRACKED',
+          },
+          _sum: { quantity: true },
+        });
+        const crackedSoldQuantity = crackedSoldAgg._sum.quantity || 0;
+
         const bookedAgg = await prisma.booking.aggregate({
           where: { batchId: batch.id, status: 'CONFIRMED' },
           _sum: { quantity: true },
@@ -75,6 +90,9 @@ export default async function inventoryRoutes(fastify) {
           orderBy: { countDate: 'desc' },
           include: { enteredBy: { select: { firstName: true, lastName: true } } },
         });
+
+        const crackRatePercent = roundTo2(safeDivide((totalWrittenOff + crackedSoldQuantity) * 100, totalReceived));
+        const crackAlert = buildCrackAlert(crackRatePercent);
 
         inventory.push({
           batch: {
@@ -92,6 +110,9 @@ export default async function inventoryRoutes(fastify) {
           totalReceived,
           totalSold,
           totalWrittenOff,
+          crackedSoldQuantity,
+          crackRatePercent,
+          crackAlert,
           onHand,
           booked: totalBooked,
           available: Math.max(0, available),
@@ -115,14 +136,22 @@ export default async function inventoryRoutes(fastify) {
           totalReceived: acc.totalReceived + i.totalReceived,
           totalSold: acc.totalSold + i.totalSold,
           totalWrittenOff: acc.totalWrittenOff + i.totalWrittenOff,
+          crackedSoldQuantity: acc.crackedSoldQuantity + i.crackedSoldQuantity,
           onHand: acc.onHand + i.onHand,
           booked: acc.booked + i.booked,
           available: acc.available + i.available,
+          alertCount: acc.alertCount + (i.crackAlert.level === 'ALERT' ? 1 : 0),
         }),
-        { totalReceived: 0, totalSold: 0, totalWrittenOff: 0, onHand: 0, booked: 0, available: 0 }
+        { totalReceived: 0, totalSold: 0, totalWrittenOff: 0, crackedSoldQuantity: 0, onHand: 0, booked: 0, available: 0, alertCount: 0 }
       );
 
-      return reply.send({ inventory, totals });
+      return reply.send({
+        inventory,
+        totals,
+        policy: {
+          crackAllowancePercent: DEFAULT_CRACK_ALLOWANCE_PERCENT,
+        },
+      });
     },
   });
 

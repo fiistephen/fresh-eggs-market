@@ -1,6 +1,12 @@
 import prisma from '../plugins/prisma.js';
 import { authenticate } from '../plugins/auth.js';
 import { authorize } from '../middleware/authorize.js';
+import {
+  POLICY_TARGET_PROFIT_PER_CRATE,
+  buildCrackAlert,
+  roundTo2,
+  safeDivide,
+} from '../utils/operationsPolicy.js';
 
 export default async function batchRoutes(fastify) {
 
@@ -385,6 +391,20 @@ export default async function batchRoutes(fastify) {
       // Inventory
       const totalReceived = batch.actualQuantity || 0;
       const remaining = totalReceived - totalSold;
+      const totalWriteOffs = await prisma.inventoryCount.aggregate({
+        where: { batchId: batch.id },
+        _sum: { crackedWriteOff: true },
+      });
+      const totalDamagedWriteOff = totalWriteOffs._sum.crackedWriteOff || 0;
+      const crackedSoldQuantity = salesQuantity.CRACKED || 0;
+      const crackedSoldValue = salesBreakdown.CRACKED || 0;
+      const totalCrackImpact = crackedSoldQuantity + totalDamagedWriteOff;
+      const crackRatePercent = roundTo2(safeDivide(totalCrackImpact * 100, totalReceived));
+      const crackAlert = buildCrackAlert(crackRatePercent);
+      const grossProfit = totalRevenue - totalSaleCost;
+      const expectedPolicyProfit = totalReceived * POLICY_TARGET_PROFIT_PER_CRATE;
+      const varianceToPolicy = grossProfit - expectedPolicyProfit;
+      const profitPerCrate = roundTo2(safeDivide(grossProfit, totalReceived));
 
       return reply.send({
         batch: {
@@ -427,14 +447,28 @@ export default async function batchRoutes(fastify) {
           bookedPortion: totalBooked,
           availableForSale: remaining - totalBooked,
         },
+        cracks: {
+          crackedSoldQuantity,
+          crackedSoldValue,
+          totalDamagedWriteOff,
+          totalCrackImpact,
+          crackRatePercent,
+          crackAlert,
+        },
         profit: {
-          grossProfit: totalRevenue - totalSaleCost,
-          margin: totalRevenue > 0 ? Number(((totalRevenue - totalSaleCost) / totalRevenue * 100).toFixed(2)) : 0,
+          grossProfit,
+          margin: totalRevenue > 0 ? Number((safeDivide(grossProfit * 100, totalRevenue)).toFixed(2)) : 0,
+          profitPerCrate,
+          expectedPolicyProfit,
+          varianceToPolicy,
         },
         prices: {
           wholesalePrice: Number(batch.wholesalePrice),
           retailPrice: Number(batch.retailPrice),
           costPrice: Number(batch.costPrice),
+        },
+        policy: {
+          targetProfitPerCrate: POLICY_TARGET_PROFIT_PER_CRATE,
         },
       });
     },

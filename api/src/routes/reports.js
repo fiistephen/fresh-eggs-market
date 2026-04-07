@@ -1,6 +1,13 @@
 import prisma from '../plugins/prisma.js';
 import { authenticate } from '../plugins/auth.js';
 import { authorize } from '../middleware/authorize.js';
+import {
+  POLICY_TARGET_PROFIT_PER_CRATE,
+  DEFAULT_CRACK_ALLOWANCE_PERCENT,
+  buildCrackAlert,
+  roundTo2,
+  safeDivide,
+} from '../utils/operationsPolicy.js';
 
 function startOfDay(value) {
   const date = new Date(value);
@@ -22,11 +29,6 @@ function buildDateRangeWhere({ dateFrom, dateTo }) {
   if (dateTo) saleDate.lte = endOfDay(dateTo);
 
   return { saleDate };
-}
-
-function safeDivide(numerator, denominator) {
-  if (!denominator) return 0;
-  return numerator / denominator;
 }
 
 export default async function reportsRoutes(fastify) {
@@ -244,6 +246,182 @@ export default async function reportsRoutes(fastify) {
         byPaymentMethod,
         byEmployee,
         receipts,
+      });
+    },
+  });
+
+  fastify.get('/reports/operations', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER')],
+    handler: async (request, reply) => {
+      const { dateFrom, dateTo } = request.query;
+
+      const batches = await prisma.batch.findMany({
+        where: {
+          status: { in: ['RECEIVED', 'CLOSED'] },
+        },
+        include: {
+          eggCodes: true,
+          bookings: {
+            where: { status: 'CONFIRMED' },
+            select: { id: true, quantity: true },
+          },
+          inventory: {
+            select: {
+              id: true,
+              countDate: true,
+              physicalCount: true,
+              systemCount: true,
+              discrepancy: true,
+              crackedWriteOff: true,
+              notes: true,
+            },
+            orderBy: { countDate: 'desc' },
+          },
+          sales: {
+            include: {
+              lineItems: {
+                include: {
+                  batchEggCode: { select: { id: true, code: true } },
+                },
+              },
+            },
+          },
+        },
+        orderBy: [{ closedDate: 'desc' }, { receivedDate: 'desc' }, { expectedDate: 'desc' }],
+      });
+
+      const filteredBatches = batches.filter((batch) => {
+        const batchDate = batch.closedDate || batch.receivedDate || batch.expectedDate;
+        if (!batchDate) return !dateFrom && !dateTo;
+        if (dateFrom && batchDate < startOfDay(dateFrom)) return false;
+        if (dateTo && batchDate > endOfDay(dateTo)) return false;
+        return true;
+      });
+
+      const batchSummary = filteredBatches.map((batch) => {
+        const totalReceived = batch.eggCodes.reduce((sum, eggCode) => sum + eggCode.quantity + eggCode.freeQty, 0);
+        const totalBookings = batch.bookings.reduce((sum, booking) => sum + booking.quantity, 0);
+        const totalWriteOffs = batch.inventory.reduce((sum, count) => sum + count.crackedWriteOff, 0);
+        const latestCount = batch.inventory[0] || null;
+
+        let totalRevenue = 0;
+        let totalSaleCost = 0;
+        let totalSold = 0;
+        let crackedSoldQuantity = 0;
+        let crackedSoldValue = 0;
+
+        for (const sale of batch.sales) {
+          for (const item of sale.lineItems) {
+            const lineValue = Number(item.lineTotal);
+            const lineCost = Number(item.costPrice) * item.quantity;
+
+            totalRevenue += lineValue;
+            totalSaleCost += lineCost;
+            totalSold += item.quantity;
+
+            if (item.saleType === 'CRACKED') {
+              crackedSoldQuantity += item.quantity;
+              crackedSoldValue += lineValue;
+            }
+          }
+        }
+
+        const remaining = totalReceived - totalSold - totalWriteOffs;
+        const grossProfit = totalRevenue - totalSaleCost;
+        const expectedPolicyProfit = totalReceived * POLICY_TARGET_PROFIT_PER_CRATE;
+        const varianceToPolicy = grossProfit - expectedPolicyProfit;
+        const profitPerCrate = roundTo2(safeDivide(grossProfit, totalReceived));
+        const totalCrackImpact = crackedSoldQuantity + totalWriteOffs;
+        const crackRatePercent = roundTo2(safeDivide(totalCrackImpact * 100, totalReceived));
+        const crackAlert = buildCrackAlert(crackRatePercent);
+
+        return {
+          batchId: batch.id,
+          batchName: batch.name,
+          status: batch.status,
+          batchDate: batch.closedDate || batch.receivedDate || batch.expectedDate,
+          totalReceived,
+          totalSold,
+          totalBookings,
+          totalWriteOffs,
+          remaining,
+          totalRevenue,
+          totalSaleCost,
+          grossProfit,
+          expectedPolicyProfit,
+          varianceToPolicy,
+          profitPerCrate,
+          crackedSoldQuantity,
+          crackedSoldValue,
+          crackRatePercent,
+          crackAlert,
+          latestCount: latestCount ? {
+            countDate: latestCount.countDate,
+            discrepancy: latestCount.discrepancy,
+            crackedWriteOff: latestCount.crackedWriteOff,
+            notes: latestCount.notes,
+          } : null,
+        };
+      }).sort((a, b) => new Date(b.batchDate || 0) - new Date(a.batchDate || 0));
+
+      const monthlySummary = {
+        totalBatches: batchSummary.length,
+        aboveTargetCount: batchSummary.filter((row) => row.varianceToPolicy > 0).length,
+        belowTargetCount: batchSummary.filter((row) => row.varianceToPolicy < 0).length,
+        crackAlertCount: batchSummary.filter((row) => row.crackAlert.level === 'ALERT').length,
+        totalReceived: batchSummary.reduce((sum, row) => sum + row.totalReceived, 0),
+        totalActualProfit: batchSummary.reduce((sum, row) => sum + row.grossProfit, 0),
+        totalExpectedProfit: batchSummary.reduce((sum, row) => sum + row.expectedPolicyProfit, 0),
+        totalVarianceToPolicy: batchSummary.reduce((sum, row) => sum + row.varianceToPolicy, 0),
+        averageProfitPerCrate: roundTo2(safeDivide(
+          batchSummary.reduce((sum, row) => sum + row.grossProfit, 0),
+          batchSummary.reduce((sum, row) => sum + row.totalReceived, 0),
+        )),
+        averageCrackRatePercent: roundTo2(safeDivide(
+          batchSummary.reduce((sum, row) => sum + row.crackRatePercent, 0),
+          batchSummary.length,
+        )),
+      };
+
+      const activeInventory = batchSummary
+        .filter((row) => row.status === 'RECEIVED')
+        .map((row) => ({
+          batchId: row.batchId,
+          batchName: row.batchName,
+          onHand: Math.max(0, row.remaining),
+          booked: row.totalBookings,
+          available: Math.max(0, row.remaining - row.totalBookings),
+          totalWriteOffs: row.totalWriteOffs,
+          crackedSoldQuantity: row.crackedSoldQuantity,
+          crackRatePercent: row.crackRatePercent,
+          crackAlert: row.crackAlert,
+          latestCount: row.latestCount,
+        }))
+        .sort((a, b) => b.onHand - a.onHand);
+
+      const inventoryControl = {
+        activeBatchCount: activeInventory.length,
+        totalOnHand: activeInventory.reduce((sum, row) => sum + row.onHand, 0),
+        totalBooked: activeInventory.reduce((sum, row) => sum + row.booked, 0),
+        totalAvailable: activeInventory.reduce((sum, row) => sum + row.available, 0),
+        totalWriteOffs: activeInventory.reduce((sum, row) => sum + row.totalWriteOffs, 0),
+        totalCrackedSold: activeInventory.reduce((sum, row) => sum + row.crackedSoldQuantity, 0),
+        flaggedBatches: activeInventory.filter((row) => row.crackAlert.level !== 'OK' || (row.latestCount && row.latestCount.discrepancy !== 0)),
+        activeInventory,
+      };
+
+      return reply.send({
+        filters: {
+          dateFrom: dateFrom || null,
+          dateTo: dateTo || null,
+        },
+        policy: {
+          targetProfitPerCrate: POLICY_TARGET_PROFIT_PER_CRATE,
+          crackAllowancePercent: DEFAULT_CRACK_ALLOWANCE_PERCENT,
+        },
+        batchSummary,
+        monthlySummary,
+        inventoryControl,
       });
     },
   });

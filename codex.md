@@ -675,3 +675,53 @@ Minimum update format:
   - Executive Summary is now part of the core reporting plan
   - this is the first investor/funder-facing report layer, not the final grant/investor reporting suite
   - future reporting work should keep prioritizing clarity, plain language, and useful visuals over dense dashboards
+
+## 19. 2026-04-07 Batch Policy And Inventory Control Slice
+
+- After the first Reports expansion, the next roadmap slice implemented was the control layer around batches and inventory.
+- Why this came next:
+  - the V2 plan puts multi-batch inventory logic and control after the reporting center foundation
+  - meeting 2 repeatedly stressed crack monitoring, batch performance against company policy, and easier management review
+- New backend policy helper file:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/src/utils/operationsPolicy.js`
+- Temporary policy assumptions now in code:
+  - target profit per crate: NGN 500
+  - temporary crack allowance threshold: 2%
+  - this threshold is still provisional until operations confirms the final allowance
+- Backend reporting updates:
+  - expanded `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/src/routes/reports.js`
+  - added `GET /reports/operations`
+  - new response areas:
+    - `batchSummary`
+    - `monthlySummary`
+    - `inventoryControl`
+- New reports added to the Reports center:
+  - `Batch Summary`
+  - `Inventory Control`
+- Frontend reporting updates:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/pages/reportsCatalog.js`
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/pages/ReportDetail.jsx`
+- User-facing report behavior added:
+  - Batch Summary now shows batch profit, policy target, variance, profit per crate, crack rate, and latest count issue
+  - Inventory Control now shows active stock, flagged batches, crack alerts, and count discrepancies
+- Batch analysis updates:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/src/routes/batches.js`
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/pages/BatchDetail.jsx`
+  - batch analysis now includes:
+    - expected policy profit
+    - variance to policy
+    - profit per crate
+    - cracked sold quantity/value
+    - damaged write-offs
+    - crack rate and alert state
+- Inventory page updates:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/src/routes/inventory.js`
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/pages/Inventory.jsx`
+  - inventory overview now shows crack-aware stock cards and highlights batches that exceed the current allowance
+- Local verification completed:
+  - `node --check` passed for `reports.js`, `inventory.js`, and `batches.js`
+  - frontend build passed
+- What future Codex sessions should remember:
+  - this is a Phase 5 control slice, not the final multi-batch sale-sourcing rewrite yet
+  - the current crack threshold in code is temporary and should be revisited when the final allowance is agreed
+  - next likely high-value work after review is admin/configuration for policy settings or the deeper multi-batch fulfillment model

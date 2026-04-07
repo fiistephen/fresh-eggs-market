@@ -6,6 +6,11 @@ const fmt = (n) => Number(n).toLocaleString('en-NG');
 const fmtMoney = (n) => '₦' + Number(n).toLocaleString('en-NG', { minimumFractionDigits: 0 });
 const fmtDate = (d) => new Date(d).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' });
 const today = () => new Date().toISOString().slice(0, 10);
+const crackTone = {
+  OK: 'bg-green-50 text-green-700 border-green-200',
+  WATCH: 'bg-amber-50 text-amber-700 border-amber-200',
+  ALERT: 'bg-red-50 text-red-700 border-red-200',
+};
 
 // ─── STAT CARD ───────────────────────────────────────────────────
 function StatCard({ label, value, sub, color = 'gray', icon }) {
@@ -270,7 +275,7 @@ function BatchDetailModal({ batchId, onClose }) {
 }
 
 // ─── INVENTORY OVERVIEW TAB ──────────────────────────────────────
-function OverviewTab({ inventory, totals, loading, onRefresh }) {
+function OverviewTab({ inventory, totals, policy, loading, onRefresh }) {
   const [showCount, setShowCount] = useState(false);
   const [detailBatchId, setDetailBatchId] = useState(null);
 
@@ -278,15 +283,29 @@ function OverviewTab({ inventory, totals, loading, onRefresh }) {
 
   return (
     <div>
+      <div className="mb-4 rounded-xl border border-gray-200 bg-white p-4">
+        <p className="text-sm font-medium text-gray-900">Inventory control focus</p>
+        <p className="text-sm text-gray-600 mt-1">
+          This page now helps the team watch crack losses more closely. Any batch above the current {policy?.crackAllowancePercent || 0}% crack allowance should be investigated.
+        </p>
+      </div>
+
       {/* Summary cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 mb-6">
         <StatCard label="Total Received" value={fmt(totals.totalReceived)} sub="crates" color="gray" icon="📦" />
         <StatCard label="Total Sold" value={fmt(totals.totalSold)} sub="crates" color="green" icon="✅" />
         <StatCard label="Written Off" value={fmt(totals.totalWrittenOff)} sub="crates" color="red" icon="🗑" />
+        <StatCard label="Cracked Sold" value={fmt(totals.crackedSoldQuantity || 0)} sub="discounted crates" color="amber" icon="🥚" />
         <StatCard label="On Hand" value={fmt(totals.onHand)} sub="crates in depot" color="blue" icon="🏪" />
         <StatCard label="Booked" value={fmt(totals.booked)} sub="awaiting pickup" color="amber" icon="📋" />
         <StatCard label="Available" value={fmt(totals.available)} sub="for walk-ins" color="purple" icon="🛒" />
       </div>
+
+      {(totals.alertCount || 0) > 0 && (
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {totals.alertCount} batch{totals.alertCount === 1 ? '' : 'es'} {totals.alertCount === 1 ? 'is' : 'are'} above the current crack allowance. Open those batches and review counts or handling quickly.
+        </div>
+      )}
 
       {/* Action button */}
       <div className="flex justify-between items-center mb-4">
@@ -308,7 +327,12 @@ function OverviewTab({ inventory, totals, loading, onRefresh }) {
             <div key={item.batch.id} className="bg-white border rounded-xl p-4 hover:shadow-md transition-shadow cursor-pointer" onClick={() => setDetailBatchId(item.batch.id)}>
               <div className="flex items-center justify-between mb-3">
                 <div>
-                  <h4 className="font-bold text-lg">{item.batch.name}</h4>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="font-bold text-lg">{item.batch.name}</h4>
+                    <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${crackTone[item.crackAlert?.level] || crackTone.OK}`}>
+                      {item.crackAlert?.label || 'Within crack allowance'}
+                    </span>
+                  </div>
                   <p className="text-xs text-gray-400">Received {fmtDate(item.batch.receivedDate)} · {item.batch.eggCodes.map(ec => ec.code).join(', ')}</p>
                 </div>
                 <div className="text-right">
@@ -324,6 +348,7 @@ function OverviewTab({ inventory, totals, loading, onRefresh }) {
                 <span>Sold: <b className="text-green-600">{fmt(item.totalSold)}</b></span>
                 <span>Booked: <b className="text-amber-600">{fmt(item.booked)}</b></span>
                 <span>Available: <b className="text-blue-600">{fmt(item.available)}</b></span>
+                <span>Crack rate: <b className={item.crackAlert?.level === 'ALERT' ? 'text-red-600' : item.crackAlert?.level === 'WATCH' ? 'text-amber-600' : 'text-green-600'}>{Number(item.crackRatePercent || 0).toFixed(2)}%</b></span>
                 {item.totalWrittenOff > 0 && <span>Write-off: <b className="text-red-500">{fmt(item.totalWrittenOff)}</b></span>}
               </div>
 
@@ -530,7 +555,8 @@ function WriteOffsTab() {
 export default function Inventory() {
   const [tab, setTab] = useState('overview');
   const [inventory, setInventory] = useState([]);
-  const [totals, setTotals] = useState({ totalReceived: 0, totalSold: 0, totalWrittenOff: 0, onHand: 0, booked: 0, available: 0 });
+  const [totals, setTotals] = useState({ totalReceived: 0, totalSold: 0, totalWrittenOff: 0, crackedSoldQuantity: 0, onHand: 0, booked: 0, available: 0, alertCount: 0 });
+  const [policy, setPolicy] = useState({ crackAllowancePercent: 0 });
   const [loading, setLoading] = useState(true);
 
   const loadInventory = useCallback(async () => {
@@ -539,6 +565,7 @@ export default function Inventory() {
       const res = await api.get('/inventory');
       setInventory(res.inventory || []);
       setTotals(res.totals || totals);
+      setPolicy(res.policy || { crackAllowancePercent: 0 });
     } catch (err) {
       console.error(err);
     } finally {
@@ -572,7 +599,7 @@ export default function Inventory() {
         </div>
       </div>
 
-      {tab === 'overview' && <OverviewTab inventory={inventory} totals={totals} loading={loading} onRefresh={loadInventory} />}
+      {tab === 'overview' && <OverviewTab inventory={inventory} totals={totals} policy={policy} loading={loading} onRefresh={loadInventory} />}
       {tab === 'counts' && <CountHistoryTab />}
       {tab === 'writeoffs' && <WriteOffsTab />}
     </div>
