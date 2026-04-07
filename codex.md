@@ -301,3 +301,95 @@ Minimum update format:
 - what changed
 - why it changed
 - what future Codex sessions should remember
+
+## 10. 2026-04-07 V2 Planning Update
+
+- Reviewed the original build transcript, the review transcript, the current V1 app, the sample Providus bank statement, the sample Medusa settlement report, and the supporting screenshots.
+- Confirmed from `claude.md` that the product direction is full replacement of Loyverse, not integration.
+- Created a formal V2 specification document at:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/V2_IMPLEMENTATION_SPEC.md`
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/V2_IMPLEMENTATION_SPEC.md`
+- Locked in the core V2 architecture direction:
+  - banking first
+  - allocation-driven bookings
+  - sales linked to money trail
+  - dedicated Reports module
+  - multi-batch sales support
+  - admin-managed catalog/configuration
+  - portal expansion after internal workflow correction
+- Added a new required financial account concept for V2:
+  - `Cash on Hand`
+  - this should behave like a pseudo-bank account for cash sales and later banking transfers
+- Screenshots are references for workflow meaning and report structure only. V2 UI should be clearer and better than the source tools, not visually cloned from them.
+- Remaining helpful inputs for implementation:
+  - one real manual batch analysis sample
+  - one receipt print example
+  - final crack allowance threshold
+  - confirmation on whether refunds should appear in receipt log as a separate receipt type
+
+- Created an execution-ready Phase 1 build document focused on Banking Foundation:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/V2_PHASE_1_BANKING_EXECUTION_PLAN.md`
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/V2_PHASE_1_BANKING_EXECUTION_PLAN.md`
+- Phase 1 is locked to: Cash on Hand, bulk banking entry, Providus CSV import, review/post workflow, internal transfers, and reconciliation.
+- Phase 1 intentionally does not yet rewrite bookings or sales; it prepares the financial layer they will depend on.
+
+## 11. 2026-04-07 Phase 1 Banking Implementation Progress
+
+- Implemented the core Phase 1 banking backend foundation in the repo.
+- Prisma schema changes added:
+  - `CASH_ON_HAND` bank account type
+  - bank account flags for `isVirtual`, `supportsStatementImport`, and `sortOrder`
+  - new transaction categories for unallocated income/expense, cash sale, and internal transfers
+  - new `TransactionSourceType`, `StatementProvider`, `StatementImportStatus`, `StatementLineReviewStatus`, and `ReconciliationStatus` enums
+  - new models:
+    - `BankStatementImport`
+    - `BankStatementLine`
+    - `BankReconciliation`
+- Updated seed logic to create a fourth account:
+  - `Cash on Hand`
+  - virtual account
+  - no statement import
+  - `lastFour = CASH`
+- Added backend utilities:
+  - `api/src/utils/banking.js`
+  - `api/src/utils/providusStatement.js`
+- Rebuilt `api/src/routes/banking.js` to support:
+  - account summaries with reconciliation context
+  - manual transaction entry
+  - bulk transaction entry
+  - internal transfers
+  - Providus statement preview import
+  - statement import review and posting
+  - reconciliation creation and history
+  - existing unbooked deposit, liability, expense, and daily summary endpoints preserved
+- Added a missing backend endpoint needed by the new UI:
+  - `GET /banking/imports`
+- Updated alert logic so future cash workflow can recognize:
+  - old cash deposit behavior
+  - new `Cash on Hand -> bank` internal transfer behavior
+- Rebuilt the frontend banking screen in:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/pages/Banking.jsx`
+- The new Banking UI now includes:
+  - workspace overview
+  - richer account cards
+  - manual banking entry modal
+  - bulk banking entry modal
+  - internal transfer modal
+  - Providus statement import modal
+  - import queue and per-line review
+  - reconciliation history
+  - reconciliation creation modal
+- Updated dashboard bank-account visuals to account for the fourth `Cash on Hand` account.
+- Verification completed:
+  - frontend build passes locally after reinstalling web dependencies
+  - backend route syntax passes
+  - Prisma schema validates after adding the missing `Customer.statementLines` back relation
+  - Prisma client generates successfully locally
+  - banking route module imports successfully after Prisma client generation
+- Important local environment note:
+  - the API repo did not have local dependencies installed when implementation started
+  - the web repo had a broken Rollup optional dependency and needed `npm i` before `vite build` worked
+- What future Codex sessions should remember:
+  - Phase 1 foundation is implemented in code, but database migration and live deployment are still separate steps
+  - bookings and sales have not yet been rewritten to use allocations or auto-flow into the new banking foundation
+  - the next logical build step is Phase 2: payment allocation plus booking rewrite

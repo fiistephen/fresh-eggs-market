@@ -52,6 +52,7 @@ function BankCard({ name, type, balance }) {
     CUSTOMER_DEPOSIT: 'border-l-blue-500',
     SALES: 'border-l-green-500',
     PROFIT: 'border-l-purple-500',
+    CASH_ON_HAND: 'border-l-amber-500',
   };
   const shortName = name.replace(' Account', '');
   return (
@@ -233,7 +234,7 @@ export default function Dashboard() {
         {/* Bank balances */}
         <div className="bg-white rounded-xl border p-4 lg:col-span-2">
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Bank Balances</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
             {(d.bank || []).map(b => <BankCard key={b.name} {...b} />)}
           </div>
           {d.bank && d.bank.length > 0 && (

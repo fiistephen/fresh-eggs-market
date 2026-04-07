@@ -37,19 +37,60 @@ async function main() {
   });
   console.log(`  ✓ Manager user: ${manager.email}`);
 
-  // Create 3 bank accounts
+  // Create core bank accounts
   const accounts = [
-    { name: 'Customer Deposit Account', accountType: 'CUSTOMER_DEPOSIT', lastFour: '0010' },
-    { name: 'Sales Account', accountType: 'SALES', lastFour: '0020' },
-    { name: 'Profit Account', accountType: 'PROFIT', lastFour: '0030' },
+    {
+      name: 'Customer Deposit Account',
+      accountType: 'CUSTOMER_DEPOSIT',
+      lastFour: '0010',
+      bankName: 'Providus Bank',
+      isVirtual: false,
+      supportsStatementImport: true,
+      sortOrder: 10,
+    },
+    {
+      name: 'Sales Account',
+      accountType: 'SALES',
+      lastFour: '0020',
+      bankName: 'Providus Bank',
+      isVirtual: false,
+      supportsStatementImport: true,
+      sortOrder: 20,
+    },
+    {
+      name: 'Profit Account',
+      accountType: 'PROFIT',
+      lastFour: '0030',
+      bankName: 'Providus Bank',
+      isVirtual: false,
+      supportsStatementImport: true,
+      sortOrder: 30,
+    },
+    {
+      name: 'Cash on Hand',
+      accountType: 'CASH_ON_HAND',
+      lastFour: 'CASH',
+      bankName: 'Internal Ledger',
+      isVirtual: true,
+      supportsStatementImport: false,
+      sortOrder: 40,
+    },
   ];
 
   for (const acc of accounts) {
-    await prisma.bankAccount.upsert({
-      where: { id: acc.lastFour }, // Will fail on first run, so use create
-      update: {},
-      create: acc,
+    const existing = await prisma.bankAccount.findFirst({
+      where: { name: acc.name },
     });
+
+    if (existing) {
+      await prisma.bankAccount.update({
+        where: { id: existing.id },
+        data: acc,
+      });
+    } else {
+      await prisma.bankAccount.create({ data: acc });
+    }
+
     console.log(`  ✓ Bank account: ${acc.name}`);
   }
 

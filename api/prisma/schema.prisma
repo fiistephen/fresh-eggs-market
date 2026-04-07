@@ -33,9 +33,11 @@ model User {
   updatedAt    DateTime @updatedAt @map("updated_at")
 
   refreshTokens  RefreshToken[]
-  salesRecorded  Sale[]           @relation("SaleRecordedBy")
-  bankTransactions BankTransaction[] @relation("TransactionEnteredBy")
-  inventoryCounts  InventoryCount[] @relation("CountEnteredBy")
+  salesRecorded    Sale[]              @relation("SaleRecordedBy")
+  bankTransactions BankTransaction[]   @relation("TransactionEnteredBy")
+  inventoryCounts  InventoryCount[]    @relation("CountEnteredBy")
+  statementImports BankStatementImport[] @relation("StatementImportedBy")
+  reconciliations  BankReconciliation[]  @relation("ReconciledBy")
 
   @@map("users")
 }
@@ -67,6 +69,7 @@ model Customer {
   bookings         Booking[]
   sales            Sale[]
   bankTransactions BankTransaction[]
+  statementLines   BankStatementLine[]
 
   @@map("customers")
 }
@@ -215,6 +218,7 @@ enum BankAccountType {
   CUSTOMER_DEPOSIT  // Ends in 10, publicly known
   SALES             // Funded weekly from customer deposit
   PROFIT            // Funded monthly from sales, pays all expenses
+  CASH_ON_HAND      // Virtual cash ledger for cash sales before banking
 }
 
 model BankAccount {
@@ -224,9 +228,14 @@ model BankAccount {
   lastFour     String          @map("last_four") // Last 4 digits for display
   bankName     String          @default("Providus Bank") @map("bank_name")
   isActive     Boolean         @default(true) @map("is_active")
+  isVirtual    Boolean         @default(false) @map("is_virtual")
+  supportsStatementImport Boolean @default(true) @map("supports_statement_import")
+  sortOrder    Int             @default(0) @map("sort_order")
   createdAt    DateTime        @default(now()) @map("created_at")
 
   transactions BankTransaction[]
+  statementImports BankStatementImport[]
+  reconciliations BankReconciliation[]
 
   @@map("bank_accounts")
 }
@@ -243,6 +252,9 @@ enum TransactionCategory {
   SALES_TRANSFER_IN   // Weekly transfer from Customer Deposit → Sales account
   PROFIT_TRANSFER_IN  // Monthly transfer from Sales → Profit account
   POS_SETTLEMENT      // Medusa/bank settlement of card transactions
+  UNALLOCATED_INCOME  // Imported or reviewed inflow not fully classified yet
+  CASH_SALE           // Cash sale recorded into Cash on Hand
+  INTERNAL_TRANSFER_IN // Internal movement into account
 
   // Outflows
   REFUND
@@ -255,6 +267,41 @@ enum TransactionCategory {
   INTERNET
   MARKETING
   OTHER_EXPENSE
+  UNALLOCATED_EXPENSE // Imported or reviewed outflow not fully classified yet
+  INTERNAL_TRANSFER_OUT // Internal movement out of account
+}
+
+enum TransactionSourceType {
+  MANUAL
+  STATEMENT_IMPORT
+  INTERNAL_TRANSFER
+  SYSTEM
+}
+
+enum StatementProvider {
+  PROVIDUS
+}
+
+enum StatementImportStatus {
+  DRAFT
+  REVIEWING
+  POSTED
+  PARTIALLY_POSTED
+  CANCELLED
+}
+
+enum StatementLineReviewStatus {
+  PENDING_REVIEW
+  READY_TO_POST
+  POSTED
+  SKIPPED
+  DUPLICATE
+}
+
+enum ReconciliationStatus {
+  BALANCED
+  VARIANCE
+  OPEN
 }
 
 model BankTransaction {
@@ -266,6 +313,10 @@ model BankTransaction {
   description     String?
   reference       String?              // Bank reference / narration
   transactionDate DateTime             @map("transaction_date")
+  sourceType      TransactionSourceType @default(MANUAL) @map("source_type")
+  sourceFingerprint String?            @unique @map("source_fingerprint")
+  internalTransferGroupId String?      @map("internal_transfer_group_id")
+  postedAt        DateTime?            @map("posted_at")
 
   // Optional links — depends on category
   customerId      String?              @map("customer_id")
@@ -278,8 +329,87 @@ model BankTransaction {
   bankAccount BankAccount @relation(fields: [bankAccountId], references: [id])
   customer    Customer?   @relation(fields: [customerId], references: [id])
   enteredBy   User        @relation("TransactionEnteredBy", fields: [enteredById], references: [id])
+  statementLine BankStatementLine?
 
   @@map("bank_transactions")
+}
+
+model BankStatementImport {
+  id               String               @id @default(cuid())
+  bankAccountId    String               @map("bank_account_id")
+  provider         StatementProvider
+  originalFilename String               @map("original_filename")
+  statementDateFrom DateTime?           @map("statement_date_from")
+  statementDateTo   DateTime?           @map("statement_date_to")
+  openingBalance   Decimal?             @map("opening_balance") @db.Decimal(14, 2)
+  closingBalance   Decimal?             @map("closing_balance") @db.Decimal(14, 2)
+  status           StatementImportStatus @default(REVIEWING)
+  rawRowCount      Int                  @default(0) @map("raw_row_count")
+  parsedRowCount   Int                  @default(0) @map("parsed_row_count")
+  postedRowCount   Int                  @default(0) @map("posted_row_count")
+  importedById     String               @map("imported_by_id")
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+
+  bankAccount      BankAccount          @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  importedBy       User                 @relation("StatementImportedBy", fields: [importedById], references: [id])
+  lines            BankStatementLine[]
+  reconciliations  BankReconciliation[]
+
+  @@map("bank_statement_imports")
+}
+
+model BankStatementLine {
+  id                 String                    @id @default(cuid())
+  importId           String                    @map("import_id")
+  lineNumber         Int                       @map("line_number")
+  transactionDate    DateTime?                 @map("transaction_date")
+  actualTransactionDate DateTime?              @map("actual_transaction_date")
+  valueDate          DateTime?                 @map("value_date")
+  description        String
+  docNum             String?                   @map("doc_num")
+  debitAmount        Decimal?                  @map("debit_amount") @db.Decimal(14, 2)
+  creditAmount       Decimal?                  @map("credit_amount") @db.Decimal(14, 2)
+  runningBalance     Decimal?                  @map("running_balance") @db.Decimal(14, 2)
+  direction          TransactionDirection?
+  reviewStatus       StatementLineReviewStatus @default(PENDING_REVIEW) @map("review_status")
+  suggestedCategory  TransactionCategory?      @map("suggested_category")
+  selectedCategory   TransactionCategory?      @map("selected_category")
+  selectedCustomerId String?                   @map("selected_customer_id")
+  notes              String?
+  fingerprint        String                    @unique
+  postedTransactionId String?                  @unique @map("posted_transaction_id")
+  rawPayload         Json?                     @map("raw_payload")
+  createdAt          DateTime                  @default(now()) @map("created_at")
+  updatedAt          DateTime                  @updatedAt @map("updated_at")
+
+  import            BankStatementImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+  selectedCustomer  Customer?           @relation(fields: [selectedCustomerId], references: [id])
+  postedTransaction BankTransaction?    @relation(fields: [postedTransactionId], references: [id])
+
+  @@unique([importId, lineNumber])
+  @@map("bank_statement_lines")
+}
+
+model BankReconciliation {
+  id                String               @id @default(cuid())
+  bankAccountId     String               @map("bank_account_id")
+  statementImportId String?              @map("statement_import_id")
+  statementDate     DateTime             @map("statement_date")
+  openingBalance    Decimal?             @map("opening_balance") @db.Decimal(14, 2)
+  closingBalance    Decimal              @map("closing_balance") @db.Decimal(14, 2)
+  systemBalance     Decimal              @map("system_balance") @db.Decimal(14, 2)
+  variance          Decimal              @db.Decimal(14, 2)
+  status            ReconciliationStatus @default(OPEN)
+  notes             String?
+  reconciledById    String               @map("reconciled_by_id")
+  createdAt         DateTime             @default(now()) @map("created_at")
+
+  bankAccount       BankAccount          @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  statementImport   BankStatementImport? @relation(fields: [statementImportId], references: [id])
+  reconciledBy      User                 @relation("ReconciledBy", fields: [reconciledById], references: [id])
+
+  @@map("bank_reconciliations")
 }
 
 // ─── INVENTORY ─────────────────────────────────────────────────

@@ -16,7 +16,7 @@ export default async function alertRoutes(fastify) {
       tomorrow.setDate(tomorrow.getDate() + 1);
 
       // ── 1. Cash sales not banked by end of day ──
-      // Find days with cash sales but no corresponding CUSTOMER_DEPOSIT bank transaction
+      // Support both the old "cash deposit" workflow and the new Cash on Hand -> bank transfer workflow.
       // Check yesterday and today
       const yesterday = new Date(today);
       yesterday.setDate(yesterday.getDate() - 1);
@@ -37,17 +37,25 @@ export default async function alertRoutes(fastify) {
         if (cashSales.length > 0) {
           const totalCash = cashSales.reduce((s, sale) => s + Number(sale.totalAmount), 0);
 
-          // Check if there's a bank deposit marked for that day
-          const bankDeposits = await prisma.bankTransaction.findMany({
+          const bankedEntries = await prisma.bankTransaction.findMany({
             where: {
-              direction: 'INFLOW',
-              category: { in: ['CUSTOMER_DEPOSIT', 'CUSTOMER_BOOKING'] },
               transactionDate: { gte: checkDate, lt: nextDay },
-              description: { contains: 'cash', mode: 'insensitive' },
+              OR: [
+                {
+                  direction: 'INFLOW',
+                  category: { in: ['CUSTOMER_DEPOSIT', 'CUSTOMER_BOOKING'] },
+                  description: { contains: 'cash', mode: 'insensitive' },
+                },
+                {
+                  direction: 'OUTFLOW',
+                  category: 'INTERNAL_TRANSFER_OUT',
+                  bankAccount: { accountType: 'CASH_ON_HAND' },
+                },
+              ],
             },
           });
 
-          const bankedTotal = bankDeposits.reduce((s, t) => s + Number(t.amount), 0);
+          const bankedTotal = bankedEntries.reduce((s, t) => s + Number(t.amount), 0);
 
           // Only alert if cash hasn't been banked (or significantly less)
           if (bankedTotal < totalCash * 0.9) {
