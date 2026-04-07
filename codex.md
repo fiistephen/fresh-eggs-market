@@ -559,3 +559,47 @@ Minimum update format:
   - this is a practical first money trail, not the final reconciliation model
   - POS settlement timing/fees still need a deeper reconciliation pass against imported Medusa and bank statement data
   - direct sales now have a cleaner single-entry workflow than before
+
+## 16. 2026-04-07 Reports Module Foundation
+
+- Added the first dedicated Reports module so management no longer has to jump between Sales and Banking screens to read basic performance.
+- New backend route file:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/src/routes/reports.js`
+- Backend behavior:
+  - added `GET /reports/sales`
+  - returns one report payload for a selected date range with:
+    - summary cards
+    - sales by day
+    - sales by item
+    - sales by category
+    - sales by payment method
+    - receipt log
+- New frontend page:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/pages/Reports.jsx`
+- App shell updates:
+  - registered reports route in `/api/src/index.js`
+  - added `/reports` route in `/web/src/App.jsx`
+  - added Reports nav item in `/web/src/components/Layout.jsx`
+- UX direction for this first reports pass:
+  - plain language for managers
+  - one date-range filter at the top
+  - summary first, detail tables below
+  - report structure based on operational questions, not analytics jargon
+- Current report coverage in the new Reports page:
+  - sales value
+  - gross profit
+  - transactions and crates sold
+  - direct sale vs booking pickup mix
+  - sales by payment type
+  - sales by item
+  - sales by category
+  - sales by day
+  - receipt log
+- Local verification completed:
+  - `node --check` passed for `/api/src/routes/reports.js`
+  - dynamic route import passed for `/api/src/routes/reports.js`
+  - frontend build passed after adding the Reports page
+- What future Codex sessions should remember:
+  - this is the first reports slice, not the full V2 reporting suite yet
+  - customer deposit/liability and expense reports still live inside Banking for now
+  - monthly batch reporting, investor reporting, and deeper POS charge reporting are still to come

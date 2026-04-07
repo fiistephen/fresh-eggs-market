@@ -12,6 +12,7 @@ import Bookings from './pages/Bookings';
 import Inventory from './pages/Inventory';
 import Customers from './pages/Customers';
 import Portal from './pages/Portal';
+import Reports from './pages/Reports';
 
 export default function App() {
   return (
@@ -54,6 +55,14 @@ export default function App() {
               element={
                 <ProtectedRoute roles={['ADMIN', 'MANAGER', 'SHOP_FLOOR']}>
                   <Customers />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="reports"
+              element={
+                <ProtectedRoute roles={['ADMIN', 'MANAGER']}>
+                  <Reports />
                 </ProtectedRoute>
               }
             />

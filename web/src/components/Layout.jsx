@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { to: '/bookings', label: 'Bookings', icon: '📋', roles: null },
   { to: '/inventory', label: 'Inventory', icon: '🏬', roles: null },
   { to: '/customers', label: 'Customers', icon: '👥', roles: ['ADMIN', 'MANAGER', 'SHOP_FLOOR'] },
+  { to: '/reports', label: 'Reports', icon: '🧾', roles: ['ADMIN', 'MANAGER'] },
 ];
 
 export default function Layout() {
