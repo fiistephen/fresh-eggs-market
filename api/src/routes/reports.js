@@ -277,15 +277,6 @@ export default async function reportsRoutes(fastify) {
             },
             orderBy: { countDate: 'desc' },
           },
-          sales: {
-            include: {
-              lineItems: {
-                include: {
-                  batchEggCode: { select: { id: true, code: true } },
-                },
-              },
-            },
-          },
         },
         orderBy: [{ closedDate: 'desc' }, { receivedDate: 'desc' }, { expectedDate: 'desc' }],
       });
@@ -298,11 +289,22 @@ export default async function reportsRoutes(fastify) {
         return true;
       });
 
-      const batchSummary = filteredBatches.map((batch) => {
+      const batchSummary = (await Promise.all(filteredBatches.map(async (batch) => {
         const totalReceived = batch.eggCodes.reduce((sum, eggCode) => sum + eggCode.quantity + eggCode.freeQty, 0);
         const totalBookings = batch.bookings.reduce((sum, booking) => sum + booking.quantity, 0);
         const totalWriteOffs = batch.inventory.reduce((sum, count) => sum + count.crackedWriteOff, 0);
         const latestCount = batch.inventory[0] || null;
+        const soldItems = await prisma.saleLineItem.findMany({
+          where: {
+            batchEggCode: { batchId: batch.id },
+          },
+          select: {
+            saleType: true,
+            quantity: true,
+            lineTotal: true,
+            costPrice: true,
+          },
+        });
 
         let totalRevenue = 0;
         let totalSaleCost = 0;
@@ -310,19 +312,17 @@ export default async function reportsRoutes(fastify) {
         let crackedSoldQuantity = 0;
         let crackedSoldValue = 0;
 
-        for (const sale of batch.sales) {
-          for (const item of sale.lineItems) {
-            const lineValue = Number(item.lineTotal);
-            const lineCost = Number(item.costPrice) * item.quantity;
+        for (const item of soldItems) {
+          const lineValue = Number(item.lineTotal);
+          const lineCost = Number(item.costPrice) * item.quantity;
 
-            totalRevenue += lineValue;
-            totalSaleCost += lineCost;
-            totalSold += item.quantity;
+          totalRevenue += lineValue;
+          totalSaleCost += lineCost;
+          totalSold += item.quantity;
 
-            if (item.saleType === 'CRACKED') {
-              crackedSoldQuantity += item.quantity;
-              crackedSoldValue += lineValue;
-            }
+          if (item.saleType === 'CRACKED') {
+            crackedSoldQuantity += item.quantity;
+            crackedSoldValue += lineValue;
           }
         }
 
@@ -362,7 +362,7 @@ export default async function reportsRoutes(fastify) {
             notes: latestCount.notes,
           } : null,
         };
-      }).sort((a, b) => new Date(b.batchDate || 0) - new Date(a.batchDate || 0));
+      }))).sort((a, b) => new Date(b.batchDate || 0) - new Date(a.batchDate || 0));
 
       const monthlySummary = {
         totalBatches: batchSummary.length,

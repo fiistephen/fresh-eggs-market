@@ -265,7 +265,7 @@ export default async function alertRoutes(fastify) {
       for (const batch of receivedBatchList) {
         const received = batch.eggCodes.reduce((s, ec) => s + ec.quantity + ec.freeQty, 0);
         const soldAgg = await prisma.saleLineItem.aggregate({
-          where: { sale: { batchId: batch.id } },
+          where: { batchEggCode: { batchId: batch.id } },
           _sum: { quantity: true },
         });
         const writeOffAgg = await prisma.inventoryCount.aggregate({

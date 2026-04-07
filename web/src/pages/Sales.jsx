@@ -48,6 +48,10 @@ function paymentAccountLabel(paymentTransaction) {
   return `${account.name} • ••••${account.lastFour}`;
 }
 
+function saleBatchLabel(sale) {
+  return sale.batchSummary || sale.batch?.name || '—';
+}
+
 export default function Sales() {
   const { user } = useAuth();
   const [sales, setSales] = useState([]);
@@ -254,7 +258,7 @@ export default function Sales() {
                           {SOURCE_LABELS[sale.sourceType] || 'Direct sale'}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-sm font-medium text-gray-700">{sale.batch?.name || '—'}</td>
+                      <td className="py-3 px-4 text-sm font-medium text-gray-700">{saleBatchLabel(sale)}</td>
                       <td className="py-3 px-4 text-sm text-right">{sale.totalQuantity.toLocaleString()}</td>
                       <td className="py-3 px-4 text-sm text-right font-medium">{formatCurrency(sale.totalAmount)}</td>
                       <td className="py-3 px-4 text-sm text-center">{PAYMENT_LABELS[sale.paymentMethod] || sale.paymentMethod}</td>
@@ -300,11 +304,12 @@ function RecordSaleModal({ onClose, onRecorded }) {
 
   const [loadingWorkspace, setLoadingWorkspace] = useState(false);
   const [workspaceError, setWorkspaceError] = useState('');
-  const [customerWorkspace, setCustomerWorkspace] = useState({ bookings: [], directSaleBatches: [] });
+  const [customerWorkspace, setCustomerWorkspace] = useState({ bookings: [], directSaleBatches: [], mixedDirectSaleStock: [] });
 
   const [workflow, setWorkflow] = useState('');
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [selectedBatch, setSelectedBatch] = useState(null);
+  const [saleScopeLabel, setSaleScopeLabel] = useState('');
   const [lineItems, setLineItems] = useState([]);
   const [paymentMethod, setPaymentMethod] = useState('CASH');
 
@@ -346,31 +351,51 @@ function RecordSaleModal({ onClose, onRecorded }) {
       setCustomerWorkspace({
         bookings: data.bookings || [],
         directSaleBatches: data.directSaleBatches || [],
+        mixedDirectSaleStock: data.mixedDirectSaleStock || [],
       });
     } catch {
       setWorkspaceError('Failed to load this customer’s sales options');
-      setCustomerWorkspace({ bookings: [], directSaleBatches: [] });
+      setCustomerWorkspace({ bookings: [], directSaleBatches: [], mixedDirectSaleStock: [] });
     } finally {
       setLoadingWorkspace(false);
     }
   }
 
-  function initializeLineItems(batch, options = {}) {
+  function initializeLineItemsFromRows(rows, options = {}) {
     const { presetQuantity = '' } = options;
-    setLineItems((batch?.eggCodes || []).map((eggCode, index) => ({
+    setLineItems((rows || []).map((eggCode, index) => ({
       batchEggCodeId: eggCode.id,
+      batchId: eggCode.batchId,
+      batchName: eggCode.batchName,
       code: eggCode.code,
       costPrice: eggCode.costPrice,
+      remainingQuantity: eggCode.remainingQuantity ?? (Number(eggCode.quantity || 0) + Number(eggCode.freeQty || 0)),
       saleType: 'WHOLESALE',
       quantity: index === 0 && presetQuantity ? String(presetQuantity) : '',
-      unitPrice: batch.wholesalePrice,
+      unitPrice: eggCode.wholesalePrice,
+      wholesalePrice: eggCode.wholesalePrice,
+      retailPrice: eggCode.retailPrice,
     })));
+  }
+
+  function initializeLineItems(batch, options = {}) {
+    initializeLineItemsFromRows(
+      (batch?.eggCodes || []).map((eggCode) => ({
+        ...eggCode,
+        batchId: batch.id,
+        batchName: batch.name,
+        wholesalePrice: batch.wholesalePrice,
+        retailPrice: batch.retailPrice,
+      })),
+      options,
+    );
   }
 
   function chooseCustomer(customer) {
     setSelectedCustomer(customer);
     setSelectedBooking(null);
     setSelectedBatch(null);
+    setSaleScopeLabel('');
     setWorkflow('');
     setLineItems([]);
     setPaymentMethod('CASH');
@@ -382,6 +407,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
     setWorkflow('BOOKING');
     setSelectedBooking(booking);
     setSelectedBatch(booking.batch);
+    setSaleScopeLabel(booking.batch?.name || 'Booked batch');
     setPaymentMethod('PRE_ORDER');
     initializeLineItems(booking.batch, { presetQuantity: booking.quantity });
     setError('');
@@ -392,8 +418,20 @@ function RecordSaleModal({ onClose, onRecorded }) {
     setWorkflow('DIRECT');
     setSelectedBooking(null);
     setSelectedBatch(batch);
+    setSaleScopeLabel(batch.name);
     setPaymentMethod('CASH');
     initializeLineItems(batch);
+    setError('');
+    setStep(3);
+  }
+
+  function chooseMixedDirectSale() {
+    setWorkflow('DIRECT');
+    setSelectedBooking(null);
+    setSelectedBatch(null);
+    setSaleScopeLabel('Multiple batches');
+    setPaymentMethod('CASH');
+    initializeLineItemsFromRows(customerWorkspace.mixedDirectSaleStock || []);
     setError('');
     setStep(3);
   }
@@ -402,9 +440,9 @@ function RecordSaleModal({ onClose, onRecorded }) {
     const updated = [...lineItems];
     updated[index] = { ...updated[index], [field]: value };
 
-    if (field === 'saleType' && selectedBatch) {
-      if (value === 'WHOLESALE') updated[index].unitPrice = selectedBatch.wholesalePrice;
-      else if (value === 'RETAIL') updated[index].unitPrice = selectedBatch.retailPrice;
+    if (field === 'saleType') {
+      if (value === 'WHOLESALE') updated[index].unitPrice = updated[index].wholesalePrice;
+      else if (value === 'RETAIL') updated[index].unitPrice = updated[index].retailPrice;
       else if (value === 'CRACKED') updated[index].unitPrice = Math.round(updated[index].costPrice * 0.5);
       else if (value === 'WRITE_OFF') updated[index].unitPrice = 0;
     }
@@ -422,7 +460,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
   const canSubmit =
     workflow === 'BOOKING'
       ? !!selectedBooking && selectedBooking.isFullyPaid && isBookingQuantityReady
-      : !!selectedBatch && totalQty > 0;
+      : totalQty > 0;
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -451,7 +489,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
       await api.post('/sales', {
         customerId: selectedCustomer.id,
         bookingId: workflow === 'BOOKING' ? selectedBooking.id : undefined,
-        batchId: workflow === 'DIRECT' ? selectedBatch.id : undefined,
+        batchId: workflow === 'DIRECT' ? selectedBatch?.id : undefined,
         paymentMethod: workflow === 'DIRECT' ? paymentMethod : undefined,
         lineItems: activeItems.map((lineItem) => ({
           batchEggCodeId: lineItem.batchEggCodeId,
@@ -640,6 +678,24 @@ function RecordSaleModal({ onClose, onRecorded }) {
                       </p>
                     </div>
 
+                    {customerWorkspace.mixedDirectSaleStock?.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => chooseMixedDirectSale()}
+                        className="w-full text-left rounded-xl border border-brand-200 bg-brand-50/60 px-4 py-4 hover:bg-brand-50 transition-colors"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="font-semibold text-gray-900">Use stock from multiple batches</p>
+                            <p className="text-sm text-gray-600 mt-1">
+                              Choose this when one receipt needs items from more than one received batch.
+                            </p>
+                          </div>
+                          <span className="text-xs text-brand-600 font-medium">Recommended when mixing stock</span>
+                        </div>
+                      </button>
+                    )}
+
                     {customerWorkspace.directSaleBatches.length === 0 ? (
                       <div className="border border-dashed border-gray-300 rounded-xl p-4 text-sm text-gray-500">
                         No received batches are available for direct sale right now.
@@ -658,6 +714,9 @@ function RecordSaleModal({ onClose, onRecorded }) {
                                 <p className="font-semibold text-gray-900">{batch.name}</p>
                                 <p className="text-sm text-gray-500 mt-1">
                                   Wholesale {formatCurrency(batch.wholesalePrice)} · Retail {formatCurrency(batch.retailPrice)}
+                                </p>
+                                <p className="text-xs text-gray-400 mt-1">
+                                  {batch.availableForSale?.toLocaleString?.() || 0} crates available for direct sale
                                 </p>
                               </div>
                               <span className="text-xs text-gray-400">{batch.eggCodes.length} egg code(s)</span>
@@ -697,7 +756,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
                 </div>
                 <div className="bg-gray-50 rounded-lg px-3 py-3">
                   <p className="text-gray-500">Batch</p>
-                  <p className="font-medium text-gray-900">{selectedBatch?.name}</p>
+                  <p className="font-medium text-gray-900">{saleScopeLabel || selectedBatch?.name || '—'}</p>
                 </div>
               </div>
 
@@ -735,8 +794,9 @@ function RecordSaleModal({ onClose, onRecorded }) {
                     <div key={lineItem.batchEggCodeId} className="grid grid-cols-12 gap-1 sm:gap-2 items-end min-w-[320px]">
                       <div className="col-span-2">
                         {index === 0 && <label className="block text-xs text-gray-500 mb-1">Egg Code</label>}
-                        <div className="border border-gray-200 bg-gray-50 rounded-lg px-3 py-2 text-sm font-mono font-semibold text-brand-600">
-                          {lineItem.code}
+                        <div className="border border-gray-200 bg-gray-50 rounded-lg px-3 py-2">
+                          <p className="text-sm font-mono font-semibold text-brand-600">{lineItem.code}</p>
+                          <p className="text-[11px] text-gray-500 mt-1 truncate">{lineItem.batchName}</p>
                         </div>
                       </div>
                       <div className="col-span-3">
@@ -753,14 +813,19 @@ function RecordSaleModal({ onClose, onRecorded }) {
                       </div>
                       <div className="col-span-2">
                         {index === 0 && <label className="block text-xs text-gray-500 mb-1">Quantity</label>}
-                        <input
-                          type="number"
-                          min="0"
-                          placeholder="0"
-                          value={lineItem.quantity}
-                          onChange={(e) => updateLineItem(index, 'quantity', e.target.value)}
-                          className="w-full border border-gray-300 rounded-lg px-2 py-2 text-sm focus:ring-2 focus:ring-brand-500 outline-none"
-                        />
+                        <div>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={lineItem.quantity}
+                            onChange={(e) => updateLineItem(index, 'quantity', e.target.value)}
+                            className="w-full border border-gray-300 rounded-lg px-2 py-2 text-sm focus:ring-2 focus:ring-brand-500 outline-none"
+                          />
+                          <p className="text-[11px] text-gray-400 mt-1">
+                            Remain {Number(lineItem.remainingQuantity || 0).toLocaleString()}
+                          </p>
+                        </div>
                       </div>
                       <div className="col-span-3">
                         {index === 0 && <label className="block text-xs text-gray-500 mb-1">Unit Price (₦)</label>}
@@ -922,7 +987,7 @@ function SaleDetailModal({ sale, onClose }) {
             </div>
             <div>
               <p className="text-gray-400">Batch</p>
-              <p className="font-medium text-gray-900">{sale.batch?.name}</p>
+              <p className="font-medium text-gray-900">{saleBatchLabel(sale)}</p>
             </div>
             <div>
               <p className="text-gray-400">Sale source</p>
@@ -964,6 +1029,7 @@ function SaleDetailModal({ sale, onClose }) {
                   <thead>
                     <tr className="border-b border-gray-100 bg-gray-50">
                       <th className="text-left py-2 px-3 text-xs text-gray-500">Code</th>
+                      <th className="text-left py-2 px-3 text-xs text-gray-500">Batch</th>
                       <th className="text-center py-2 px-3 text-xs text-gray-500">Type</th>
                       <th className="text-right py-2 px-3 text-xs text-gray-500">Qty</th>
                       <th className="text-right py-2 px-3 text-xs text-gray-500">Price</th>
@@ -974,6 +1040,7 @@ function SaleDetailModal({ sale, onClose }) {
                     {sale.lineItems.map((lineItem) => (
                       <tr key={lineItem.id || lineItem.batchEggCodeId} className="border-b border-gray-50 text-sm">
                         <td className="py-2 px-3 font-mono font-semibold text-brand-600">{lineItem.batchEggCode?.code || '—'}</td>
+                        <td className="py-2 px-3 text-gray-600">{lineItem.batchEggCode?.batch?.name || saleBatchLabel(sale)}</td>
                         <td className="py-2 px-3 text-center">
                           <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${SALE_TYPE_COLORS[lineItem.saleType]}`}>
                             {SALE_TYPE_LABELS[lineItem.saleType]}

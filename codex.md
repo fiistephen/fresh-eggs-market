@@ -772,3 +772,43 @@ Minimum update format:
   - this is the first admin/config slice, not the full configuration suite yet
   - FE/item admin and category admin are still outstanding
   - after this foundation, the next likely step is either fuller admin coverage or the deeper multi-batch fulfillment rewrite
+
+## 21. 2026-04-07 Multi-Batch Direct Sale Fulfillment
+
+- Started the deeper fulfillment rewrite so one direct-sale receipt can use stock from more than one received batch.
+- Schema change:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/prisma/schema.prisma`
+  - `Sale.batchId` is now optional so mixed-batch direct sales can store line-level batch truth without forcing one header batch
+- Backend sales workflow updates:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/src/routes/sales.js`
+  - customer sales workspace now returns:
+    - sale-ready batches with available-for-sale quantities
+    - mixed direct-sale stock rows across multiple batches
+  - direct sales can now:
+    - stay limited to one selected batch
+    - or intentionally combine egg codes from multiple received batches in one receipt
+  - booking pickups remain constrained to the booked batch
+  - sale list/detail responses now expose a `batchSummary` label so mixed receipts remain readable
+- Frontend sales workflow updates:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/pages/Sales.jsx`
+  - new direct-sale option:
+    - `Use stock from multiple batches`
+  - line items now show:
+    - batch name
+    - remaining quantity
+  - sales list and sale detail modal now show mixed-batch labels more clearly
+- Stock and reporting consistency fixes:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/src/routes/inventory.js`
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/src/routes/alerts.js`
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/src/routes/batches.js`
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/src/routes/reports.js`
+  - sold quantities and batch reporting now read sale line items by `batchEggCode.batchId` instead of assuming `sale.batchId` is always present
+- Local verification completed:
+  - `node --check` passed for `sales.js`, `inventory.js`, `alerts.js`, `batches.js`, and `reports.js`
+  - Prisma schema validated
+  - Prisma client generated successfully
+  - frontend build passed
+- What future Codex sessions should remember:
+  - booking fulfillment is still single-batch by design
+  - mixed-batch support currently applies to direct sales
+  - this slice should be staged and reviewed before moving on to portal v2 or fuller admin coverage

@@ -19,7 +19,7 @@ async function computeSystemCount(batchId) {
   const totalReceived = batch.eggCodes.reduce((s, ec) => s + ec.quantity + ec.freeQty, 0);
 
   const soldAgg = await prisma.saleLineItem.aggregate({
-    where: { sale: { batchId } },
+    where: { batchEggCode: { batchId } },
     _sum: { quantity: true },
   });
   const totalSold = soldAgg._sum.quantity || 0;
@@ -56,7 +56,7 @@ export default async function inventoryRoutes(fastify) {
         const totalReceived = batch.eggCodes.reduce((s, ec) => s + ec.quantity + ec.freeQty, 0);
 
         const soldAgg = await prisma.saleLineItem.aggregate({
-          where: { sale: { batchId: batch.id } },
+          where: { batchEggCode: { batchId: batch.id } },
           _sum: { quantity: true },
         });
         const totalSold = soldAgg._sum.quantity || 0;
@@ -69,7 +69,7 @@ export default async function inventoryRoutes(fastify) {
 
         const crackedSoldAgg = await prisma.saleLineItem.aggregate({
           where: {
-            sale: { batchId: batch.id },
+            batchEggCode: { batchId: batch.id },
             saleType: 'CRACKED',
           },
           _sum: { quantity: true },

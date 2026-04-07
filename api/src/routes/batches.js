@@ -8,6 +8,30 @@ import {
 } from '../utils/operationsPolicy.js';
 import { getOperationsPolicy } from '../utils/appSettings.js';
 
+async function findSalesForBatch(batchId) {
+  return prisma.sale.findMany({
+    where: {
+      lineItems: {
+        some: {
+          batchEggCode: { batchId },
+        },
+      },
+    },
+    include: {
+      customer: true,
+      lineItems: {
+        where: {
+          batchEggCode: { batchId },
+        },
+        include: {
+          batchEggCode: true,
+        },
+      },
+    },
+    orderBy: { saleDate: 'desc' },
+  });
+}
+
 export default async function batchRoutes(fastify) {
 
   // ─── LIST BATCHES ─────────────────────────────────────────────
@@ -56,12 +80,12 @@ export default async function batchRoutes(fastify) {
         include: {
           eggCodes: true,
           bookings: { include: { customer: true } },
-          sales: { include: { customer: true, lineItems: { include: { batchEggCode: true } } } },
           _count: { select: { bookings: true, sales: true } },
         },
       });
 
       if (!batch) return reply.code(404).send({ error: 'Batch not found' });
+      const batchSales = await findSalesForBatch(batch.id);
 
       // Convert Decimals to numbers for JSON
       const result = {
@@ -78,7 +102,7 @@ export default async function batchRoutes(fastify) {
           amountPaid: Number(bk.amountPaid),
           orderValue: Number(bk.orderValue),
         })),
-        sales: batch.sales.map(s => ({
+        sales: batchSales.map(s => ({
           ...s,
           totalAmount: Number(s.totalAmount),
           totalCost: Number(s.totalCost),
@@ -89,6 +113,10 @@ export default async function batchRoutes(fastify) {
             lineTotal: Number(li.lineTotal),
           })),
         })),
+        _count: {
+          ...batch._count,
+          sales: batchSales.length,
+        },
       };
 
       return reply.send({ batch: result });
@@ -352,13 +380,11 @@ export default async function batchRoutes(fastify) {
         include: {
           eggCodes: true,
           bookings: true,
-          sales: {
-            include: { lineItems: { include: { batchEggCode: true } } },
-          },
         },
       });
 
       if (!batch) return reply.code(404).send({ error: 'Batch not found' });
+      const batchSales = await findSalesForBatch(batch.id);
 
       // Calculate costs
       const totalCost = batch.eggCodes.reduce(
@@ -372,7 +398,7 @@ export default async function batchRoutes(fastify) {
       let totalSaleCost = 0;
       let totalSold = 0;
 
-      for (const sale of batch.sales) {
+      for (const sale of batchSales) {
         for (const item of sale.lineItems) {
           salesBreakdown[item.saleType] += Number(item.lineTotal);
           salesQuantity[item.saleType] += item.quantity;

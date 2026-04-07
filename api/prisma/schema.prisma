@@ -178,7 +178,7 @@ model Sale {
   id             String        @id @default(cuid())
   receiptNumber  String        @unique @map("receipt_number") // Auto-generated
   customerId     String        @map("customer_id")
-  batchId        String        @map("batch_id")
+  batchId        String?       @map("batch_id")
   bookingId      String?       @unique @map("booking_id") // If fulfilling a booking
   recordedById   String        @map("recorded_by_id")
 
@@ -191,7 +191,7 @@ model Sale {
   updatedAt      DateTime      @updatedAt @map("updated_at")
 
   customer   Customer      @relation(fields: [customerId], references: [id])
-  batch      Batch         @relation(fields: [batchId], references: [id])
+  batch      Batch?        @relation(fields: [batchId], references: [id])
   booking    Booking?      @relation(fields: [bookingId], references: [id])
   recordedBy User          @relation("SaleRecordedBy", fields: [recordedById], references: [id])
   lineItems  SaleLineItem[]
