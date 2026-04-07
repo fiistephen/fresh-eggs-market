@@ -920,3 +920,97 @@ Minimum update format:
   - this slice improves clarity and configuration, not accounting rules
   - category codes remain enum-backed; Admin changes are presentation and workflow visibility controls
   - next likely configuration work is customer-facing/business-facing settings that still live in code or repeated constants
+
+## 24. 2026-04-07 Batch Module V2 Spec
+
+- Re-read the exact batch sections of `Fresh Eggs Operations App Meeting  Transcript 2.md` before starting Batch V2 implementation.
+- Created a dedicated batch build spec in:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/V2_BATCH_MODULE_SPEC.md`
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/V2_BATCH_MODULE_SPEC.md`
+- Important batch rules confirmed from meeting 2:
+  - a batch can contain more than one FE item
+  - different FE items inside one batch can have different cost prices
+  - inventory only becomes active after a batch is received
+  - a batch reduces by sales and write-offs, not by bookings
+  - one sale can draw from multiple batches
+  - cracks are tracked in crates, not single eggs
+  - there must be a crack allowance threshold that flags red when exceeded
+  - batch analysis must distinguish:
+    - mildly cracked sold at discount
+    - totally damaged write-off
+  - each batch should be compared against company policy of about `NGN 500 profit per crate`
+  - monthly batch summary must show above-policy and below-policy performance
+  - new FE codes introduced in batch receiving should become new items if they do not already exist
+- Recommended build order locked in the new batch spec:
+  1. batch list and batch detail UX upgrade
+  2. receive flow upgrade
+  3. count and write-off flow refinement
+  4. batch analysis upgrade
+  5. tighter monthly batch reporting tie-in
+- What future Codex sessions should remember:
+  - Batch V2 should be implemented before Portal V2
+  - this module is one of the two true operational starting points of the business, alongside Banking
+
+## 25. 2026-04-07 Batch Module V2 Phase A
+
+- Completed the first Batch V2 implementation pass in the repo.
+- Main code changes:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/src/routes/batches.js`
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/pages/Batches.jsx`
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/pages/BatchDetail.jsx`
+- Backend changes:
+  - added a reusable batch `overview` object to the batch list and single batch payload
+  - overview now includes:
+    - total received
+    - paid crates
+    - free crates
+    - total sold
+    - confirmed booked quantity
+    - write-offs
+    - cracked sold quantity
+    - on-hand stock
+    - sale-ready stock
+    - crack rate and crack alert
+    - gross profit
+    - policy target
+    - variance to policy
+    - profit per crate
+    - latest physical count snapshot
+  - batch payload now includes linked catalog item info for each FE row in `eggCodes`
+- Frontend changes:
+  - `Batches` is now a working command center instead of a simple table
+  - added summary cards for:
+    - open for booking
+    - ready to sell
+    - confirmed bookings
+    - needs attention
+  - replaced the old batch table with clearer batch cards showing:
+    - status
+    - expected / received dates
+    - FE mix
+    - booked quantity
+    - still-to-receive or sale-ready stock
+    - booking utilization or on-hand stock
+    - profit vs target
+    - crack rate and attention chips where relevant
+  - `BatchDetail` now opens with an operational summary before the tabs
+  - batch detail now highlights:
+    - waiting-for-receipt state
+    - crack warning / alert state
+    - policy performance state
+    - booking pressure
+    - latest count check
+    - FE mix summary
+    - simple operational notes for staff
+- UX direction used in this slice:
+  - wording is more staff-facing and less technical
+  - the screens aim to answer “what should I do next?” and “what needs attention?” quickly
+  - screenshots from earlier tools were used only for workflow reference, not copied visually
+- Local verification completed:
+  - `node --check` passed for `batches.js`
+  - Prisma schema validation passed
+  - frontend build passed
+- What future Codex sessions should remember:
+  - this is only Phase A of Batch V2
+  - receive flow, count/write-off flow, and deeper batch analysis refinement still remain
+  - after local verification, the next step for this slice is commit, push, deploy to staging, then visual review on `/batches`

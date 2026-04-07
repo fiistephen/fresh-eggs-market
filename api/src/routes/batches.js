@@ -33,6 +33,107 @@ async function findSalesForBatch(batchId) {
   });
 }
 
+function toNumber(value) {
+  return value == null ? 0 : Number(value);
+}
+
+async function buildBatchOverview(batch, policy, options = {}) {
+  const batchSales = options.batchSales || await findSalesForBatch(batch.id);
+  const totalReceived = batch.actualQuantity ?? batch.eggCodes.reduce((sum, eggCode) => (
+    sum + eggCode.quantity + (eggCode.freeQty || 0)
+  ), 0);
+
+  let totalRevenue = 0;
+  let totalSaleCost = 0;
+  let totalSold = 0;
+  let crackedSoldQuantity = 0;
+
+  for (const sale of batchSales) {
+    for (const lineItem of sale.lineItems) {
+      const quantity = lineItem.quantity || 0;
+      const unitCost = toNumber(lineItem.costPrice);
+      const lineRevenue = toNumber(lineItem.lineTotal);
+      totalSold += quantity;
+      totalRevenue += lineRevenue;
+      totalSaleCost += unitCost * quantity;
+      if (lineItem.saleType === 'CRACKED') {
+        crackedSoldQuantity += quantity;
+      }
+    }
+  }
+
+  const totalWrittenOff = (await prisma.inventoryCount.aggregate({
+    where: { batchId: batch.id },
+    _sum: { crackedWriteOff: true },
+  }))._sum.crackedWriteOff || 0;
+
+  const latestCount = await prisma.inventoryCount.findFirst({
+    where: { batchId: batch.id },
+    orderBy: [{ countDate: 'desc' }, { createdAt: 'desc' }],
+    include: {
+      enteredBy: {
+        select: { firstName: true, lastName: true },
+      },
+    },
+  });
+
+  const bookings = batch.bookings || [];
+  const confirmedBookings = bookings.filter((booking) => booking.status === 'CONFIRMED');
+  const pickedUpBookings = bookings.filter((booking) => booking.status === 'PICKED_UP');
+  const totalBooked = confirmedBookings.reduce((sum, booking) => sum + booking.quantity, 0);
+  const onHand = Math.max(0, totalReceived - totalSold - totalWrittenOff);
+  const availableForSale = Math.max(0, onHand - totalBooked);
+  const crackRatePercent = roundTo2(safeDivide((totalWrittenOff + crackedSoldQuantity) * 100, totalReceived));
+  const crackAlert = buildCrackAlert(crackRatePercent, policy.crackAllowancePercent);
+  const grossProfit = totalRevenue - totalSaleCost;
+  const expectedPolicyProfit = totalReceived * policy.targetProfitPerCrate;
+  const varianceToPolicy = grossProfit - expectedPolicyProfit;
+  const profitPerCrate = roundTo2(safeDivide(grossProfit, totalReceived));
+  const totalPaidQuantity = batch.eggCodes.reduce((sum, eggCode) => sum + eggCode.quantity, 0);
+  const totalFreeQuantity = batch.eggCodes.reduce((sum, eggCode) => sum + (eggCode.freeQty || 0), 0);
+  const remainingToReceive = Math.max(0, batch.expectedQuantity - totalReceived);
+  const bookingUtilizationPercent = roundTo2(safeDivide(totalBooked * 100, Math.max(batch.availableForBooking || 0, 1)));
+  const receivedVsExpectedPercent = roundTo2(safeDivide(totalReceived * 100, Math.max(batch.expectedQuantity || 0, 1)));
+
+  return {
+    totalReceived,
+    totalPaidQuantity,
+    totalFreeQuantity,
+    totalSold,
+    totalBooked,
+    totalWrittenOff,
+    crackedSoldQuantity,
+    onHand,
+    availableForSale,
+    crackRatePercent,
+    crackAlert,
+    grossProfit,
+    totalRevenue,
+    totalSaleCost,
+    expectedPolicyProfit,
+    varianceToPolicy,
+    profitPerCrate,
+    confirmedBookingCount: confirmedBookings.length,
+    pickedUpBookingCount: pickedUpBookings.length,
+    bookingUtilizationPercent,
+    receivedVsExpectedPercent,
+    remainingToReceive,
+    latestCount: latestCount ? {
+      id: latestCount.id,
+      countDate: latestCount.countDate,
+      physicalCount: latestCount.physicalCount,
+      systemCount: latestCount.systemCount,
+      discrepancy: latestCount.discrepancy,
+      crackedWriteOff: latestCount.crackedWriteOff,
+      enteredBy: `${latestCount.enteredBy.firstName} ${latestCount.enteredBy.lastName}`,
+    } : null,
+    needsAttention: crackAlert.level === 'ALERT'
+      || availableForSale < 0
+      || (batch.status === 'OPEN' && remainingToReceive > 0)
+      || (batch.status !== 'OPEN' && varianceToPolicy < 0),
+  };
+}
+
 export default async function batchRoutes(fastify) {
 
   // ─── LIST BATCHES ─────────────────────────────────────────────
@@ -40,6 +141,7 @@ export default async function batchRoutes(fastify) {
     preHandler: [authenticate],
     handler: async (request, reply) => {
       const { status, search } = request.query;
+      const policy = await getOperationsPolicy();
       const where = {};
       if (status) where.status = status;
       if (search) where.name = { contains: search, mode: 'insensitive' };
@@ -47,26 +149,44 @@ export default async function batchRoutes(fastify) {
       const batches = await prisma.batch.findMany({
         where,
         include: {
-          eggCodes: true,
-          _count: { select: { bookings: true, sales: true } },
+          eggCodes: {
+            include: {
+              item: {
+                select: {
+                  id: true,
+                  name: true,
+                  category: true,
+                },
+              },
+            },
+          },
+          bookings: {
+            select: {
+              id: true,
+              quantity: true,
+              status: true,
+            },
+          },
+          _count: { select: { bookings: true, sales: true, inventory: true } },
         },
         orderBy: { expectedDate: 'desc' },
       });
 
-      // Enrich with computed fields
-      const enriched = batches.map(b => {
-        const totalBooked = 0; // Will be computed from bookings in Phase 2
+      const enriched = await Promise.all(batches.map(async (batch) => {
+        const overview = await buildBatchOverview(batch, policy);
         return {
-          ...b,
-          wholesalePrice: Number(b.wholesalePrice),
-          retailPrice: Number(b.retailPrice),
-          costPrice: Number(b.costPrice),
-          eggCodes: b.eggCodes.map(ec => ({
+          ...batch,
+          overview,
+          wholesalePrice: Number(batch.wholesalePrice),
+          retailPrice: Number(batch.retailPrice),
+          costPrice: Number(batch.costPrice),
+          eggCodes: batch.eggCodes.map(ec => ({
             ...ec,
             costPrice: Number(ec.costPrice),
           })),
+          bookings: batch.bookings,
         };
-      });
+      }));
 
       return reply.send({ batches: enriched });
     },
@@ -76,10 +196,21 @@ export default async function batchRoutes(fastify) {
   fastify.get('/batches/:id', {
     preHandler: [authenticate],
     handler: async (request, reply) => {
+      const policy = await getOperationsPolicy();
       const batch = await prisma.batch.findUnique({
         where: { id: request.params.id },
         include: {
-          eggCodes: true,
+          eggCodes: {
+            include: {
+              item: {
+                select: {
+                  id: true,
+                  name: true,
+                  category: true,
+                },
+              },
+            },
+          },
           bookings: { include: { customer: true } },
           _count: { select: { bookings: true, sales: true } },
         },
@@ -87,10 +218,12 @@ export default async function batchRoutes(fastify) {
 
       if (!batch) return reply.code(404).send({ error: 'Batch not found' });
       const batchSales = await findSalesForBatch(batch.id);
+      const overview = await buildBatchOverview(batch, policy, { batchSales });
 
       // Convert Decimals to numbers for JSON
       const result = {
         ...batch,
+        overview,
         wholesalePrice: Number(batch.wholesalePrice),
         retailPrice: Number(batch.retailPrice),
         costPrice: Number(batch.costPrice),

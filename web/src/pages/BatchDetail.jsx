@@ -25,6 +25,32 @@ function formatCurrency(n) {
   return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', minimumFractionDigits: 0 }).format(n);
 }
 
+function formatNumber(n) {
+  return Number(n || 0).toLocaleString('en-NG');
+}
+
+function formatPercent(n) {
+  return `${Number(n || 0).toFixed(1)}%`;
+}
+
+function OverviewCard({ label, value, subtext, tone = 'gray' }) {
+  const tones = {
+    gray: 'bg-white border-gray-200 text-gray-900',
+    blue: 'bg-blue-50 border-blue-200 text-blue-900',
+    green: 'bg-green-50 border-green-200 text-green-900',
+    amber: 'bg-amber-50 border-amber-200 text-amber-900',
+    red: 'bg-red-50 border-red-200 text-red-900',
+  };
+
+  return (
+    <div className={`rounded-2xl border p-4 ${tones[tone]}`}>
+      <p className="text-xs uppercase tracking-wider opacity-70">{label}</p>
+      <p className="mt-2 text-2xl font-bold">{value}</p>
+      {subtext && <p className="mt-1 text-sm opacity-75">{subtext}</p>}
+    </div>
+  );
+}
+
 export default function BatchDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -87,6 +113,11 @@ export default function BatchDetail() {
       </div>
     );
   }
+
+  const overview = batch.overview || {};
+  const hasCrackWatch = ['WATCH', 'ALERT'].includes(overview.crackAlert?.level);
+  const isBelowPolicy = batch.status !== 'OPEN' && (overview.varianceToPolicy || 0) < 0;
+  const showPolicyBanner = batch.status !== 'OPEN' && overview.totalReceived > 0;
 
   const tabs = [
     { key: 'details', label: 'Details' },
@@ -158,6 +189,81 @@ export default function BatchDetail() {
         </div>
       </div>
 
+      {batch.status === 'OPEN' && (
+        <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 p-4">
+          <p className="text-sm font-semibold text-blue-900">This batch is still waiting to be received.</p>
+          <p className="mt-1 text-sm text-blue-700">
+            Keep taking bookings here, then use <span className="font-medium">Receive Batch</span> when the eggs arrive and the real FE mix is known.
+          </p>
+        </div>
+      )}
+
+      {hasCrackWatch && (
+        <div className={`mb-4 rounded-2xl border p-4 ${
+          overview.crackAlert?.level === 'ALERT'
+            ? 'border-red-200 bg-red-50'
+            : 'border-amber-200 bg-amber-50'
+        }`}>
+          <p className={`text-sm font-semibold ${
+            overview.crackAlert?.level === 'ALERT' ? 'text-red-900' : 'text-amber-900'
+          }`}>
+            {overview.crackAlert?.label}
+          </p>
+          <p className={`mt-1 text-sm ${
+            overview.crackAlert?.level === 'ALERT' ? 'text-red-700' : 'text-amber-700'
+          }`}>
+            Crack impact is {formatPercent(overview.crackRatePercent)} for this batch. Review damaged write-off and discounted cracked sales.
+          </p>
+        </div>
+      )}
+
+      {showPolicyBanner && (
+        <div className={`mb-6 rounded-2xl border p-4 ${
+          isBelowPolicy ? 'border-red-200 bg-red-50' : 'border-green-200 bg-green-50'
+        }`}>
+          <p className={`text-sm font-semibold ${isBelowPolicy ? 'text-red-900' : 'text-green-900'}`}>
+            {isBelowPolicy ? 'This batch is below the company profit target.' : 'This batch is above the company profit target.'}
+          </p>
+          <p className={`mt-1 text-sm ${isBelowPolicy ? 'text-red-700' : 'text-green-700'}`}>
+            Profit per crate is {formatCurrency(overview.profitPerCrate)}. Variance to target is{' '}
+            <span className="font-medium">
+              {(overview.varianceToPolicy || 0) >= 0 ? '+' : '-'}{formatCurrency(Math.abs(overview.varianceToPolicy || 0))}
+            </span>.
+          </p>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 mb-6">
+        <OverviewCard
+          label={batch.status === 'OPEN' ? 'Booked so far' : 'Confirmed bookings'}
+          value={`${formatNumber(overview.totalBooked)} crates`}
+          subtext={`${overview.confirmedBookingCount || 0} active booking${overview.confirmedBookingCount === 1 ? '' : 's'}`}
+          tone="amber"
+        />
+        <OverviewCard
+          label={batch.status === 'OPEN' ? 'Still to receive' : 'Sale-ready stock'}
+          value={`${formatNumber(batch.status === 'OPEN' ? overview.remainingToReceive : overview.availableForSale)} crates`}
+          subtext={batch.status === 'OPEN' ? 'Expected quantity not yet received' : 'On hand minus confirmed bookings'}
+          tone={batch.status === 'OPEN' ? 'blue' : 'green'}
+        />
+        <OverviewCard
+          label={batch.status === 'OPEN' ? 'Booking space used' : 'On hand now'}
+          value={batch.status === 'OPEN' ? formatPercent(overview.bookingUtilizationPercent) : `${formatNumber(overview.onHand)} crates`}
+          subtext={batch.status === 'OPEN' ? `${formatNumber(batch.availableForBooking)} crates open for booking` : `${formatNumber(overview.totalSold)} sold · ${formatNumber(overview.totalWrittenOff)} written off`}
+          tone="gray"
+        />
+        <OverviewCard
+          label={batch.status === 'OPEN' ? 'Expected quantity' : 'Profit vs target'}
+          value={batch.status === 'OPEN'
+            ? `${formatNumber(batch.expectedQuantity)} crates`
+            : `${(overview.varianceToPolicy || 0) >= 0 ? '+' : '-'}${formatCurrency(Math.abs(overview.varianceToPolicy || 0))}`}
+          subtext={batch.status === 'OPEN'
+            ? `Wholesale ${formatCurrency(batch.wholesalePrice)} · Retail ${formatCurrency(batch.retailPrice)}`
+            : `${formatCurrency(overview.profitPerCrate)} per crate`}
+          tone={batch.status === 'OPEN' ? 'gray' : (overview.varianceToPolicy || 0) >= 0 ? 'green' : 'red'}
+        />
+      </div>
+
       {/* Tab navigation */}
       <div className="flex gap-1 mb-6 bg-gray-100 rounded-lg p-1 overflow-x-auto">
         {tabs.map(tab => (
@@ -176,7 +282,7 @@ export default function BatchDetail() {
       </div>
 
       {/* Tab content */}
-      {activeTab === 'details' && <DetailsTab batch={batch} />}
+      {activeTab === 'details' && <DetailsTab batch={batch} analysis={analysis} />}
       {activeTab === 'eggcodes' && <EggCodesTab batch={batch} />}
       {activeTab === 'bookings' && <BookingsTab batch={batch} />}
       {activeTab === 'sales' && <SalesTab batch={batch} />}
@@ -217,69 +323,187 @@ export default function BatchDetail() {
 
 // ─── DETAILS TAB ──────────────────────────────────────────────
 
-function DetailsTab({ batch }) {
-  const cards = [
-    { label: 'Expected Quantity', value: `${batch.expectedQuantity.toLocaleString()} crates` },
-    { label: 'Available for Booking', value: `${batch.availableForBooking.toLocaleString()} crates` },
-    { label: 'Actual Quantity', value: batch.actualQuantity != null ? `${batch.actualQuantity.toLocaleString()} crates` : '—' },
-    { label: 'Free Crates', value: batch.freeCrates ?? '—' },
-  ];
-
-  const prices = [
-    { label: 'Cost Price', value: formatCurrency(batch.costPrice), color: 'text-gray-900' },
-    { label: 'Wholesale Price', value: formatCurrency(batch.wholesalePrice), color: 'text-blue-600' },
-    { label: 'Retail Price', value: formatCurrency(batch.retailPrice), color: 'text-green-600' },
-  ];
+function DetailsTab({ batch, analysis }) {
+  const overview = batch.overview || {};
+  const bookings = batch.bookings || [];
+  const confirmedBookings = bookings.filter((booking) => booking.status === 'CONFIRMED');
+  const pickedUpBookings = bookings.filter((booking) => booking.status === 'PICKED_UP');
+  const cancelledBookings = bookings.filter((booking) => booking.status === 'CANCELLED');
+  const bookingRevenue = bookings.reduce((sum, booking) => sum + Number(booking.amountPaid || 0), 0);
+  const feMix = batch.eggCodes || [];
 
   return (
     <div className="space-y-6">
-      {/* Quantity cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
-        {cards.map(card => (
-          <div key={card.label} className="bg-white rounded-xl border border-gray-200 p-3 sm:p-4">
-            <p className="text-xs text-gray-500 uppercase tracking-wider">{card.label}</p>
-            <p className="text-base sm:text-lg font-semibold text-gray-900 mt-1">{card.value}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Pricing */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
-        <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-4">Pricing per Crate</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
-          {prices.map(p => (
-            <div key={p.label}>
-              <p className="text-xs text-gray-400">{p.label}</p>
-              <p className={`text-xl font-bold mt-0.5 ${p.color}`}>{p.value}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Booking summary */}
-      {batch.bookings && batch.bookings.length > 0 && (
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.2fr_0.8fr]">
         <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
-          <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Booking Summary</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
+          <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-4">Batch Snapshot</h3>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
             <div>
-              <p className="text-xs text-gray-400">Total Bookings</p>
-              <p className="text-lg font-semibold text-gray-900">{batch.bookings.length}</p>
+              <p className="text-xs text-gray-400">Expected quantity</p>
+              <p className="mt-1 text-lg font-semibold text-gray-900">{formatNumber(batch.expectedQuantity)} crates</p>
             </div>
             <div>
-              <p className="text-xs text-gray-400">Total Booked</p>
-              <p className="text-lg font-semibold text-gray-900">
-                {batch.bookings.filter(b => b.status === 'CONFIRMED').reduce((s, b) => s + b.quantity, 0).toLocaleString()} crates
+              <p className="text-xs text-gray-400">Available for booking</p>
+              <p className="mt-1 text-lg font-semibold text-gray-900">{formatNumber(batch.availableForBooking)} crates</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400">Actual received</p>
+              <p className="mt-1 text-lg font-semibold text-gray-900">
+                {batch.actualQuantity != null ? `${formatNumber(batch.actualQuantity)} crates` : '—'}
               </p>
             </div>
             <div>
-              <p className="text-xs text-gray-400">Booking Revenue</p>
-              <p className="text-lg font-semibold text-green-600">
-                {formatCurrency(batch.bookings.reduce((s, b) => s + b.amountPaid, 0))}
-              </p>
+              <p className="text-xs text-gray-400">Paid crates</p>
+              <p className="mt-1 text-lg font-semibold text-gray-900">{formatNumber(overview.totalPaidQuantity)} crates</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400">Free crates</p>
+              <p className="mt-1 text-lg font-semibold text-green-700">{formatNumber(overview.totalFreeQuantity || batch.freeCrates)} crates</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400">FE codes in batch</p>
+              <p className="mt-1 text-lg font-semibold text-gray-900">{feMix.length}</p>
             </div>
           </div>
         </div>
-      )}
+
+        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
+          <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-4">Pricing Per Crate</h3>
+          <div className="space-y-4">
+            <div>
+              <p className="text-xs text-gray-400">Cost price</p>
+              <p className="mt-1 text-xl font-bold text-gray-900">{formatCurrency(batch.costPrice)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400">Wholesale price</p>
+              <p className="mt-1 text-xl font-bold text-blue-600">{formatCurrency(batch.wholesalePrice)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400">Retail price</p>
+              <p className="mt-1 text-xl font-bold text-green-600">{formatCurrency(batch.retailPrice)}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Booking Pressure</h3>
+              <p className="mt-1 text-sm text-gray-500">See how much of this batch is already promised to customers.</p>
+            </div>
+            <span className="inline-flex rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
+              {formatPercent(overview.bookingUtilizationPercent)} of booking space used
+            </span>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <div>
+              <p className="text-xs text-gray-400">Confirmed</p>
+              <p className="mt-1 text-lg font-semibold text-gray-900">{confirmedBookings.length}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400">Picked up</p>
+              <p className="mt-1 text-lg font-semibold text-blue-700">{pickedUpBookings.length}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400">Cancelled</p>
+              <p className="mt-1 text-lg font-semibold text-gray-700">{cancelledBookings.length}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400">Booking value received</p>
+              <p className="mt-1 text-lg font-semibold text-green-700">{formatCurrency(bookingRevenue)}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Latest Count Check</h3>
+              <p className="mt-1 text-sm text-gray-500">Use this to compare what the system expects with what the floor team counted.</p>
+            </div>
+          </div>
+
+          {overview.latestCount ? (
+            <div className="mt-4 space-y-3">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs text-gray-400">Count date</p>
+                  <p className="mt-1 text-base font-semibold text-gray-900">{formatDate(overview.latestCount.countDate)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400">Entered by</p>
+                  <p className="mt-1 text-base font-semibold text-gray-900">{overview.latestCount.enteredBy}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400">System count</p>
+                  <p className="mt-1 text-base font-semibold text-gray-900">{formatNumber(overview.latestCount.systemCount)} crates</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400">Physical count</p>
+                  <p className="mt-1 text-base font-semibold text-gray-900">{formatNumber(overview.latestCount.physicalCount)} crates</p>
+                </div>
+              </div>
+              <div className={`rounded-xl border px-3 py-3 text-sm ${
+                overview.latestCount.discrepancy === 0
+                  ? 'border-green-200 bg-green-50 text-green-800'
+                  : 'border-red-200 bg-red-50 text-red-800'
+              }`}>
+                {overview.latestCount.discrepancy === 0
+                  ? 'The last physical count matched the system count.'
+                  : `The last count had a discrepancy of ${formatNumber(overview.latestCount.discrepancy)} crates.`}
+              </div>
+            </div>
+          ) : (
+            <div className="mt-4 rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-5 text-sm text-gray-500">
+              No physical count has been recorded for this batch yet.
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
+          <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-4">FE Mix</h3>
+          {feMix.length === 0 ? (
+            <p className="text-sm text-gray-500">The final FE codes will appear here after this batch is received.</p>
+          ) : (
+            <div className="space-y-3">
+              {feMix.map((eggCode) => (
+                <div key={eggCode.id} className="rounded-xl border border-gray-100 px-3 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="font-mono text-sm font-semibold text-brand-600">{eggCode.code}</p>
+                      <p className="mt-1 text-xs text-gray-500">{eggCode.item?.name || 'Catalog item linked'}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-semibold text-gray-900">{formatNumber(eggCode.quantity + (eggCode.freeQty || 0))} crates</p>
+                      <p className="text-xs text-gray-500">{formatCurrency(eggCode.costPrice)} cost price</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
+          <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-4">Operational Notes</h3>
+          <div className="space-y-3 text-sm text-gray-600">
+            <div className="rounded-xl bg-gray-50 px-4 py-3">
+              <span className="font-medium text-gray-900">Bookings do not reduce batch stock.</span> Stock reduces only when a sale happens or when damaged crates are written off.
+            </div>
+            <div className="rounded-xl bg-gray-50 px-4 py-3">
+              <span className="font-medium text-gray-900">Crack impact is tracked in crates.</span> Mildly cracked crates sold at discount and badly damaged write-offs are shown separately in analysis.
+            </div>
+            <div className="rounded-xl bg-gray-50 px-4 py-3">
+              <span className="font-medium text-gray-900">Company target:</span> about {formatCurrency(analysis?.policy?.targetProfitPerCrate || 500)} profit per crate for each batch.
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
