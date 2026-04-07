@@ -1,0 +1,304 @@
+// Fresh Eggs Operations Management System
+// Database Schema — the single source of truth for all data
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── AUTH & USERS ──────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  MANAGER
+  SHOP_FLOOR
+  RECORD_KEEPER
+  CUSTOMER
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  firstName    String   @map("first_name")
+  lastName     String   @map("last_name")
+  phone        String?
+  role         Role     @default(CUSTOMER)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  refreshTokens  RefreshToken[]
+  salesRecorded  Sale[]           @relation("SaleRecordedBy")
+  bankTransactions BankTransaction[] @relation("TransactionEnteredBy")
+  inventoryCounts  InventoryCount[] @relation("CountEnteredBy")
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+// ─── CUSTOMERS ─────────────────────────────────────────────────
+
+model Customer {
+  id          String   @id @default(cuid())
+  name        String
+  phone       String
+  email       String?
+  isFirstTime Boolean  @default(true) @map("is_first_time")
+  notes       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  bookings         Booking[]
+  sales            Sale[]
+  bankTransactions BankTransaction[]
+
+  @@map("customers")
+}
+
+// ─── BATCHES ───────────────────────────────────────────────────
+
+enum BatchStatus {
+  OPEN       // Created, accepting bookings, not yet received
+  RECEIVED   // Eggs arrived at depot, sales can happen
+  CLOSED     // Fully sold or manually closed
+}
+
+model Batch {
+  id                    String      @id @default(cuid())
+  name                  String      @unique // e.g. "8APR2026", "12JUN2026A"
+  expectedDate          DateTime    @map("expected_date")
+  receivedDate          DateTime?   @map("received_date")
+  closedDate            DateTime?   @map("closed_date")
+  status                BatchStatus @default(OPEN)
+
+  expectedQuantity      Int         @map("expected_quantity")      // Total crates expected (paid)
+  availableForBooking   Int         @map("available_for_booking")  // How many can be booked
+  actualQuantity        Int?        @map("actual_quantity")        // Actual received (paid + free)
+  freeCrates            Int         @default(3) @map("free_crates") // Free crates from farm (usually 3)
+
+  wholesalePrice        Decimal     @map("wholesale_price") @db.Decimal(12, 2)
+  retailPrice           Decimal     @map("retail_price")   @db.Decimal(12, 2)
+  costPrice             Decimal     @map("cost_price")     @db.Decimal(12, 2) // Default cost; specific codes may differ
+
+  createdAt             DateTime    @default(now()) @map("created_at")
+  updatedAt             DateTime    @updatedAt @map("updated_at")
+
+  eggCodes    BatchEggCode[]
+  bookings    Booking[]
+  sales       Sale[]
+  inventory   InventoryCount[]
+
+  @@map("batches")
+}
+
+// Egg codes within a batch — e.g. FE4600 (1000 crates) + FE4800 (800 crates)
+model BatchEggCode {
+  id          String  @id @default(cuid())
+  batchId     String  @map("batch_id")
+  code        String  // e.g. "FE4600"
+  costPrice   Decimal @map("cost_price") @db.Decimal(12, 2) // ₦ per crate for this code
+  quantity    Int     // Paid crates of this code
+  freeQty     Int     @default(0) @map("free_qty") // Free crates of this code
+
+  batch Batch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  saleLineItems SaleLineItem[]
+
+  @@unique([batchId, code])
+  @@map("batch_egg_codes")
+}
+
+// ─── BOOKINGS ──────────────────────────────────────────────────
+
+enum BookingStatus {
+  CONFIRMED   // Paid and booked
+  PICKED_UP   // Customer collected eggs (becomes a sale)
+  CANCELLED   // Cancelled, refund issued
+}
+
+model Booking {
+  id            String        @id @default(cuid())
+  customerId    String        @map("customer_id")
+  batchId       String        @map("batch_id")
+  quantity      Int           // Crates booked
+  amountPaid    Decimal       @map("amount_paid") @db.Decimal(12, 2)
+  orderValue    Decimal       @map("order_value") @db.Decimal(12, 2) // Full value at booking price
+  status        BookingStatus @default(CONFIRMED)
+  channel       String        @default("backend") // "website" or "backend"
+  notes         String?
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  customer Customer @relation(fields: [customerId], references: [id])
+  batch    Batch    @relation(fields: [batchId], references: [id])
+  sale     Sale?    // Linked when booking is picked up and converted to sale
+
+  @@map("bookings")
+}
+
+// ─── SALES ─────────────────────────────────────────────────────
+
+enum SaleType {
+  WHOLESALE
+  RETAIL
+  CRACKED       // Sold below cost
+  WRITE_OFF     // Zero price / unsellable
+}
+
+enum PaymentMethod {
+  CASH
+  TRANSFER
+  POS_CARD    // Card via POS machine
+  PRE_ORDER   // Already paid via booking deposit
+}
+
+model Sale {
+  id             String        @id @default(cuid())
+  receiptNumber  String        @unique @map("receipt_number") // Auto-generated
+  customerId     String        @map("customer_id")
+  batchId        String        @map("batch_id")
+  bookingId      String?       @unique @map("booking_id") // If fulfilling a booking
+  recordedById   String        @map("recorded_by_id")
+
+  totalQuantity  Int           @map("total_quantity")
+  totalAmount    Decimal       @map("total_amount") @db.Decimal(12, 2)
+  totalCost      Decimal       @map("total_cost")   @db.Decimal(12, 2)
+  paymentMethod  PaymentMethod @map("payment_method")
+  saleDate       DateTime      @default(now()) @map("sale_date")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  customer   Customer      @relation(fields: [customerId], references: [id])
+  batch      Batch         @relation(fields: [batchId], references: [id])
+  booking    Booking?      @relation(fields: [bookingId], references: [id])
+  recordedBy User          @relation("SaleRecordedBy", fields: [recordedById], references: [id])
+  lineItems  SaleLineItem[]
+
+  @@map("sales")
+}
+
+model SaleLineItem {
+  id              String   @id @default(cuid())
+  saleId          String   @map("sale_id")
+  batchEggCodeId  String   @map("batch_egg_code_id")
+  saleType        SaleType @map("sale_type")
+  quantity        Int
+  unitPrice       Decimal  @map("unit_price") @db.Decimal(12, 2)  // Actual selling price per crate
+  costPrice       Decimal  @map("cost_price") @db.Decimal(12, 2)  // Cost price per crate (from egg code)
+  lineTotal       Decimal  @map("line_total") @db.Decimal(12, 2)  // quantity * unitPrice
+
+  sale         Sale         @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  batchEggCode BatchEggCode @relation(fields: [batchEggCodeId], references: [id])
+
+  @@map("sale_line_items")
+}
+
+// ─── BANKING ───────────────────────────────────────────────────
+
+enum BankAccountType {
+  CUSTOMER_DEPOSIT  // Ends in 10, publicly known
+  SALES             // Funded weekly from customer deposit
+  PROFIT            // Funded monthly from sales, pays all expenses
+}
+
+model BankAccount {
+  id           String          @id @default(cuid())
+  name         String          // Display name e.g. "Customer Deposit Account"
+  accountType  BankAccountType @map("account_type")
+  lastFour     String          @map("last_four") // Last 4 digits for display
+  bankName     String          @default("Providus Bank") @map("bank_name")
+  isActive     Boolean         @default(true) @map("is_active")
+  createdAt    DateTime        @default(now()) @map("created_at")
+
+  transactions BankTransaction[]
+
+  @@map("bank_accounts")
+}
+
+enum TransactionDirection {
+  INFLOW
+  OUTFLOW
+}
+
+enum TransactionCategory {
+  // Inflows
+  CUSTOMER_DEPOSIT    // Money in, no booking yet
+  CUSTOMER_BOOKING    // Money in + booking made
+  SALES_TRANSFER_IN   // Weekly transfer from Customer Deposit → Sales account
+  PROFIT_TRANSFER_IN  // Monthly transfer from Sales → Profit account
+  POS_SETTLEMENT      // Medusa/bank settlement of card transactions
+
+  // Outflows
+  REFUND
+  BANK_CHARGES
+  SALES_TRANSFER_OUT  // Weekly transfer out of Customer Deposit → Sales
+  PROFIT_TRANSFER_OUT // Monthly transfer out of Sales → Profit
+  FARMER_PAYMENT
+  SALARY
+  DIESEL_FUEL
+  INTERNET
+  MARKETING
+  OTHER_EXPENSE
+}
+
+model BankTransaction {
+  id              String               @id @default(cuid())
+  bankAccountId   String               @map("bank_account_id")
+  direction       TransactionDirection
+  category        TransactionCategory
+  amount          Decimal              @db.Decimal(12, 2)
+  description     String?
+  reference       String?              // Bank reference / narration
+  transactionDate DateTime             @map("transaction_date")
+
+  // Optional links — depends on category
+  customerId      String?              @map("customer_id")
+  bookingId       String?              @map("booking_id_ref") // For CUSTOMER_BOOKING category
+  enteredById     String               @map("entered_by_id")
+
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+
+  bankAccount BankAccount @relation(fields: [bankAccountId], references: [id])
+  customer    Customer?   @relation(fields: [customerId], references: [id])
+  enteredBy   User        @relation("TransactionEnteredBy", fields: [enteredById], references: [id])
+
+  @@map("bank_transactions")
+}
+
+// ─── INVENTORY ─────────────────────────────────────────────────
+
+model InventoryCount {
+  id             String   @id @default(cuid())
+  batchId        String   @map("batch_id")
+  countDate      DateTime @map("count_date")
+  physicalCount  Int      @map("physical_count")  // What staff counted on the floor
+  systemCount    Int      @map("system_count")     // What the system thinks it should be
+  discrepancy    Int      @default(0)              // physicalCount - systemCount
+  crackedWriteOff Int     @default(0) @map("cracked_write_off") // Crates written off as unsellable
+  notes          String?
+  enteredById    String   @map("entered_by_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  batch     Batch @relation(fields: [batchId], references: [id])
+  enteredBy User  @relation("CountEnteredBy", fields: [enteredById], references: [id])
+
+  @@unique([batchId, countDate])
+  @@map("inventory_counts")
+}
