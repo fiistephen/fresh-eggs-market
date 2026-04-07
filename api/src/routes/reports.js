@@ -2,12 +2,11 @@ import prisma from '../plugins/prisma.js';
 import { authenticate } from '../plugins/auth.js';
 import { authorize } from '../middleware/authorize.js';
 import {
-  POLICY_TARGET_PROFIT_PER_CRATE,
-  DEFAULT_CRACK_ALLOWANCE_PERCENT,
   buildCrackAlert,
   roundTo2,
   safeDivide,
 } from '../utils/operationsPolicy.js';
+import { getOperationsPolicy } from '../utils/appSettings.js';
 
 function startOfDay(value) {
   const date = new Date(value);
@@ -254,6 +253,7 @@ export default async function reportsRoutes(fastify) {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER')],
     handler: async (request, reply) => {
       const { dateFrom, dateTo } = request.query;
+      const policy = await getOperationsPolicy();
 
       const batches = await prisma.batch.findMany({
         where: {
@@ -328,12 +328,12 @@ export default async function reportsRoutes(fastify) {
 
         const remaining = totalReceived - totalSold - totalWriteOffs;
         const grossProfit = totalRevenue - totalSaleCost;
-        const expectedPolicyProfit = totalReceived * POLICY_TARGET_PROFIT_PER_CRATE;
+        const expectedPolicyProfit = totalReceived * policy.targetProfitPerCrate;
         const varianceToPolicy = grossProfit - expectedPolicyProfit;
         const profitPerCrate = roundTo2(safeDivide(grossProfit, totalReceived));
         const totalCrackImpact = crackedSoldQuantity + totalWriteOffs;
         const crackRatePercent = roundTo2(safeDivide(totalCrackImpact * 100, totalReceived));
-        const crackAlert = buildCrackAlert(crackRatePercent);
+        const crackAlert = buildCrackAlert(crackRatePercent, policy.crackAllowancePercent);
 
         return {
           batchId: batch.id,
@@ -416,8 +416,8 @@ export default async function reportsRoutes(fastify) {
           dateTo: dateTo || null,
         },
         policy: {
-          targetProfitPerCrate: POLICY_TARGET_PROFIT_PER_CRATE,
-          crackAllowancePercent: DEFAULT_CRACK_ALLOWANCE_PERCENT,
+          targetProfitPerCrate: policy.targetProfitPerCrate,
+          crackAllowancePercent: policy.crackAllowancePercent,
         },
         batchSummary,
         monthlySummary,

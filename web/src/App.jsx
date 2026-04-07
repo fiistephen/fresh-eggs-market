@@ -14,6 +14,7 @@ import Customers from './pages/Customers';
 import Portal from './pages/Portal';
 import Reports from './pages/Reports';
 import ReportDetail from './pages/ReportDetail';
+import AdminConfig from './pages/AdminConfig';
 
 export default function App() {
   return (
@@ -72,6 +73,14 @@ export default function App() {
               element={
                 <ProtectedRoute roles={['ADMIN', 'MANAGER']}>
                   <ReportDetail />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="admin"
+              element={
+                <ProtectedRoute roles={['ADMIN']}>
+                  <AdminConfig />
                 </ProtectedRoute>
               }
             />

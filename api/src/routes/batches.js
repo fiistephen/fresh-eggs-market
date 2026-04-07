@@ -2,11 +2,11 @@ import prisma from '../plugins/prisma.js';
 import { authenticate } from '../plugins/auth.js';
 import { authorize } from '../middleware/authorize.js';
 import {
-  POLICY_TARGET_PROFIT_PER_CRATE,
   buildCrackAlert,
   roundTo2,
   safeDivide,
 } from '../utils/operationsPolicy.js';
+import { getOperationsPolicy } from '../utils/appSettings.js';
 
 export default async function batchRoutes(fastify) {
 
@@ -346,6 +346,7 @@ export default async function batchRoutes(fastify) {
   fastify.get('/batches/:id/analysis', {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER')],
     handler: async (request, reply) => {
+      const policy = await getOperationsPolicy();
       const batch = await prisma.batch.findUnique({
         where: { id: request.params.id },
         include: {
@@ -400,9 +401,9 @@ export default async function batchRoutes(fastify) {
       const crackedSoldValue = salesBreakdown.CRACKED || 0;
       const totalCrackImpact = crackedSoldQuantity + totalDamagedWriteOff;
       const crackRatePercent = roundTo2(safeDivide(totalCrackImpact * 100, totalReceived));
-      const crackAlert = buildCrackAlert(crackRatePercent);
+      const crackAlert = buildCrackAlert(crackRatePercent, policy.crackAllowancePercent);
       const grossProfit = totalRevenue - totalSaleCost;
-      const expectedPolicyProfit = totalReceived * POLICY_TARGET_PROFIT_PER_CRATE;
+      const expectedPolicyProfit = totalReceived * policy.targetProfitPerCrate;
       const varianceToPolicy = grossProfit - expectedPolicyProfit;
       const profitPerCrate = roundTo2(safeDivide(grossProfit, totalReceived));
 
@@ -468,7 +469,8 @@ export default async function batchRoutes(fastify) {
           costPrice: Number(batch.costPrice),
         },
         policy: {
-          targetProfitPerCrate: POLICY_TARGET_PROFIT_PER_CRATE,
+          targetProfitPerCrate: policy.targetProfitPerCrate,
+          crackAllowancePercent: policy.crackAllowancePercent,
         },
       });
     },

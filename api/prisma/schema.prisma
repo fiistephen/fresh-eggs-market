@@ -39,6 +39,7 @@ model User {
   statementImports BankStatementImport[] @relation("StatementImportedBy")
   reconciliations  BankReconciliation[]  @relation("ReconciledBy")
   bookingAllocations BookingPaymentAllocation[] @relation("AllocationCreatedBy")
+  appSettingsUpdated AppSetting[] @relation("AppSettingUpdatedBy")
 
   @@map("users")
 }
@@ -454,4 +455,18 @@ model InventoryCount {
 
   @@unique([batchId, countDate])
   @@map("inventory_counts")
+}
+
+model AppSetting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       Json
+  description String?
+  updatedById String?  @map("updated_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  updatedBy   User?    @relation("AppSettingUpdatedBy", fields: [updatedById], references: [id])
+
+  @@map("app_settings")
 }

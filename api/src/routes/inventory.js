@@ -2,11 +2,11 @@ import prisma from '../plugins/prisma.js';
 import { authenticate } from '../plugins/auth.js';
 import { authorize } from '../middleware/authorize.js';
 import {
-  DEFAULT_CRACK_ALLOWANCE_PERCENT,
   buildCrackAlert,
   roundTo2,
   safeDivide,
 } from '../utils/operationsPolicy.js';
+import { getOperationsPolicy } from '../utils/appSettings.js';
 
 // Helper: compute system count for a batch (received - sold - written off)
 async function computeSystemCount(batchId) {
@@ -40,6 +40,7 @@ export default async function inventoryRoutes(fastify) {
   fastify.get('/inventory', {
     preHandler: [authenticate],
     handler: async (request, reply) => {
+      const policy = await getOperationsPolicy();
       // Get all received (not closed) batches — these are the ones with active stock
       const batches = await prisma.batch.findMany({
         where: { status: 'RECEIVED' },
@@ -92,7 +93,7 @@ export default async function inventoryRoutes(fastify) {
         });
 
         const crackRatePercent = roundTo2(safeDivide((totalWrittenOff + crackedSoldQuantity) * 100, totalReceived));
-        const crackAlert = buildCrackAlert(crackRatePercent);
+        const crackAlert = buildCrackAlert(crackRatePercent, policy.crackAllowancePercent);
 
         inventory.push({
           batch: {
@@ -149,7 +150,7 @@ export default async function inventoryRoutes(fastify) {
         inventory,
         totals,
         policy: {
-          crackAllowancePercent: DEFAULT_CRACK_ALLOWANCE_PERCENT,
+          crackAllowancePercent: policy.crackAllowancePercent,
         },
       });
     },

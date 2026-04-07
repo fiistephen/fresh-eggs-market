@@ -725,3 +725,50 @@ Minimum update format:
   - this is a Phase 5 control slice, not the final multi-batch sale-sourcing rewrite yet
   - the current crack threshold in code is temporary and should be revisited when the final allowance is agreed
   - next likely high-value work after review is admin/configuration for policy settings or the deeper multi-batch fulfillment model
+
+## 20. 2026-04-07 Admin And Configuration Foundation
+
+- Started the Admin/configuration phase with the highest-value foundation pieces first:
+  - persisted policy settings
+  - bank account management
+- New schema model:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/prisma/schema.prisma`
+  - added `AppSetting` so the app can store company settings instead of hardcoding them
+- New backend utilities:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/src/utils/appSettings.js`
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/src/utils/operationsPolicy.js`
+- Product behavior change in this pass:
+  - crack allowance and target profit per crate now come from saved app settings
+  - reports, inventory, and batch analysis read the saved settings instead of fixed constants
+- New backend admin route file:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/src/routes/admin.js`
+- New admin endpoints:
+  - `GET /admin/config`
+  - `PATCH /admin/config/policy`
+  - `POST /admin/bank-accounts`
+  - `PATCH /admin/bank-accounts/:id`
+- App registration update:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/src/index.js`
+- New frontend admin page:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/pages/AdminConfig.jsx`
+- Frontend shell updates:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/App.jsx`
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/components/Layout.jsx`
+- Current admin scope:
+  - policy settings:
+    - target profit per crate
+    - crack allowance percent
+  - bank accounts:
+    - create account
+    - edit account name, bank, last four, active state, import support, sort order
+- Permission decision:
+  - Admin page is currently `ADMIN` only
+- Local verification completed:
+  - `node --check` passed for `admin.js`, `reports.js`, `inventory.js`, and `batches.js`
+  - Prisma schema validated
+  - Prisma client generated successfully
+  - frontend build passed
+- What future Codex sessions should remember:
+  - this is the first admin/config slice, not the full configuration suite yet
+  - FE/item admin and category admin are still outstanding
+  - after this foundation, the next likely step is either fuller admin coverage or the deeper multi-batch fulfillment rewrite

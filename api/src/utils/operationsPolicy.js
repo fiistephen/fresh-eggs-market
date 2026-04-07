@@ -1,4 +1,4 @@
-export const POLICY_TARGET_PROFIT_PER_CRATE = 500;
+export const DEFAULT_TARGET_PROFIT_PER_CRATE = 500;
 
 // Temporary default until operations confirms the final allowance setting.
 export const DEFAULT_CRACK_ALLOWANCE_PERCENT = 2;
