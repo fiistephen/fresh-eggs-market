@@ -1471,3 +1471,22 @@ Minimum update format:
   - customer-facing line items
   - quantity and total paid
 - Added a thermal-printer-friendly print layout sized for typical 80mm receipt printers.
+
+## 2026-04-08 — Sales new-customer flow and limit override audit
+
+- Step 1 of `Record or Fulfill Sale` now supports two paths:
+  - search and select an existing customer
+  - create a new customer inline without leaving Sales
+- New direct-sale customers now follow the same early-order policy used elsewhere in the app.
+- The Sales module now includes direct sales in tracked customer order count, so the “first few orders” crate cap is enforced consistently across:
+  - portal orders
+  - bookings
+  - banking-created bookings
+  - direct sales
+- If a direct sale goes above the current per-order customer limit:
+  - staff must enter an override note
+  - the note is saved with the sale
+  - the staff user who overrode it is saved with the sale
+  - the timestamp of the override is saved with the sale
+- Sales detail now shows override audit information when a sale was allowed above the customer limit.
+- This change is live on staging only; production was not touched.

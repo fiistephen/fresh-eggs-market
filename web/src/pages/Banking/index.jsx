@@ -1,8 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { api } from '../../lib/api';
 import { buildCategoryMap } from './shared/constants';
-import { ActionButton } from './shared/ui';
 
 // Views
 import TodayView from './TodayView';
@@ -22,56 +21,27 @@ import InternalTransferModal from './InternalTransferModal';
 import StatementImportModal from './StatementImportModal';
 import ReconciliationModal from './ReconciliationModal';
 
-/* ── Navigation config ─────────────────────────────────── */
+/* ── Tab config ────────────────────────────────────────── */
 
-const NAV_SECTIONS = [
-  {
-    label: 'Daily',
-    items: [
-      { key: 'today', label: 'Overview', icon: 'home' },
-      { key: 'transactions', label: 'Transactions', icon: 'list' },
-      { key: 'imports', label: 'Bank Statements', icon: 'file' },
-      { key: 'customer-bookings', label: 'Bookings Queue', icon: 'users', badge: true },
-      { key: 'portal-transfers', label: 'Portal Transfers', icon: 'globe' },
-    ],
-  },
-  {
-    label: 'Reports',
-    adminOnly: true,
-    items: [
-      { key: 'balances', label: 'Account Balances', icon: 'bar-chart' },
-      { key: 'unbooked', label: 'Unbooked Deposits', icon: 'alert-circle' },
-      { key: 'liability', label: 'Customer Liability', icon: 'shield' },
-      { key: 'expenses', label: 'Expenses', icon: 'credit-card' },
-    ],
-  },
+const TABS = [
+  { key: 'today', label: 'Overview' },
+  { key: 'transactions', label: 'Transactions' },
+  { key: 'imports', label: 'Statements' },
+  { key: 'customer-bookings', label: 'Bookings', badge: true },
+  { key: 'portal-transfers', label: 'Transfers' },
 ];
 
-/* ── Minimal icon set (inline SVG paths) ───────────────── */
+const REPORT_TABS = [
+  { key: 'balances', label: 'Account Balances' },
+  { key: 'unbooked', label: 'Unbooked Deposits' },
+  { key: 'liability', label: 'Customer Liability' },
+  { key: 'expenses', label: 'Expenses' },
+];
 
-const ICONS = {
-  home: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0h4',
-  list: 'M4 6h16M4 10h16M4 14h16M4 18h16',
-  file: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
-  users: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z',
-  globe: 'M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9',
-  'bar-chart': 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6m6 0H3m6 0h6m0 0v-4a2 2 0 012-2h2a2 2 0 012 2v4m-6 0h6',
-  'alert-circle': 'M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
-  shield: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z',
-  'credit-card': 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z',
-};
+/* ── Pagination config ─────────────────────────────────── */
+const PAGE_SIZE = 25;
 
-function NavIcon({ name, className = 'w-5 h-5' }) {
-  const d = ICONS[name];
-  if (!d) return null;
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" d={d} />
-    </svg>
-  );
-}
-
-/* ── Main Banking page component ───────────────────────── */
+/* ── Main Banking page ─────────────────────────────────── */
 
 export default function Banking() {
   const { user } = useAuth();
@@ -83,6 +53,7 @@ export default function Banking() {
   const [accounts, setAccounts] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [transactionsTotal, setTransactionsTotal] = useState(0);
+  const [transactionsPage, setTransactionsPage] = useState(1);
   const [imports, setImports] = useState([]);
   const [reconciliations, setReconciliations] = useState([]);
   const [transactionCategories, setTransactionCategories] = useState([]);
@@ -121,10 +92,29 @@ export default function Banking() {
   const [showReconcileModal, setShowReconcileModal] = useState(false);
   const [postingImport, setPostingImport] = useState(false);
 
+  /* ── Action menu state ───────────────────────────────── */
+  const [showEntryMenu, setShowEntryMenu] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [showReportsMenu, setShowReportsMenu] = useState(false);
+  const entryRef = useRef(null);
+  const moreRef = useRef(null);
+  const reportsRef = useRef(null);
+
   /* ── Derived ─────────────────────────────────────────── */
   const canRecord = ['ADMIN', 'MANAGER', 'RECORD_KEEPER'].includes(user?.role);
   const canViewReports = ['ADMIN', 'MANAGER'].includes(user?.role);
   const categoryMap = buildCategoryMap(transactionCategories);
+
+  /* ── Close menus on outside click ────────────────────── */
+  useEffect(() => {
+    function handleClick(e) {
+      if (entryRef.current && !entryRef.current.contains(e.target)) setShowEntryMenu(false);
+      if (moreRef.current && !moreRef.current.contains(e.target)) setShowMoreMenu(false);
+      if (reportsRef.current && !reportsRef.current.contains(e.target)) setShowReportsMenu(false);
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
 
   /* ── Effects ─────────────────────────────────────────── */
 
@@ -132,7 +122,7 @@ export default function Banking() {
 
   useEffect(() => {
     if (activeView === 'transactions') loadTransactions();
-  }, [activeView, filters.bankAccountId, filters.direction, filters.sourceType, filters.dateFrom, filters.dateTo]);
+  }, [activeView, transactionsPage, filters.bankAccountId, filters.direction, filters.sourceType, filters.dateFrom, filters.dateTo]);
 
   useEffect(() => {
     if (activeView === 'imports') loadImports();
@@ -150,6 +140,11 @@ export default function Banking() {
       setSelectedImportLines([]);
     }
   }, [selectedImportId]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setTransactionsPage(1);
+  }, [filters.bankAccountId, filters.direction, filters.sourceType, filters.dateFrom, filters.dateTo]);
 
   /* ── Data loaders ────────────────────────────────────── */
 
@@ -186,7 +181,8 @@ export default function Banking() {
   async function loadTransactions(skipLoader = false) {
     if (!skipLoader) setTransactionsLoading(true);
     try {
-      const params = new URLSearchParams({ limit: '100' });
+      const offset = (transactionsPage - 1) * PAGE_SIZE;
+      const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
       if (filters.bankAccountId) params.set('bankAccountId', filters.bankAccountId);
       if (filters.direction) params.set('direction', filters.direction);
       if (filters.sourceType) params.set('sourceType', filters.sourceType);
@@ -294,196 +290,224 @@ export default function Banking() {
     loadWorkspace();
   }
 
+  function handleFilterChange(next) {
+    setFilters((prev) => ({ ...prev, ...next }));
+  }
+
+  /* ── Pagination helpers ──────────────────────────────── */
+  const totalPages = Math.max(1, Math.ceil(transactionsTotal / PAGE_SIZE));
+  const isReportView = ['balances', 'unbooked', 'liability', 'expenses'].includes(activeView);
+
   /* ── Render ──────────────────────────────────────────── */
 
   return (
-    <div className="flex min-h-[calc(100vh-8rem)] gap-0 lg:gap-6">
-      {/* ── Sidebar navigation ─────────────────────────── */}
-      <aside className="hidden w-56 shrink-0 lg:block">
-        <div className="sticky top-24 space-y-5">
-          {NAV_SECTIONS.map((section) => {
-            if (section.adminOnly && !canViewReports) return null;
-            return (
-              <div key={section.label}>
-                <p className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
-                  {section.label}
-                </p>
-                <nav className="space-y-0.5">
-                  {section.items.map((item) => {
-                    const isActive = activeView === item.key;
-                    const badgeCount = item.badge ? customerBookingQueue.length : 0;
-                    return (
-                      <button
-                        key={item.key}
-                        onClick={() => setActiveView(item.key)}
-                        className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
-                          isActive
-                            ? 'bg-brand-50 text-brand-700'
-                            : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                        }`}
-                      >
-                        <NavIcon name={item.icon} className={`h-[18px] w-[18px] ${isActive ? 'text-brand-600' : 'text-gray-400'}`} />
-                        <span className="flex-1 text-left">{item.label}</span>
-                        {item.badge && badgeCount > 0 && (
-                          <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-500 px-1.5 text-[11px] font-bold text-white">
-                            {badgeCount}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </nav>
+    <div className="space-y-4">
+      {/* ── Header row ────────────────────────────────────── */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-2xl font-bold text-gray-900">Banking</h1>
+
+        {canRecord && (
+          <div className="flex items-center gap-2">
+            {/* Primary: Record entry + dropdown */}
+            <div className="relative" ref={entryRef}>
+              <div className="flex">
+                <button
+                  onClick={() => setShowRecordModal(true)}
+                  className="rounded-l-lg bg-brand-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-brand-700 transition-colors"
+                >
+                  + Record entry
+                </button>
+                <button
+                  onClick={() => setShowEntryMenu((v) => !v)}
+                  className="rounded-r-lg border-l border-brand-500 bg-brand-600 px-2 py-2 text-white hover:bg-brand-700 transition-colors"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                </button>
               </div>
-            );
-          })}
-        </div>
-      </aside>
-
-      {/* ── Main content area ──────────────────────────── */}
-      <div className="min-w-0 flex-1 space-y-5">
-        {/* Header */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Banking</h1>
-            <p className="mt-1 max-w-xl text-sm text-gray-500">
-              Record transactions, import bank statements, process customer bookings, and check balances.
-            </p>
-          </div>
-          {canRecord && (
-            <div className="flex flex-wrap gap-2">
-              <ActionButton label="Record one" variant="primary" onClick={() => setShowRecordModal(true)} />
-              <ActionButton label="Enter many" variant="primary" onClick={() => setShowBulkModal(true)} />
-              <ActionButton label="Move money" onClick={() => setShowTransferModal(true)} />
-              <ActionButton label="Import statement" onClick={() => setShowImportModal(true)} />
-              {canViewReports && <ActionButton label="Reconcile" onClick={() => setShowReconcileModal(true)} />}
+              {showEntryMenu && (
+                <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+                  <button onClick={() => { setShowBulkModal(true); setShowEntryMenu(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                    <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z" /></svg>
+                    Enter many at once
+                  </button>
+                </div>
+              )}
             </div>
-          )}
-        </div>
 
-        {/* Mobile view switcher (replaces sidebar on small screens) */}
-        <div className="flex gap-1 overflow-x-auto rounded-xl bg-gray-100 p-1 lg:hidden">
-          {NAV_SECTIONS.flatMap((s) => (s.adminOnly && !canViewReports ? [] : s.items)).map((item) => {
-            const badgeCount = item.badge ? customerBookingQueue.length : 0;
-            return (
+            {/* More actions */}
+            <div className="relative" ref={moreRef}>
               <button
-                key={item.key}
-                onClick={() => setActiveView(item.key)}
-                className={`relative whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                  activeView === item.key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                }`}
+                onClick={() => setShowMoreMenu((v) => !v)}
+                className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
               >
-                {item.label}
-                {item.badge && badgeCount > 0 && (
-                  <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white">
-                    {badgeCount}
-                  </span>
-                )}
+                More <span className="text-gray-400">&#9662;</span>
               </button>
-            );
-          })}
-        </div>
-
-        {/* Error banner */}
-        {error && (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
-            <button onClick={() => setError('')} className="ml-2 font-medium underline">Dismiss</button>
+              {showMoreMenu && (
+                <div className="absolute right-0 top-full z-20 mt-1 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+                  <button onClick={() => { setShowTransferModal(true); setShowMoreMenu(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Move money</button>
+                  <button onClick={() => { setShowImportModal(true); setShowMoreMenu(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Import statement</button>
+                  {canViewReports && <button onClick={() => { setShowReconcileModal(true); setShowMoreMenu(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Reconcile balance</button>}
+                </div>
+              )}
+            </div>
           </div>
         )}
-
-        {/* ── Active view ────────────────────────────────── */}
-
-        {activeView === 'today' && (
-          <TodayView
-            loading={loading}
-            accounts={accounts}
-            imports={imports}
-            reconciliations={reconciliations}
-            transactions={transactions.slice(0, 8)}
-            categoryMap={categoryMap}
-            canViewReports={canViewReports}
-            bookingQueueCount={customerBookingQueue.length}
-            onOpenImport={(importId) => {
-              setSelectedImportId(importId);
-              setActiveView('imports');
-            }}
-            onNavigate={setActiveView}
-          />
-        )}
-
-        {activeView === 'transactions' && (
-          <TransactionsView
-            accounts={accounts}
-            transactions={transactions}
-            total={transactionsTotal}
-            loading={transactionsLoading}
-            filters={filters}
-            categoryMap={categoryMap}
-            onFilterChange={(next) => setFilters((prev) => ({ ...prev, ...next }))}
-          />
-        )}
-
-        {activeView === 'imports' && (
-          <ImportsView
-            accounts={accounts}
-            categoryMap={categoryMap}
-            imports={imports}
-            importsLoading={importsLoading}
-            selectedImportId={selectedImportId}
-            onSelectImport={setSelectedImportId}
-            selectedImport={selectedImport}
-            selectedImportLines={selectedImportLines}
-            selectedImportLoading={selectedImportLoading}
-            postingImport={postingImport}
-            onPostImport={handleImportPosted}
-            onLineUpdated={() => {
-              if (selectedImportId) loadImportDetail(selectedImportId);
-              loadImports();
-            }}
-            onImportQueueUpdated={() => loadImports()}
-          />
-        )}
-
-        {activeView === 'customer-bookings' && (
-          <QueueList
-            loading={customerBookingLoading}
-            queue={customerBookingQueue}
-            openBatches={customerBookingBatches}
-            policy={bankingPolicy}
-            onRefresh={() => {
-              loadCustomerBookings();
-              loadTransactions();
-            }}
-          />
-        )}
-
-        {activeView === 'portal-transfers' && (
-          <PortalTransferQueue
-            loading={portalTransferLoading}
-            queue={portalTransferQueue}
-            onRefresh={() => {
-              loadPortalTransferQueue();
-              loadAccounts();
-              loadTransactions();
-              loadCustomerBookings();
-            }}
-          />
-        )}
-
-        {activeView === 'balances' && (
-          <AccountBalances
-            accounts={accounts}
-            reconciliations={reconciliations}
-            loading={reconciliationsLoading}
-          />
-        )}
-
-        {activeView === 'unbooked' && <UnbookedDeposits />}
-        {activeView === 'liability' && <CustomerLiability />}
-        {activeView === 'expenses' && <Expenses categoryMap={categoryMap} />}
       </div>
 
-      {/* ── Modals ─────────────────────────────────────── */}
+      {/* ── Horizontal tab strip ──────────────────────────── */}
+      <div className="flex items-center gap-1 overflow-x-auto border-b border-gray-200">
+        {TABS.map((tab) => {
+          const isActive = activeView === tab.key;
+          const badgeCount = tab.badge ? customerBookingQueue.length : 0;
+          return (
+            <button
+              key={tab.key}
+              onClick={() => setActiveView(tab.key)}
+              className={`relative whitespace-nowrap px-4 py-2.5 text-sm font-medium transition-colors ${
+                isActive
+                  ? 'border-b-2 border-brand-600 text-brand-700'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {tab.label}
+              {tab.badge && badgeCount > 0 && (
+                <span className="ml-1.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-500 px-1.5 text-[11px] font-bold text-white">
+                  {badgeCount}
+                </span>
+              )}
+            </button>
+          );
+        })}
+
+        {/* Reports dropdown tab */}
+        {canViewReports && (
+          <div className="relative" ref={reportsRef}>
+            <button
+              onClick={() => setShowReportsMenu((v) => !v)}
+              className={`flex items-center gap-1 whitespace-nowrap px-4 py-2.5 text-sm font-medium transition-colors ${
+                isReportView
+                  ? 'border-b-2 border-brand-600 text-brand-700'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {isReportView ? REPORT_TABS.find((t) => t.key === activeView)?.label || 'Reports' : 'Reports'}
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+            </button>
+            {showReportsMenu && (
+              <div className="absolute left-0 top-full z-20 mt-1 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+                {REPORT_TABS.map((rt) => (
+                  <button
+                    key={rt.key}
+                    onClick={() => { setActiveView(rt.key); setShowReportsMenu(false); }}
+                    className={`flex w-full items-center px-3 py-2 text-sm ${activeView === rt.key ? 'bg-brand-50 text-brand-700 font-medium' : 'text-gray-700 hover:bg-gray-50'}`}
+                  >
+                    {rt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Error banner */}
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+          <button onClick={() => setError('')} className="ml-2 font-medium underline">Dismiss</button>
+        </div>
+      )}
+
+      {/* ── Active view ────────────────────────────────────── */}
+
+      {activeView === 'today' && (
+        <TodayView
+          loading={loading}
+          accounts={accounts}
+          imports={imports}
+          customerBookingQueue={customerBookingQueue}
+          portalTransferQueue={portalTransferQueue}
+          canViewReports={canViewReports}
+          onNavigate={setActiveView}
+        />
+      )}
+
+      {activeView === 'transactions' && (
+        <TransactionsView
+          accounts={accounts}
+          transactions={transactions}
+          total={transactionsTotal}
+          loading={transactionsLoading}
+          filters={filters}
+          categoryMap={categoryMap}
+          page={transactionsPage}
+          pageSize={PAGE_SIZE}
+          totalPages={totalPages}
+          onPageChange={setTransactionsPage}
+          onFilterChange={handleFilterChange}
+        />
+      )}
+
+      {activeView === 'imports' && (
+        <ImportsView
+          accounts={accounts}
+          categoryMap={categoryMap}
+          imports={imports}
+          importsLoading={importsLoading}
+          selectedImportId={selectedImportId}
+          onSelectImport={setSelectedImportId}
+          selectedImport={selectedImport}
+          selectedImportLines={selectedImportLines}
+          selectedImportLoading={selectedImportLoading}
+          postingImport={postingImport}
+          onPostImport={handleImportPosted}
+          onLineUpdated={() => {
+            if (selectedImportId) loadImportDetail(selectedImportId);
+            loadImports();
+          }}
+          onImportQueueUpdated={() => loadImports()}
+        />
+      )}
+
+      {activeView === 'customer-bookings' && (
+        <QueueList
+          loading={customerBookingLoading}
+          queue={customerBookingQueue}
+          openBatches={customerBookingBatches}
+          policy={bankingPolicy}
+          onRefresh={() => {
+            loadCustomerBookings();
+            loadTransactions();
+          }}
+        />
+      )}
+
+      {activeView === 'portal-transfers' && (
+        <PortalTransferQueue
+          loading={portalTransferLoading}
+          queue={portalTransferQueue}
+          onRefresh={() => {
+            loadPortalTransferQueue();
+            loadAccounts();
+            loadTransactions();
+            loadCustomerBookings();
+          }}
+        />
+      )}
+
+      {activeView === 'balances' && (
+        <AccountBalances
+          accounts={accounts}
+          reconciliations={reconciliations}
+          loading={reconciliationsLoading}
+        />
+      )}
+
+      {activeView === 'unbooked' && <UnbookedDeposits />}
+      {activeView === 'liability' && <CustomerLiability />}
+      {activeView === 'expenses' && <Expenses categoryMap={categoryMap} />}
+
+      {/* ── Modals ─────────────────────────────────────────── */}
 
       {showRecordModal && (
         <RecordTransactionModal
@@ -497,7 +521,6 @@ export default function Banking() {
               setShowRecordModal(false);
               refreshAfterMutation();
             } else {
-              // Stay open — just reload accounts for updated balances
               loadAccounts();
               loadTransactions(true);
             }
