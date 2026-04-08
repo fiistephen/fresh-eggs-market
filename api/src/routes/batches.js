@@ -261,7 +261,15 @@ export default async function batchRoutes(fastify) {
   fastify.post('/batches', {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER')],
     handler: async (request, reply) => {
-      const { expectedDate, expectedQuantity, availableForBooking, wholesalePrice, retailPrice, costPrice } = request.body;
+      const {
+        expectedDate,
+        expectedQuantity,
+        availableForBooking,
+        wholesalePrice,
+        retailPrice,
+        costPrice,
+        plannedItems = [],
+      } = request.body;
 
       // Validation
       if (!expectedDate) return reply.code(400).send({ error: 'Expected date is required' });
@@ -273,6 +281,56 @@ export default async function batchRoutes(fastify) {
       const bookingQty = availableForBooking ?? expectedQuantity;
       if (bookingQty > expectedQuantity) {
         return reply.code(400).send({ error: 'Available for booking cannot exceed expected quantity' });
+      }
+
+      if (!Array.isArray(plannedItems) || plannedItems.length === 0) {
+        return reply.code(400).send({ error: 'Add at least one item type for this batch' });
+      }
+      if (plannedItems.length > 3) {
+        return reply.code(400).send({ error: 'A batch can have up to 3 item types' });
+      }
+
+      const normalizedPlannedItems = [];
+      const seenCodes = new Set();
+
+      for (const row of plannedItems) {
+        const rawCode = row.code || (row.price ? `FE${row.price}` : '');
+        const code = normalizeItemCode(rawCode);
+        if (!code || !/^FE\d+$/.test(code)) {
+          return reply.code(400).send({ error: 'Each batch item must use a valid FE code like FE4600' });
+        }
+
+        const parsedPrice = Number(code.replace(/^FE/, ''));
+        if (!parsedPrice || parsedPrice <= 0) {
+          return reply.code(400).send({ error: `Could not read a valid price from ${code}` });
+        }
+
+        if (seenCodes.has(code)) {
+          return reply.code(400).send({ error: `${code} was added more than once. Use one row per item type.` });
+        }
+        seenCodes.add(code);
+
+        let item = null;
+        if (row.itemId) {
+          item = await prisma.item.findUnique({ where: { id: row.itemId } });
+          if (!item) {
+            return reply.code(400).send({ error: 'One of the selected items no longer exists' });
+          }
+        }
+
+        if (!item) {
+          item = await ensureItemForEggCode({
+            code,
+            wholesalePrice,
+            retailPrice,
+          });
+        }
+
+        normalizedPlannedItems.push({
+          code,
+          itemId: item?.id || null,
+          costPrice: parsedPrice,
+        });
       }
 
       // Auto-generate batch name from date
@@ -318,6 +376,17 @@ export default async function batchRoutes(fastify) {
           wholesalePrice,
           retailPrice,
           costPrice,
+          eggCodes: {
+            createMany: {
+              data: normalizedPlannedItems.map((row) => ({
+                itemId: row.itemId,
+                code: row.code,
+                costPrice: row.costPrice,
+                quantity: 0,
+                freeQty: 0,
+              })),
+            },
+          },
         },
       });
 

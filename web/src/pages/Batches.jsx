@@ -32,6 +32,27 @@ function formatPercent(n) {
   return `${Number(n || 0).toFixed(1)}%`;
 }
 
+function normalizeFeCode(code) {
+  return String(code || '').trim().toUpperCase();
+}
+
+function feCodeFromPrice(price) {
+  const digits = String(price || '').replace(/\D/g, '');
+  return digits ? `FE${digits}` : '';
+}
+
+function fePriceFromCode(code) {
+  const normalized = normalizeFeCode(code);
+  if (!/^FE\d+$/.test(normalized)) return '';
+  return normalized.replace(/^FE/, '');
+}
+
+const EMPTY_BATCH_ITEM = {
+  mode: 'existing',
+  itemId: '',
+  newPrice: '',
+};
+
 function isBatchOverdue(batch) {
   if (batch.status !== 'OPEN' || !batch.expectedDate) return false;
   const today = new Date();
@@ -358,17 +379,102 @@ function CreateBatchModal({ onClose, onCreated }) {
     retailPrice: '',
     costPrice: '',
   });
+  const [items, setItems] = useState([EMPTY_BATCH_ITEM]);
+  const [feItems, setFeItems] = useState([]);
+  const [loadingItems, setLoadingItems] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadFeItems() {
+      setLoadingItems(true);
+      try {
+        const response = await api.get('/items?category=FE_EGGS');
+        if (!cancelled) setFeItems(response.items || []);
+      } catch {
+        if (!cancelled) setFeItems([]);
+      } finally {
+        if (!cancelled) setLoadingItems(false);
+      }
+    }
+
+    loadFeItems();
+    return () => { cancelled = true; };
+  }, []);
+
   function update(field, value) {
     setForm(f => ({ ...f, [field]: value }));
+  }
+
+  function updateBatchItem(index, field, value) {
+    setItems((current) => {
+      const next = [...current];
+      next[index] = { ...next[index], [field]: value };
+
+      if (field === 'mode') {
+        next[index] = value === 'existing'
+          ? { mode: 'existing', itemId: '', newPrice: '' }
+          : { mode: 'new', itemId: '', newPrice: '' };
+      }
+
+      const row = next[index];
+      const rowPrice = row.mode === 'existing'
+        ? fePriceFromCode(feItems.find((item) => item.id === row.itemId)?.code)
+        : String(row.newPrice || '').replace(/\D/g, '');
+
+      if (index === 0 && rowPrice) {
+        setForm((currentForm) => ({
+          ...currentForm,
+          costPrice: rowPrice,
+        }));
+      }
+
+      return next;
+    });
+  }
+
+  function addBatchItem() {
+    if (items.length >= 3) return;
+    setItems((current) => [...current, EMPTY_BATCH_ITEM]);
+  }
+
+  function removeBatchItem(index) {
+    if (items.length <= 1) return;
+    setItems((current) => current.filter((_, itemIndex) => itemIndex !== index));
   }
 
   async function handleSubmit(e) {
     e.preventDefault();
     setSubmitting(true);
     setError('');
+
+    const preparedItems = items.map((row) => {
+      if (row.mode === 'existing') {
+        const selected = feItems.find((item) => item.id === row.itemId);
+        return selected
+          ? {
+              itemId: selected.id,
+              code: normalizeFeCode(selected.code),
+            }
+          : null;
+      }
+
+      const code = feCodeFromPrice(row.newPrice);
+      return code ? { code } : null;
+    }).filter(Boolean);
+
+    const seenCodes = new Set();
+    for (const row of preparedItems) {
+      if (seenCodes.has(row.code)) {
+        setError(`${row.code} was added more than once. Use one row per item type.`);
+        setSubmitting(false);
+        return;
+      }
+      seenCodes.add(row.code);
+    }
+
     try {
       await api.post('/batches', {
         ...form,
@@ -377,6 +483,7 @@ function CreateBatchModal({ onClose, onCreated }) {
         wholesalePrice: Number(form.wholesalePrice),
         retailPrice: Number(form.retailPrice),
         costPrice: Number(form.costPrice),
+        plannedItems: preparedItems,
       });
       onCreated();
     } catch (err) {
@@ -388,10 +495,10 @@ function CreateBatchModal({ onClose, onCreated }) {
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="px-4 sm:px-6 py-4 border-b border-gray-100">
           <h2 className="text-base sm:text-lg font-semibold text-gray-900">Create New Batch</h2>
-          <p className="text-xs sm:text-sm text-gray-500">A batch will be auto-named from the expected date.</p>
+          <p className="text-xs sm:text-sm text-gray-500">A batch will be auto-named from the expected date. Add up to 3 FE item types expected in this batch.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4">
@@ -435,7 +542,7 @@ function CreateBatchModal({ onClose, onCreated }) {
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Cost Price (₦)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Default Cost Price (₦)</label>
               <input
                 type="number"
                 required min="1"
@@ -444,6 +551,7 @@ function CreateBatchModal({ onClose, onCreated }) {
                 onChange={e => update('costPrice', e.target.value)}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
               />
+              <p className="mt-1 text-xs text-gray-400">This is used as the starting batch price before final receipt details are confirmed.</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Wholesale (₦)</label>
@@ -466,6 +574,113 @@ function CreateBatchModal({ onClose, onCreated }) {
                 onChange={e => update('retailPrice', e.target.value)}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
               />
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-blue-900">Items expected in this batch</h3>
+                <p className="text-xs sm:text-sm text-blue-800 mt-1">
+                  Use an active FE item or create a new one inline. FE items follow the formula <span className="font-medium">FE[price]</span>, for example <span className="font-medium">FE4600</span>.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={addBatchItem}
+                disabled={items.length >= 3}
+                className="inline-flex rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Add another item
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {items.map((row, index) => {
+                const selectedItem = feItems.find((item) => item.id === row.itemId);
+                const generatedCode = row.mode === 'new' ? feCodeFromPrice(row.newPrice) : normalizeFeCode(selectedItem?.code);
+                const generatedName = generatedCode || '';
+
+                return (
+                  <div key={`${index}-${row.mode}`} className="rounded-xl border border-blue-200 bg-white p-4">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">Item type {index + 1}</p>
+                        <p className="text-xs text-gray-500 mt-1">You can plan up to 3 FE item types for one batch.</p>
+                      </div>
+                      {items.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeBatchItem(index)}
+                          className="text-sm font-medium text-red-600 hover:text-red-700"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="mt-4 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => updateBatchItem(index, 'mode', 'existing')}
+                        className={`rounded-lg px-3 py-2 text-sm font-medium ${row.mode === 'existing' ? 'bg-brand-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                      >
+                        Choose active item
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateBatchItem(index, 'mode', 'new')}
+                        className={`rounded-lg px-3 py-2 text-sm font-medium ${row.mode === 'new' ? 'bg-brand-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                      >
+                        Create from price
+                      </button>
+                    </div>
+
+                    {row.mode === 'existing' ? (
+                      <div className="mt-4">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Active FE item</label>
+                        <select
+                          required
+                          value={row.itemId}
+                          onChange={(e) => updateBatchItem(index, 'itemId', e.target.value)}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+                        >
+                          <option value="">{loadingItems ? 'Loading active items...' : 'Select an active FE item'}</option>
+                          {feItems.map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {item.displayName || item.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : (
+                      <div className="mt-4">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Price of new FE item</label>
+                        <input
+                          type="number"
+                          required
+                          min="1"
+                          placeholder="4600"
+                          value={row.newPrice}
+                          onChange={(e) => updateBatchItem(index, 'newPrice', e.target.value)}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+                        />
+                      </div>
+                    )}
+
+                    <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="rounded-lg bg-gray-50 px-3 py-3">
+                        <p className="text-xs uppercase tracking-wider text-gray-500">Generated code</p>
+                        <p className="mt-1 text-sm font-semibold text-gray-900">{generatedCode || '—'}</p>
+                      </div>
+                      <div className="rounded-lg bg-gray-50 px-3 py-3">
+                        <p className="text-xs uppercase tracking-wider text-gray-500">Item name</p>
+                        <p className="mt-1 text-sm font-semibold text-gray-900">{generatedName || '—'}</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 

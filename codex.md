@@ -1094,3 +1094,30 @@ Minimum update format:
 - What future Codex sessions should remember:
   - this completes the deeper batch analysis / monthly tie-in slice
   - likely next step after this is Portal V2 unless more batch polish is requested
+
+## 29. 2026-04-08 Planned Items In Batch Creation
+
+- Upgraded batch creation so planned FE item types can be chosen at the moment a batch is created.
+- Main files changed:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/src/routes/batches.js`
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/pages/Batches.jsx`
+- What changed:
+  - the create-batch modal now supports up to 3 planned FE item types
+  - each row can either:
+    - choose an existing active FE item
+    - create a new FE item inline from price
+  - new inline FE items follow the business formula `FE[price]`
+    - example: `4600` becomes `FE4600`
+  - the modal now auto-shows the generated code and item name while creating inline
+  - the first planned item auto-fills the batch default cost price as a starting value
+- Backend behavior:
+  - batch creation now requires at least one planned item type
+  - duplicate FE codes in one batch create request are blocked
+  - planned FE items are stored on the OPEN batch as placeholder batch item rows with zero received quantity
+  - if an inline FE code does not exist yet, the backend creates the item automatically
+- Why this matters:
+  - batches can now start with their intended FE mix visible before receipt
+  - this matches the operating model better because batch planning starts before physical receipt
+- Local verification completed:
+  - `node --check` passed for `batches.js`
+  - frontend build passed
