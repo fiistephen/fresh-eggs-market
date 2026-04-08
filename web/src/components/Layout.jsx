@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 const NAV_ITEMS = [
@@ -40,13 +40,13 @@ export default function Layout() {
     <>
       {/* Logo + branding */}
       <div className="p-4 border-b border-gray-700">
-        <div className="flex items-center gap-3">
+        <Link to="/" className="flex items-center gap-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-400">
           <img src="/logo.webp" alt="Fresh Eggs" className="w-10 h-10 object-contain" />
           <div>
             <h1 className="text-base font-bold text-white">Fresh Eggs</h1>
             <p className="text-[10px] text-gray-400 leading-tight">Operations Management</p>
           </div>
-        </div>
+        </Link>
       </div>
 
       {/* Navigation */}
@@ -119,8 +119,10 @@ export default function Layout() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-          <img src="/logo.webp" alt="Fresh Eggs" className="w-7 h-7 object-contain" />
-          <span className="font-bold text-gray-900 text-sm">Fresh Eggs</span>
+          <Link to="/" className="flex items-center gap-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500">
+            <img src="/logo.webp" alt="Fresh Eggs" className="w-7 h-7 object-contain" />
+            <span className="font-bold text-gray-900 text-sm">Fresh Eggs</span>
+          </Link>
         </header>
 
         {/* Page content */}

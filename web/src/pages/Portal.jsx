@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
 
@@ -790,13 +791,13 @@ export default function Portal() {
     <div className="min-h-screen bg-[#f7f5ef] text-gray-900">
       <header className="border-b border-black/5 bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4">
-          <div className="flex items-center gap-3">
+          <Link to="/portal" className="flex items-center gap-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500">
             <img src="/logo.webp" alt="Fresh Eggs" className="h-10 w-10 object-contain" />
             <div>
               <h1 className="text-xl font-semibold">Fresh Eggs Market</h1>
               <p className="text-sm text-gray-500">Choose what you need, then we guide you to the right next step.</p>
             </div>
-          </div>
+          </Link>
           <div className="flex items-center gap-3">
             {isCustomerRole && <span className="hidden text-sm text-gray-600 md:block">Hi, {activeUser?.firstName}</span>}
             {isLoggedIn ? (

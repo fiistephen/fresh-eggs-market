@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function Login() {
@@ -29,9 +29,11 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-gray-900 px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <img src="/logo.webp" alt="Fresh Eggs Market" className="w-24 h-24 mx-auto object-contain mb-4" />
-          <h1 className="text-2xl font-bold text-white">Fresh Eggs Market</h1>
-          <p className="text-gray-400 mt-1 text-sm">Operations Management System</p>
+          <Link to="/" className="inline-block rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500">
+            <img src="/logo.webp" alt="Fresh Eggs Market" className="w-24 h-24 mx-auto object-contain mb-4" />
+            <h1 className="text-2xl font-bold text-white">Fresh Eggs Market</h1>
+            <p className="text-gray-400 mt-1 text-sm">Operations Management System</p>
+          </Link>
         </div>
 
         <form onSubmit={handleSubmit} className="bg-white shadow-xl rounded-2xl p-6 space-y-4">
