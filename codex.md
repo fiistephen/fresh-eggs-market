@@ -1316,3 +1316,25 @@ Minimum update format:
   - sign-in by email passed
   - `/api/portal/my-bookings` returned the correct customer-scoped history payload
   - `/api/portal/my-buy-now-requests` returned the correct customer-scoped history payload
+
+## 2026-04-08 — Portal order history and status details
+
+- The portal `Order status` area is now a real order-history table instead of a simple activity card list.
+- Customers can click any order row to open a detail modal.
+- The order detail modal now shows:
+  - status
+  - quantity
+  - payment made
+  - payment remaining
+  - payment progress
+  - expected batch date
+  - batch arrival status
+  - created date
+  - updated date
+  - notes
+  - next-step guidance
+- Booking history now includes a clear `batch arrived` signal when the batch status moves beyond `OPEN`.
+- Buy-now requests still appear in the same history table with their own status and estimated total details.
+- Staging verification completed:
+  - staging portal route returned `200 OK`
+  - staging API health returned `ok`
