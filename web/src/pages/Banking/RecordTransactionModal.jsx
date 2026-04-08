@@ -6,7 +6,7 @@ import QuickCategoryCreator from './QuickCategoryCreator';
 
 export default function RecordTransactionModal({ accounts, transactionCategories, categoryMap, onCategoriesChanged, onClose, onRecorded }) {
   const defaultDirection = 'INFLOW';
-  const defaultCategory = categoryOptionsForDirection(defaultDirection, categoryMap, 'CUSTOMER_DEPOSIT')[0] || 'CUSTOMER_DEPOSIT';
+  const defaultCategory = categoryOptionsForDirection(defaultDirection, categoryMap, 'UNALLOCATED_INCOME')[0] || 'UNALLOCATED_INCOME';
   const cashAccount = accounts.find((a) => a.accountType === 'CASH_ON_HAND');
   const defaultAccountId = cashAccount?.id || accounts[0]?.id || '';
 
@@ -49,7 +49,7 @@ export default function RecordTransactionModal({ accounts, transactionCategories
   const needsCustomer = ['CUSTOMER_DEPOSIT', 'REFUND'].includes(form.category);
 
   function setDirection(direction) {
-    const preferredCategory = direction === 'INFLOW' ? 'CUSTOMER_DEPOSIT' : 'UNALLOCATED_EXPENSE';
+    const preferredCategory = direction === 'INFLOW' ? 'UNALLOCATED_INCOME' : 'UNALLOCATED_EXPENSE';
     const nextCategories = categoryOptionsForDirection(direction, categoryMap, preferredCategory);
     setForm((current) => ({
       ...current,

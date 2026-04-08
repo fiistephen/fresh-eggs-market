@@ -13,12 +13,13 @@ function createRow(defaults = {}) {
     transactionDate: defaults.transactionDate || todayStr(),
     amount: '',
     description: '',
+    reference: defaults.reference || '',
   };
 }
 
 export default function BulkTransactionModal({ accounts, transactionCategories, categoryMap, onCategoriesChanged, onClose, onRecorded }) {
   const defaultAccountId = accounts.find((a) => a.accountType === 'CASH_ON_HAND')?.id || accounts[0]?.id || '';
-  const defaultCategory = categoryOptionsForDirection('INFLOW', categoryMap, 'CUSTOMER_DEPOSIT')[0] || 'CUSTOMER_DEPOSIT';
+  const defaultCategory = categoryOptionsForDirection('INFLOW', categoryMap, 'UNALLOCATED_INCOME')[0] || 'UNALLOCATED_INCOME';
   const initialDefaults = { bankAccountId: defaultAccountId, direction: 'INFLOW', category: defaultCategory, transactionDate: todayStr() };
 
   const [rows, setRows] = useState([
@@ -38,7 +39,7 @@ export default function BulkTransactionModal({ accounts, transactionCategories, 
       const updated = { ...row, ...patch };
       // If direction changed, reset category to a sensible default
       if (patch.direction && patch.direction !== row.direction) {
-        const preferred = patch.direction === 'INFLOW' ? 'CUSTOMER_DEPOSIT' : 'UNALLOCATED_EXPENSE';
+        const preferred = patch.direction === 'INFLOW' ? 'UNALLOCATED_INCOME' : 'UNALLOCATED_EXPENSE';
         const opts = categoryOptionsForDirection(patch.direction, categoryMap, preferred);
         updated.category = opts.includes(preferred) ? preferred : opts[0] || preferred;
       }
@@ -58,6 +59,7 @@ export default function BulkTransactionModal({ accounts, transactionCategories, 
       direction: lastRow.direction,
       category: lastRow.category,
       transactionDate: lastRow.transactionDate,
+      reference: lastRow.reference,
     } : initialDefaults)]);
   }
 
@@ -68,6 +70,7 @@ export default function BulkTransactionModal({ accounts, transactionCategories, 
       direction: source.direction,
       category: source.category,
       transactionDate: source.transactionDate,
+      reference: source.reference,
     });
     setRows((current) => {
       const next = [...current];
@@ -78,7 +81,15 @@ export default function BulkTransactionModal({ accounts, transactionCategories, 
 
   async function handleSubmit(event) {
     event.preventDefault();
-    const filledRows = rows.filter((row) => row.amount || row.description);
+    const partiallyFilledRows = rows
+      .map((row, index) => ({ row, index }))
+      .filter(({ row }) => (row.description?.trim() || row.reference?.trim()) && Number(row.amount) <= 0);
+    if (partiallyFilledRows.length > 0) {
+      setError(`Enter an amount for row ${partiallyFilledRows[0].index + 1}, or clear the extra text in that row.`);
+      return;
+    }
+
+    const filledRows = rows.filter((row) => Number(row.amount) > 0);
     if (filledRows.length === 0) {
       setError('Enter at least one row with an amount.');
       return;
@@ -94,6 +105,7 @@ export default function BulkTransactionModal({ accounts, transactionCategories, 
           transactionDate: row.transactionDate,
           amount: Number(row.amount),
           description: row.description,
+          reference: row.reference,
         })),
       });
       onRecorded();
@@ -135,7 +147,7 @@ export default function BulkTransactionModal({ accounts, transactionCategories, 
         )}
 
         <div className="overflow-x-auto rounded-xl border border-gray-200">
-          <table className="w-full min-w-[720px]">
+          <table className="w-full min-w-[860px]">
             <thead className="sticky top-0 z-10 bg-gray-50">
               <tr className="border-b border-gray-200">
                 <th className="px-3 py-2.5 text-left text-xs font-medium uppercase text-gray-500 w-[80px]">In / Out</th>
@@ -144,6 +156,7 @@ export default function BulkTransactionModal({ accounts, transactionCategories, 
                 <th className="px-3 py-2.5 text-left text-xs font-medium uppercase text-gray-500 w-[120px]">Date</th>
                 <th className="px-3 py-2.5 text-right text-xs font-medium uppercase text-gray-500 w-[120px]">Amount</th>
                 <th className="px-3 py-2.5 text-left text-xs font-medium uppercase text-gray-500">Description</th>
+                <th className="px-3 py-2.5 text-left text-xs font-medium uppercase text-gray-500 w-[160px]">Reference</th>
                 <th className="px-3 py-2.5 text-left text-xs font-medium uppercase text-gray-500 w-[90px]"></th>
               </tr>
             </thead>
@@ -209,6 +222,15 @@ export default function BulkTransactionModal({ accounts, transactionCategories, 
                         onChange={(e) => updateRow(index, { description: e.target.value })}
                         className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-brand-500"
                         placeholder="e.g. GTBank – Mrs Balogun"
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        type="text"
+                        value={row.reference}
+                        onChange={(e) => updateRow(index, { reference: e.target.value })}
+                        className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+                        placeholder="e.g. teller or transfer ref"
                       />
                     </td>
                     <td className="px-3 py-2">
