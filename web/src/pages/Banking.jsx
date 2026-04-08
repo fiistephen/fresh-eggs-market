@@ -773,7 +773,7 @@ function WorkspaceView({ loading, accounts, imports, reconciliations, transactio
   );
 }
 
-function TransactionsView({ accounts, transactions, total, loading, filters, onFilterChange }) {
+function TransactionsView({ accounts, transactions, total, loading, filters, onFilterChange, categoryMap }) {
   return (
     <div className="space-y-4">
       <div className="rounded-2xl border border-gray-200 bg-white p-5">
