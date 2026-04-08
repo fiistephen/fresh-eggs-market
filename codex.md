@@ -1356,3 +1356,19 @@ Minimum update format:
   - crack/write-off pressure
   - above-target and below-target batch performance
   - meaningful portal order history
+
+## 2026-04-08 — Demo data implementation scaffold
+
+- Added exact demo dataset spec docs:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/DEMO_DATA_SPEC.md`
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/DEMO_DATA_SPEC.md`
+- Added a staging/local-only demo seed script:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/prisma/seed.demo.js`
+- Added package script:
+  - `npm run db:seed:demo`
+- Safety rule in the demo seed:
+  - it aborts unless the database URL looks like staging or local
+- The demo seed is designed to:
+  - clean only the demo namespace it owns
+  - preserve unrelated staging records
+  - create scenario-driven batches, customers, bookings, allocations, sales, banking data, statement import lines, and portal history
