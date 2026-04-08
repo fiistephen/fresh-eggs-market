@@ -145,6 +145,11 @@ async function getTransactionAllocatedAmount(bankTransactionId) {
   return Number(allocationAgg._sum.amount || 0);
 }
 
+function buildQueueRemovalNote(existingNotes = null) {
+  const stamp = `Removed from active import queue on ${new Date().toISOString()}`;
+  return existingNotes ? `${existingNotes}\n${stamp}` : stamp;
+}
+
 async function validateCustomer(customerId) {
   if (!customerId) return null;
   const customer = await prisma.customer.findUnique({ where: { id: customerId } });
@@ -743,12 +748,16 @@ export default async function bankingRoutes(fastify) {
         return reply.code(400).send({ error: 'Posted lines cannot be removed from the queue' });
       }
 
-      await prisma.bankStatementLine.delete({
+      const line = await prisma.bankStatementLine.update({
         where: { id: existing.id },
+        data: {
+          reviewStatus: 'SKIPPED',
+          notes: buildQueueRemovalNote(existing.notes),
+        },
       });
       await recalculateImportStatus(request.params.id);
 
-      return reply.send({ removedLineId: existing.id });
+      return reply.send({ line: enrichStatementLine(line) });
     },
   });
 
@@ -772,8 +781,15 @@ export default async function bankingRoutes(fastify) {
         return reply.code(400).send({ error: 'Posted lines cannot be removed from the queue.' });
       }
 
-      await prisma.bankStatementLine.deleteMany({
-        where: { importId: request.params.id, id: { in: lines.map((line) => line.id) } },
+      await prisma.bankStatementLine.updateMany({
+        where: {
+          importId: request.params.id,
+          id: { in: lines.map((line) => line.id) },
+          reviewStatus: { not: 'POSTED' },
+        },
+        data: {
+          reviewStatus: 'SKIPPED',
+        },
       });
       await recalculateImportStatus(request.params.id);
 

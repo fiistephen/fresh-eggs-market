@@ -864,15 +864,18 @@ function ImportsView({
   onLineUpdated,
 }) {
   const [selectedLineIds, setSelectedLineIds] = useState([]);
-  const removableLines = selectedImportLines.filter((line) => line.reviewStatus !== 'POSTED');
+  const [showSkippedLines, setShowSkippedLines] = useState(false);
+  const visibleImportLines = selectedImportLines.filter((line) => showSkippedLines || line.reviewStatus !== 'SKIPPED');
+  const removableLines = visibleImportLines.filter((line) => !['POSTED', 'SKIPPED'].includes(line.reviewStatus));
 
   useEffect(() => {
     setSelectedLineIds([]);
+    setShowSkippedLines(false);
   }, [selectedImportId, selectedImportLines.length]);
 
   async function removeSelectedLines() {
     if (!selectedImportId || selectedLineIds.length === 0) return;
-    if (!window.confirm(`Remove ${selectedLineIds.length} selected line(s) from this import queue?`)) return;
+    if (!window.confirm(`Remove ${selectedLineIds.length} selected line(s) from the active import queue? They will stay documented under skipped items.`)) return;
     await api.post(`/banking/imports/${selectedImportId}/lines/remove`, { lineIds: selectedLineIds });
     setSelectedLineIds([]);
     onLineUpdated();
@@ -982,6 +985,14 @@ function ImportsView({
                   Select all removable lines
                 </label>
                 <span>{selectedLineIds.length} selected</span>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={showSkippedLines}
+                    onChange={(event) => setShowSkippedLines(event.target.checked)}
+                  />
+                  Show removed items
+                </label>
               </div>
               <button
                 type="button"
@@ -989,13 +1000,18 @@ function ImportsView({
                 disabled={selectedLineIds.length === 0}
                 className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Remove selected from queue
+                Remove selected from active queue
               </button>
             </div>
 
-            {selectedImportLines.length === 0 ? (
+            {visibleImportLines.length === 0 ? (
               <div className="px-6 py-24">
-                <EmptyState title="No lines found" body="This import does not have any parsed statement lines." />
+                <EmptyState
+                  title={showSkippedLines ? 'No lines found' : 'No active lines left'}
+                  body={showSkippedLines
+                    ? 'This import does not have any parsed statement lines.'
+                    : 'Everything in this import is either posted or removed from the active queue.'}
+                />
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -1015,7 +1031,7 @@ function ImportsView({
                     </tr>
                   </thead>
                   <tbody>
-                    {selectedImportLines.map((line) => (
+                    {visibleImportLines.map((line) => (
                       <ImportLineRow
                         key={line.id}
                         line={line}
@@ -2055,7 +2071,7 @@ function ImportLineRow({ line, categoryMap, selected, onToggleSelected, onSaved 
   }
 
   async function removeLine() {
-    if (!window.confirm('Remove this line from the import queue?')) return;
+    if (!window.confirm('Remove this item from the active import queue? It will stay documented under skipped items.')) return;
     setRemoving(true);
     try {
       await api.delete(`/banking/imports/${line.importId}/lines/${line.id}`);
@@ -2071,7 +2087,7 @@ function ImportLineRow({ line, categoryMap, selected, onToggleSelected, onSaved 
         <input
           type="checkbox"
           checked={selected}
-          disabled={line.reviewStatus === 'POSTED'}
+          disabled={['POSTED', 'SKIPPED'].includes(line.reviewStatus)}
           onChange={(event) => onToggleSelected(line.id, event.target.checked)}
         />
       </td>
@@ -2126,6 +2142,8 @@ function ImportLineRow({ line, categoryMap, selected, onToggleSelected, onSaved 
       <td className="px-4 py-3">
         {line.reviewStatus === 'POSTED' ? (
           <span className="text-xs font-medium text-green-700">Posted</span>
+        ) : line.reviewStatus === 'SKIPPED' ? (
+          <span className="text-xs font-medium text-amber-700">Removed from active queue</span>
         ) : (
           <div className="flex gap-2">
             <button
@@ -2140,7 +2158,7 @@ function ImportLineRow({ line, categoryMap, selected, onToggleSelected, onSaved 
               disabled={saving || removing}
               className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {removing ? 'Removing…' : 'Remove'}
+              {removing ? 'Removing…' : 'Remove from queue'}
             </button>
           </div>
         )}

@@ -1258,8 +1258,9 @@ Minimum update format:
   - creating a category from those places saves it globally immediately
   - existing category labels/help text/active state are still managed from Admin
 - Bank statement import queue:
-  - single statement lines can now be removed from the queue
-  - multiple removable lines can now be selected and removed in one action
+  - single statement lines can now be removed from the active queue without deleting their record
+  - multiple removable lines can now be selected and removed from the active queue in one action
+  - removed items are kept as `SKIPPED` so they remain documented
   - posted lines still cannot be removed
 - Customer booking queue:
   - `CUSTOMER_BOOKING` inflows now land in a dedicated Banking > Customer bookings queue
