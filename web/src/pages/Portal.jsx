@@ -54,7 +54,7 @@ function Field({ label, children, help }) {
 
 function AuthPanel({ onAuth }) {
   const [mode, setMode] = useState('login');
-  const [form, setForm] = useState({ name: '', email: '', phone: '', password: '' });
+  const [form, setForm] = useState({ name: '', email: '', phone: '', identifier: '', password: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -65,7 +65,7 @@ function AuthPanel({ onAuth }) {
     try {
       const response = mode === 'register'
         ? await api.post('/portal/register', form)
-        : await api.post('/auth/login', { email: form.email, password: form.password });
+        : await api.post('/auth/login', { identifier: form.identifier, password: form.password });
       api.setTokens(response.accessToken, response.refreshToken);
       localStorage.setItem('user', JSON.stringify(response.user));
       onAuth(response.user);
@@ -123,16 +123,28 @@ function AuthPanel({ onAuth }) {
           </>
         )}
 
-        <Field label="Email">
-          <input
-            type="email"
-            required
-            value={form.email}
-            onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
-            placeholder="you@example.com"
-            className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500"
-          />
-        </Field>
+        {mode === 'register' ? (
+          <Field label="Email (optional)">
+            <input
+              type="email"
+              value={form.email}
+              onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+              placeholder="you@example.com"
+              className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+          </Field>
+        ) : (
+          <Field label="Phone number or email">
+            <input
+              type="text"
+              required
+              value={form.identifier}
+              onChange={(event) => setForm((current) => ({ ...current, identifier: event.target.value }))}
+              placeholder="e.g. 08012345678 or you@example.com"
+              className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+          </Field>
+        )}
 
         <Field label="Password" help={mode === 'register' ? 'Use at least 8 characters.' : null}>
           <input
@@ -150,7 +162,7 @@ function AuthPanel({ onAuth }) {
           disabled={loading}
           className="w-full rounded-xl bg-green-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-green-700 disabled:opacity-50"
         >
-          {loading ? 'Please wait…' : mode === 'register' ? 'Create account' : 'Sign in'}
+        {loading ? 'Please wait…' : mode === 'register' ? 'Create account' : 'Sign in'}
         </button>
       </form>
     </div>
@@ -699,7 +711,7 @@ export default function Portal() {
                   Book upcoming
                 </button>
                 <button type="button" onClick={() => setView('activity')} className={`rounded-xl px-4 py-2 text-sm font-semibold ${view === 'activity' ? 'bg-green-600 text-white' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'}`}>
-                  My activity
+                  Order status
                 </button>
               </nav>
             )}
@@ -821,8 +833,8 @@ export default function Portal() {
             {view === 'activity' && isCustomerRole && (
               <section className="space-y-4">
                 <div>
-                  <h3 className="text-2xl font-semibold text-gray-900">My activity</h3>
-                  <p className="mt-1 text-sm text-gray-500">Track your upcoming bookings and same-day requests in one place.</p>
+                  <h3 className="text-2xl font-semibold text-gray-900">Order status and history</h3>
+                  <p className="mt-1 text-sm text-gray-500">Track your upcoming bookings, buy-now requests, and past order activity in one place.</p>
                 </div>
                 <MyActivity bookings={bookings} requests={buyNowRequests} loading={loading} />
               </section>

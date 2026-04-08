@@ -11,6 +11,15 @@ import {
 
 const SALT_ROUNDS = 12;
 
+function normalizeEmail(value) {
+  const email = String(value || '').trim().toLowerCase();
+  return email || null;
+}
+
+function normalizePhone(value) {
+  return String(value || '').replace(/\s+/g, '').trim();
+}
+
 /**
  * Auth routes — registration, login, refresh, logout, me
  */
@@ -20,9 +29,9 @@ export default async function authRoutes(fastify) {
     schema: {
       body: {
         type: 'object',
-        required: ['email', 'password', 'firstName', 'lastName'],
+        required: ['password', 'firstName', 'lastName', 'phone'],
         properties: {
-          email: { type: 'string', format: 'email' },
+          email: { type: 'string' },
           password: { type: 'string', minLength: 8 },
           firstName: { type: 'string', minLength: 1 },
           lastName: { type: 'string', minLength: 1 },
@@ -33,22 +42,34 @@ export default async function authRoutes(fastify) {
     },
     handler: async (request, reply) => {
       const { email, password, firstName, lastName, phone, role } = request.body;
+      const normalizedEmail = normalizeEmail(email);
+      const normalizedPhone = normalizePhone(phone);
+
+      if (!normalizedPhone) {
+        return reply.code(400).send({ error: 'Phone number is required' });
+      }
 
       // Check if user exists
-      const existing = await prisma.user.findUnique({ where: { email } });
-      if (existing) {
+      const [existingByEmail, existingByPhone] = await Promise.all([
+        normalizedEmail ? prisma.user.findUnique({ where: { email: normalizedEmail } }) : Promise.resolve(null),
+        prisma.user.findUnique({ where: { phone: normalizedPhone } }),
+      ]);
+      if (existingByEmail) {
         return reply.code(409).send({ error: 'Email already registered' });
+      }
+      if (existingByPhone) {
+        return reply.code(409).send({ error: 'Phone number already registered' });
       }
 
       const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
       const user = await prisma.user.create({
         data: {
-          email,
+          email: normalizedEmail,
           passwordHash,
           firstName,
           lastName,
-          phone,
+          phone: normalizedPhone,
           role: role || 'RECORD_KEEPER', // Default to least privilege for staff
         },
         select: { id: true, email: true, firstName: true, lastName: true, role: true },
@@ -63,24 +84,29 @@ export default async function authRoutes(fastify) {
     schema: {
       body: {
         type: 'object',
-        required: ['email', 'password'],
+        required: ['identifier', 'password'],
         properties: {
-          email: { type: 'string', format: 'email' },
+          identifier: { type: 'string' },
           password: { type: 'string' },
         },
       },
     },
     handler: async (request, reply) => {
-      const { email, password } = request.body;
+      const { identifier, password } = request.body;
+      const normalizedIdentifier = String(identifier || '').trim();
+      const normalizedEmail = normalizeEmail(normalizedIdentifier);
+      const normalizedPhone = normalizePhone(normalizedIdentifier);
 
-      const user = await prisma.user.findUnique({ where: { email } });
+      const user = normalizedIdentifier.includes('@')
+        ? await prisma.user.findUnique({ where: { email: normalizedEmail } })
+        : await prisma.user.findUnique({ where: { phone: normalizedPhone } });
       if (!user || !user.isActive) {
-        return reply.code(401).send({ error: 'Invalid email or password' });
+        return reply.code(401).send({ error: 'Invalid sign-in details or password' });
       }
 
       const valid = await bcrypt.compare(password, user.passwordHash);
       if (!valid) {
-        return reply.code(401).send({ error: 'Invalid email or password' });
+        return reply.code(401).send({ error: 'Invalid sign-in details or password' });
       }
 
       const accessToken = generateAccessToken(user);

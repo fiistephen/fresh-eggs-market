@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function Login() {
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -16,7 +16,7 @@ export default function Login() {
     setLoading(true);
 
     try {
-      await login(email, password);
+      await login(identifier, password);
       navigate('/');
     } catch (err) {
       setError(err.error || 'Login failed. Please try again.');
@@ -40,14 +40,14 @@ export default function Login() {
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Phone number or email</label>
             <input
-              type="email"
+              type="text"
               required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
               className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
-              placeholder="you@fresheggs.com"
+              placeholder="08012345678 or you@fresheggs.com"
             />
           </div>
 

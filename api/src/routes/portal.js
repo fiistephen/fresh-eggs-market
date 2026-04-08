@@ -12,6 +12,15 @@ import { getCustomerEggTypeConfig, getCustomerEggTypeLabel } from '../utils/appS
 
 const SALT_ROUNDS = 12;
 
+function normalizeEmail(value) {
+  const email = String(value || '').trim().toLowerCase();
+  return email || null;
+}
+
+function normalizePhone(value) {
+  return String(value || '').replace(/\s+/g, '').trim();
+}
+
 function mapBatchEggCode(eggCode, batch = null) {
   if (!eggCode) return null;
   return {
@@ -51,7 +60,14 @@ async function getCustomerFromUser(userId) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) return { user: null, customer: null };
 
-  const customer = await prisma.customer.findFirst({ where: { email: user.email } });
+  const customer = await prisma.customer.findFirst({
+    where: {
+      OR: [
+        { phone: user.phone },
+        ...(user.email ? [{ email: user.email }] : []),
+      ],
+    },
+  });
   return { user, customer };
 }
 
@@ -191,19 +207,21 @@ export default async function portalRoutes(fastify) {
   fastify.post('/portal/register', {
     handler: async (request, reply) => {
       const { name, email, phone, password } = request.body;
+      const normalizedEmail = normalizeEmail(email);
+      const normalizedPhone = normalizePhone(phone);
 
       // Validation
       if (!name || !name.trim()) return reply.code(400).send({ error: 'Name is required' });
-      if (!email || !email.trim()) return reply.code(400).send({ error: 'Email is required' });
-      if (!phone || !phone.trim()) return reply.code(400).send({ error: 'Phone number is required' });
+      if (!normalizedPhone) return reply.code(400).send({ error: 'Phone number is required' });
       if (!password || password.length < 8) return reply.code(400).send({ error: 'Password must be at least 8 characters' });
 
-      // Check if email already registered
-      const existingUser = await prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
-      if (existingUser) return reply.code(409).send({ error: 'Email already registered. Please log in instead.' });
-
-      // Check if phone already in customers table
-      const existingCustomer = await prisma.customer.findFirst({ where: { phone: phone.trim() } });
+      const [existingUserByEmail, existingUserByPhone, existingCustomerByPhone] = await Promise.all([
+        normalizedEmail ? prisma.user.findUnique({ where: { email: normalizedEmail } }) : Promise.resolve(null),
+        prisma.user.findUnique({ where: { phone: normalizedPhone } }),
+        prisma.customer.findUnique({ where: { phone: normalizedPhone } }).catch(() => prisma.customer.findFirst({ where: { phone: normalizedPhone } })),
+      ]);
+      if (existingUserByEmail) return reply.code(409).send({ error: 'Email already registered. Please sign in instead.' });
+      if (existingUserByPhone) return reply.code(409).send({ error: 'Phone number already registered. Please sign in instead.' });
 
       const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
@@ -217,29 +235,29 @@ export default async function portalRoutes(fastify) {
         // Create User account
         const user = await tx.user.create({
           data: {
-            email: email.trim().toLowerCase(),
+            email: normalizedEmail,
             passwordHash,
             firstName,
             lastName,
-            phone: phone.trim(),
+            phone: normalizedPhone,
             role: 'CUSTOMER',
           },
         });
 
         // Create or link Customer record
         let customer;
-        if (existingCustomer) {
-          // Link existing customer to this user by updating email
+        if (existingCustomerByPhone) {
+          // Link existing customer to this user by updating email if provided
           customer = await tx.customer.update({
-            where: { id: existingCustomer.id },
-            data: { email: email.trim().toLowerCase() },
+            where: { id: existingCustomerByPhone.id },
+            data: { ...(normalizedEmail ? { email: normalizedEmail } : {}) },
           });
         } else {
           customer = await tx.customer.create({
             data: {
               name: name.trim(),
-              phone: phone.trim(),
-              email: email.trim().toLowerCase(),
+              phone: normalizedPhone,
+              email: normalizedEmail,
               isFirstTime: true,
             },
           });
@@ -268,6 +286,7 @@ export default async function portalRoutes(fastify) {
           email: result.user.email,
           firstName: result.user.firstName,
           lastName: result.user.lastName,
+          phone: result.user.phone,
           role: result.user.role,
         },
         customerId: result.customer.id,
@@ -281,11 +300,7 @@ export default async function portalRoutes(fastify) {
   fastify.get('/portal/my-bookings', {
     preHandler: [authenticate, authorize('CUSTOMER')],
     handler: async (request, reply) => {
-      // Find the customer record linked to this user's email
-      const user = await prisma.user.findUnique({ where: { id: request.user.sub } });
-      if (!user) return reply.code(404).send({ error: 'User not found' });
-
-      const customer = await prisma.customer.findFirst({ where: { email: user.email } });
+      const { customer } = await getCustomerFromUser(request.user.sub);
       if (!customer) return reply.send({ bookings: [], customerId: null });
 
       const bookings = await prisma.booking.findMany({
@@ -368,11 +383,7 @@ export default async function portalRoutes(fastify) {
       if (!quantity || !Number.isInteger(quantity) || quantity < 1) return reply.code(400).send({ error: 'quantity must be a positive integer' });
       if (!amountPaid || amountPaid <= 0) return reply.code(400).send({ error: 'amountPaid must be positive' });
 
-      // Get user + customer
-      const user = await prisma.user.findUnique({ where: { id: request.user.sub } });
-      if (!user) return reply.code(404).send({ error: 'User not found' });
-
-      const customer = await prisma.customer.findFirst({ where: { email: user.email } });
+      const { customer } = await getCustomerFromUser(request.user.sub);
       if (!customer) return reply.code(400).send({ error: 'No customer record found. Please contact support.' });
 
       // Get batch
@@ -564,7 +575,12 @@ export default async function portalRoutes(fastify) {
       if (!user) return reply.code(404).send({ error: 'User not found' });
 
       const customer = await prisma.customer.findFirst({
-        where: { email: user.email },
+        where: {
+          OR: [
+            { phone: user.phone },
+            ...(user.email ? [{ email: user.email }] : []),
+          ],
+        },
         include: {
           _count: { select: { bookings: true, sales: true } },
         },
