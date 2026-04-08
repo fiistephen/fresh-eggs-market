@@ -72,7 +72,7 @@ export default async function authRoutes(fastify) {
           phone: normalizedPhone,
           role: role || 'RECORD_KEEPER', // Default to least privilege for staff
         },
-        select: { id: true, email: true, firstName: true, lastName: true, role: true },
+        select: { id: true, email: true, firstName: true, lastName: true, phone: true, role: true },
       });
 
       return reply.code(201).send({ user });
@@ -129,6 +129,7 @@ export default async function authRoutes(fastify) {
           email: user.email,
           firstName: user.firstName,
           lastName: user.lastName,
+          phone: user.phone,
           role: user.role,
         },
       });
