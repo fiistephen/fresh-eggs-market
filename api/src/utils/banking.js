@@ -189,20 +189,11 @@ export function getCategoryDirection(category) {
 }
 
 export function inferStatementCategory({ direction, description = '' }) {
-  const text = description.toLowerCase();
-
   if (direction === 'INFLOW') {
-    if (text.includes('pospayment') || text.includes('medusa') || text.includes('settlement')) {
-      return 'POS_SETTLEMENT';
-    }
-    if (text.includes('cash')) {
-      return 'CASH_SALE';
-    }
     return 'UNALLOCATED_INCOME';
   }
 
   if (direction === 'OUTFLOW') {
-    if (text.includes('charge')) return 'BANK_CHARGES';
     return 'UNALLOCATED_EXPENSE';
   }
 
