@@ -433,6 +433,7 @@ export default function Banking() {
           imports={imports}
           reconciliations={reconciliations}
           transactions={transactions.slice(0, 8)}
+          categoryMap={categoryMap}
           canViewReports={canViewReports}
           onOpenImport={(importId) => {
             setSelectedImportId(importId);
@@ -592,7 +593,7 @@ function ActionButton({ label, onClick }) {
   );
 }
 
-function WorkspaceView({ loading, accounts, imports, reconciliations, transactions, canViewReports, onOpenImport }) {
+function WorkspaceView({ loading, accounts, imports, reconciliations, transactions, categoryMap, canViewReports, onOpenImport }) {
   if (loading) {
     return <div className="rounded-2xl border border-gray-200 bg-white px-6 py-20 text-center text-sm text-gray-500">Loading banking workspace…</div>;
   }
