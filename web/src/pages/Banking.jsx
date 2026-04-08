@@ -2457,6 +2457,7 @@ function CustomerBookingQueueView({ loading, queue, openBatches, policy, onRefre
         <CustomerBookingLinkModal
           transaction={activeTransaction}
           openBatches={openBatches}
+          policy={policy}
           onClose={() => setActiveTransaction(null)}
           onSaved={() => {
             setActiveTransaction(null);
@@ -2478,7 +2479,7 @@ function createBookingAllocationRow(defaultBatchId = '') {
   };
 }
 
-function CustomerBookingLinkModal({ transaction, openBatches, onClose, onSaved }) {
+function CustomerBookingLinkModal({ transaction, openBatches, policy, onClose, onSaved }) {
   const [selectedCustomer, setSelectedCustomer] = useState(transaction.customer || null);
   const [customerSearch, setCustomerSearch] = useState('');
   const [customers, setCustomers] = useState([]);
