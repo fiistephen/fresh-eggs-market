@@ -164,7 +164,7 @@ async function validateCustomer(customerId) {
   return customer || false;
 }
 
-async function createBankTransaction({
+function createBankTransaction({
   bankAccountId,
   direction,
   category,
