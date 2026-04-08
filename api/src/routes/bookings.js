@@ -2,6 +2,7 @@ import prisma from '../plugins/prisma.js';
 import { authenticate } from '../plugins/auth.js';
 import { authorize } from '../middleware/authorize.js';
 import { getCustomerEggTypeConfig, getCustomerEggTypeLabel, getOperationsPolicy } from '../utils/appSettings.js';
+import { getActivePortalBookingHoldQuantity } from '../utils/portalCheckout.js';
 
 const ELIGIBLE_BOOKING_PAYMENT_CATEGORIES = [
   'CUSTOMER_DEPOSIT',
@@ -127,16 +128,19 @@ function buildBookingInclude() {
 }
 
 async function getBookedQuantityForBatch(batchId, excludeBookingId = null) {
-  const totalBooked = await prisma.booking.aggregate({
-    where: {
-      batchId,
-      status: { not: 'CANCELLED' },
-      ...(excludeBookingId ? { id: { not: excludeBookingId } } : {}),
-    },
-    _sum: { quantity: true },
-  });
+  const [totalBooked, heldForPortal] = await Promise.all([
+    prisma.booking.aggregate({
+      where: {
+        batchId,
+        status: { not: 'CANCELLED' },
+        ...(excludeBookingId ? { id: { not: excludeBookingId } } : {}),
+      },
+      _sum: { quantity: true },
+    }),
+    getActivePortalBookingHoldQuantity(batchId),
+  ]);
 
-  return totalBooked._sum.quantity || 0;
+  return (totalBooked._sum.quantity || 0) + heldForPortal;
 }
 
 async function getAvailableCustomerPayments(customerId, options = {}) {

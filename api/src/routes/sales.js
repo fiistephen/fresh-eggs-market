@@ -2,6 +2,7 @@ import prisma from '../plugins/prisma.js';
 import { authenticate } from '../plugins/auth.js';
 import { authorize } from '../middleware/authorize.js';
 import { getCustomerEggTypeConfig, getCustomerEggTypeLabel } from '../utils/appSettings.js';
+import { getActivePortalBuyNowHoldQuantity } from '../utils/portalCheckout.js';
 
 const VALID_SALE_TYPES = ['WHOLESALE', 'RETAIL', 'CRACKED', 'WRITE_OFF'];
 const VALID_PAYMENT_METHODS = ['CASH', 'TRANSFER', 'POS_CARD', 'PRE_ORDER'];
@@ -83,10 +84,13 @@ async function getBatchStockSnapshot(batchId, eggTypes = []) {
   });
   const totalWrittenOff = writeOffAgg._sum.crackedWriteOff || 0;
 
-  const bookedAgg = await prisma.booking.aggregate({
-    where: { batchId, status: 'CONFIRMED' },
-    _sum: { quantity: true },
-  });
+  const [bookedAgg, heldForPortal] = await Promise.all([
+    prisma.booking.aggregate({
+      where: { batchId, status: 'CONFIRMED' },
+      _sum: { quantity: true },
+    }),
+    getActivePortalBuyNowHoldQuantity(batchId),
+  ]);
   const totalBooked = bookedAgg._sum.quantity || 0;
 
   const eggCodes = batch.eggCodes.map((eggCode) => {
@@ -115,7 +119,7 @@ async function getBatchStockSnapshot(batchId, eggTypes = []) {
     totalWrittenOff,
     totalBooked,
     onHand: Math.max(0, totalReceived - totalSold - totalWrittenOff),
-    availableForSale: Math.max(0, totalReceived - totalSold - totalWrittenOff - totalBooked),
+    availableForSale: Math.max(0, totalReceived - totalSold - totalWrittenOff - totalBooked - heldForPortal),
     eggCodes,
   };
 }

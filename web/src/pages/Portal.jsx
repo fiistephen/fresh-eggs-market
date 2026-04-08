@@ -1,12 +1,18 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
 
 const fmt = (n) => Number(n || 0).toLocaleString('en-NG');
 const fmtMoney = (n) => '₦' + Number(n || 0).toLocaleString('en-NG', { minimumFractionDigits: 0 });
-const fmtDate = (d) => new Date(d).toLocaleDateString('en-NG', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
-const fmtDateTime = (d) => new Date(d).toLocaleString('en-NG', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-NG', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : '—');
+const fmtDateTime = (d) => (d ? new Date(d).toLocaleString('en-NG', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—');
+
+const TRANSFER_DETAILS = {
+  bankName: 'Providus Bank',
+  accountNumber: '5401952310',
+  accountName: 'Fresh Egg Wholesales Market',
+};
 
 function SectionCard({ title, body, action, active, onClick, accent = 'green' }) {
   const activeClasses = active
@@ -51,6 +57,21 @@ function Field({ label, children, help }) {
       {children}
       {help && <span className="mt-1 block text-xs text-gray-500">{help}</span>}
     </label>
+  );
+}
+
+function StatusPill({ tone = 'gray', children }) {
+  const classes = {
+    green: 'bg-green-100 text-green-700',
+    amber: 'bg-amber-100 text-amber-700',
+    blue: 'bg-blue-100 text-blue-700',
+    red: 'bg-red-100 text-red-700',
+    gray: 'bg-gray-100 text-gray-700',
+  };
+  return (
+    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${classes[tone] || classes.gray}`}>
+      {children}
+    </span>
   );
 }
 
@@ -164,14 +185,23 @@ function AuthPanel({ onAuth }) {
           disabled={loading}
           className="w-full rounded-xl bg-green-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-green-700 disabled:opacity-50"
         >
-        {loading ? 'Please wait…' : mode === 'register' ? 'Create account' : 'Sign in'}
+          {loading ? 'Please wait…' : mode === 'register' ? 'Create account' : 'Sign in'}
         </button>
       </form>
     </div>
   );
 }
 
-function BatchCard({ batch, actionLabel, helperText, priceLabel, onAction, disabled }) {
+function Metric({ label, value }) {
+  return (
+    <div>
+      <p className="text-xs uppercase tracking-[0.14em] text-gray-500">{label}</p>
+      <p className="mt-1 font-semibold text-gray-900">{value}</p>
+    </div>
+  );
+}
+
+function BatchCard({ batch, actionLabel, helperText, priceLabel, onAction, disabled, mode }) {
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
       <div className="flex items-start justify-between gap-4">
@@ -188,10 +218,9 @@ function BatchCard({ batch, actionLabel, helperText, priceLabel, onAction, disab
         </div>
       </div>
 
-      {'availableForSale' in batch ? (
-        <div className="mt-4 grid grid-cols-3 gap-3 rounded-2xl bg-gray-50 p-3 text-sm">
-          <Metric label="Ready now" value={`${fmt(batch.availableForSale)} crates`} />
-          <Metric label="Still on hand" value={`${fmt(batch.onHand)} crates`} />
+      {mode === 'buy-now' ? (
+        <div className="mt-4 grid grid-cols-2 gap-3 rounded-2xl bg-gray-50 p-3 text-sm">
+          <Metric label="Available to buy" value={`${fmt(batch.availableForSale)} crates`} />
           <Metric label="Received" value={fmtDate(batch.receivedDate || batch.expectedDate)} />
         </div>
       ) : (
@@ -216,18 +245,59 @@ function BatchCard({ batch, actionLabel, helperText, priceLabel, onAction, disab
   );
 }
 
-function Metric({ label, value }) {
+function PaymentMethodSelector({ paymentMethod, setPaymentMethod }) {
   return (
-    <div>
-      <p className="text-xs uppercase tracking-[0.14em] text-gray-500">{label}</p>
-      <p className="mt-1 font-semibold text-gray-900">{value}</p>
+    <div className="grid gap-3 md:grid-cols-2">
+      <button
+        type="button"
+        onClick={() => setPaymentMethod('CARD')}
+        className={`rounded-2xl border p-4 text-left transition ${paymentMethod === 'CARD' ? 'border-green-400 bg-green-50' : 'border-gray-200 bg-white hover:border-green-200'}`}
+      >
+        <p className="text-sm font-semibold text-gray-900">Pay online with card</p>
+        <p className="mt-1 text-sm text-gray-500">Pay now and get an immediate payment result.</p>
+      </button>
+      <button
+        type="button"
+        onClick={() => setPaymentMethod('TRANSFER')}
+        className={`rounded-2xl border p-4 text-left transition ${paymentMethod === 'TRANSFER' ? 'border-green-400 bg-green-50' : 'border-gray-200 bg-white hover:border-green-200'}`}
+      >
+        <p className="text-sm font-semibold text-gray-900">Pay by transfer</p>
+        <p className="mt-1 text-sm text-gray-500">Your crates stay held while admin confirms the transfer.</p>
+      </button>
     </div>
   );
 }
 
-function BookingModal({ batch, profile, policy, onClose, onBooked }) {
+function TransferInstructions({ amount, title = 'Transfer details' }) {
+  return (
+    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm">
+      <p className="text-sm font-semibold text-gray-900">{title}</p>
+      <div className="mt-3 space-y-2">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-gray-600">Bank name</span>
+          <span className="font-semibold text-gray-900">{TRANSFER_DETAILS.bankName}</span>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-gray-600">Account number</span>
+          <span className="font-semibold text-gray-900">{TRANSFER_DETAILS.accountNumber}</span>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-gray-600">Account name</span>
+          <span className="font-semibold text-gray-900">{TRANSFER_DETAILS.accountName}</span>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-gray-600">Amount to transfer</span>
+          <span className="font-semibold text-gray-900">{fmtMoney(amount)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BookingCheckoutModal({ batch, profile, policy, onClose, onFinished }) {
   const [quantity, setQuantity] = useState('');
-  const [amountPaid, setAmountPaid] = useState('');
+  const [amountToPay, setAmountToPay] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('CARD');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(null);
@@ -239,26 +309,30 @@ function BookingModal({ batch, profile, policy, onClose, onBooked }) {
   const quantityValue = parseInt(quantity, 10) || 0;
   const orderValue = quantityValue * Number(batch.wholesalePrice);
   const minPayment = orderValue * (minPaymentPercent / 100);
-
-  useEffect(() => {
-    if (quantityValue > 0) {
-      setAmountPaid(String(orderValue));
-    }
-  }, [quantityValue, orderValue]);
+  const payNow = Number(amountToPay || 0);
+  const balanceLeft = Math.max(0, orderValue - payNow);
 
   async function handleSubmit(event) {
     event.preventDefault();
     setLoading(true);
     setError('');
     try {
-      const response = await api.post('/portal/book', {
+      const response = await api.post('/portal/checkouts', {
+        checkoutType: 'BOOK_UPCOMING',
         batchId: batch.id,
         quantity: quantityValue,
-        amountPaid: parseFloat(amountPaid),
+        amountToPay: payNow,
+        paymentMethod,
       });
+
+      if (paymentMethod === 'CARD' && response.authorizationUrl) {
+        window.location.assign(response.authorizationUrl);
+        return;
+      }
+
       setSuccess(response);
     } catch (err) {
-      setError(err.error || 'Booking failed.');
+      setError(err.error || 'Could not start this booking payment.');
     } finally {
       setLoading(false);
     }
@@ -266,21 +340,23 @@ function BookingModal({ batch, profile, policy, onClose, onBooked }) {
 
   if (success) {
     return (
-      <ModalShell title="Booking saved" onClose={onClose}>
+      <ModalShell title="Booking hold created" onClose={onClose}>
         <div className="space-y-4">
           <div className="rounded-2xl border border-green-200 bg-green-50 px-4 py-4 text-sm text-green-800">
             {success.message}
           </div>
           <div className="rounded-2xl bg-gray-50 p-4 text-sm">
-            <div className="flex items-center justify-between py-1"><span className="text-gray-500">Batch</span><span className="font-semibold text-gray-900">{success.booking.batch}</span></div>
-            <div className="flex items-center justify-between py-1"><span className="text-gray-500">Egg type</span><span className="font-semibold text-gray-900">{success.booking.eggTypeLabel}</span></div>
-            <div className="flex items-center justify-between py-1"><span className="text-gray-500">Quantity</span><span className="font-semibold text-gray-900">{success.booking.quantity} crates</span></div>
-            <div className="flex items-center justify-between py-1"><span className="text-gray-500">Order value</span><span className="font-semibold text-gray-900">{fmtMoney(success.booking.orderValue)}</span></div>
-            <div className="flex items-center justify-between py-1"><span className="text-gray-500">Amount already paid</span><span className="font-semibold text-green-700">{fmtMoney(success.booking.amountPaid)}</span></div>
+            <div className="flex items-center justify-between py-1"><span className="text-gray-500">Batch</span><span className="font-semibold text-gray-900">{success.checkout.batch.name}</span></div>
+            <div className="flex items-center justify-between py-1"><span className="text-gray-500">Egg type</span><span className="font-semibold text-gray-900">{success.checkout.batch.eggTypeLabel}</span></div>
+            <div className="flex items-center justify-between py-1"><span className="text-gray-500">Crates held</span><span className="font-semibold text-gray-900">{success.checkout.quantity}</span></div>
+            <div className="flex items-center justify-between py-1"><span className="text-gray-500">Booking value</span><span className="font-semibold text-gray-900">{fmtMoney(success.checkout.orderValue)}</span></div>
+            <div className="flex items-center justify-between py-1"><span className="text-gray-500">Paying now</span><span className="font-semibold text-green-700">{fmtMoney(success.checkout.amountToPay)}</span></div>
+            <div className="flex items-center justify-between py-1"><span className="text-gray-500">Balance left</span><span className="font-semibold text-gray-900">{fmtMoney(success.checkout.balanceAfterPayment)}</span></div>
           </div>
+          <TransferInstructions amount={success.checkout.amountToPay} />
           <button
             type="button"
-            onClick={() => { onBooked(); onClose(); }}
+            onClick={() => { onFinished(); onClose(); }}
             className="w-full rounded-xl bg-green-600 px-4 py-3 text-sm font-semibold text-white hover:bg-green-700"
           >
             Done
@@ -294,7 +370,7 @@ function BookingModal({ batch, profile, policy, onClose, onBooked }) {
     <ModalShell title="Book upcoming batch" onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-          Bookings are for upcoming batches. Enter how many crates you want and how much you have already paid into the company bank account.
+          Your crates will be held as soon as you continue. Card payment confirms the payment immediately. Transfer keeps the hold while admin confirms the transfer.
         </div>
 
         <div className="rounded-2xl bg-gray-50 p-4 text-sm">
@@ -304,14 +380,14 @@ function BookingModal({ batch, profile, policy, onClose, onBooked }) {
           <div className="flex items-center justify-between py-1"><span className="text-gray-500">Available to book</span><span className="font-semibold text-gray-900">{fmt(batch.remainingAvailable)} crates</span></div>
           {profile?.isFirstTime && (
             <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              First-time customers can book up to {firstTimeLimit} crates per batch.
+              First-time customers can book up to {firstTimeLimit} crates from one batch.
             </div>
           )}
         </div>
 
         {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 
-        <Field label="Quantity" help={`You can book up to ${maxQty} crates in this step.`}>
+        <Field label="How many crates do you want?" help={`You can book up to ${maxQty} crates in this step.`}>
           <input
             type="number"
             min="1"
@@ -325,29 +401,46 @@ function BookingModal({ batch, profile, policy, onClose, onBooked }) {
 
         {quantityValue > 0 && (
           <div className="rounded-2xl bg-green-50 p-4 text-sm">
-            <div className="flex items-center justify-between py-1"><span className="text-gray-600">Order value</span><span className="font-semibold text-gray-900">{fmtMoney(orderValue)}</span></div>
-            <div className="flex items-center justify-between py-1"><span className="text-gray-600">Minimum payment</span><span className="font-semibold text-gray-900">{fmtMoney(minPayment)}</span></div>
+            <div className="flex items-center justify-between py-1"><span className="text-gray-600">Booking value</span><span className="font-semibold text-gray-900">{fmtMoney(orderValue)}</span></div>
+            <div className="flex items-center justify-between py-1"><span className="text-gray-600">Minimum payment now</span><span className="font-semibold text-gray-900">{fmtMoney(minPayment)}</span></div>
           </div>
         )}
 
-        <Field label="Amount already paid into the bank" help={`Use the amount you have already transferred. Minimum payment is ${minPaymentPercent}% of the order value.`}>
+        <Field label="How much do you want to pay now?" help={`Minimum is ${minPaymentPercent}% of the booking value.`}>
           <input
             type="number"
             min={minPayment || 0}
+            max={orderValue || undefined}
             step="0.01"
             required
-            value={amountPaid}
-            onChange={(event) => setAmountPaid(event.target.value)}
+            value={amountToPay}
+            onChange={(event) => setAmountToPay(event.target.value)}
             className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500"
           />
         </Field>
+
+        {payNow > 0 && (
+          <div className="rounded-2xl bg-white p-4 ring-1 ring-gray-200">
+            <div className="flex items-center justify-between py-1"><span className="text-gray-600">Paying now</span><span className="font-semibold text-gray-900">{fmtMoney(payNow)}</span></div>
+            <div className="flex items-center justify-between py-1"><span className="text-gray-600">Balance left after this payment</span><span className="font-semibold text-gray-900">{fmtMoney(balanceLeft)}</span></div>
+          </div>
+        )}
+
+        <div>
+          <p className="mb-2 text-sm font-medium text-gray-700">Choose payment method</p>
+          <PaymentMethodSelector paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod} />
+        </div>
+
+        {paymentMethod === 'TRANSFER' && payNow > 0 && (
+          <TransferInstructions amount={payNow} title="Transfer to this account after you continue" />
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <button type="button" onClick={onClose} className="rounded-xl border border-gray-300 px-4 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50">
             Cancel
           </button>
-          <button type="submit" disabled={loading || quantityValue < 1} className="rounded-xl bg-green-600 px-4 py-3 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50">
-            {loading ? 'Saving…' : 'Save booking'}
+          <button type="submit" disabled={loading || quantityValue < 1 || payNow <= 0} className="rounded-xl bg-green-600 px-4 py-3 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50">
+            {loading ? 'Please wait…' : paymentMethod === 'CARD' ? 'Continue to card payment' : 'Hold crates and pay by transfer'}
           </button>
         </div>
       </form>
@@ -355,32 +448,39 @@ function BookingModal({ batch, profile, policy, onClose, onBooked }) {
   );
 }
 
-function BuyNowModal({ batch, onClose, onSubmitted }) {
+function BuyNowCheckoutModal({ batch, onClose, onFinished }) {
   const [quantity, setQuantity] = useState('1');
   const [priceType, setPriceType] = useState('RETAIL');
-  const [notes, setNotes] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('CARD');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(null);
 
   const quantityValue = parseInt(quantity, 10) || 0;
   const unitPrice = priceType === 'WHOLESALE' ? Number(batch.wholesalePrice) : Number(batch.retailPrice);
-  const estimatedTotal = quantityValue * unitPrice;
+  const orderValue = quantityValue * unitPrice;
 
   async function handleSubmit(event) {
     event.preventDefault();
     setLoading(true);
     setError('');
     try {
-      const response = await api.post('/portal/buy-now-request', {
+      const response = await api.post('/portal/checkouts', {
+        checkoutType: 'BUY_NOW',
         batchId: batch.id,
         quantity: quantityValue,
         priceType,
-        notes,
+        paymentMethod,
       });
+
+      if (paymentMethod === 'CARD' && response.authorizationUrl) {
+        window.location.assign(response.authorizationUrl);
+        return;
+      }
+
       setSuccess(response);
     } catch (err) {
-      setError(err.error || 'Could not save your request.');
+      setError(err.error || 'Could not start this buy-now payment.');
     } finally {
       setLoading(false);
     }
@@ -388,21 +488,24 @@ function BuyNowModal({ batch, onClose, onSubmitted }) {
 
   if (success) {
     return (
-      <ModalShell title="Buy-now request sent" onClose={onClose}>
+      <ModalShell title="Crates held for transfer" onClose={onClose}>
         <div className="space-y-4">
           <div className="rounded-2xl border border-green-200 bg-green-50 px-4 py-4 text-sm text-green-800">
             {success.message}
           </div>
           <div className="rounded-2xl bg-gray-50 p-4 text-sm">
-            <div className="flex items-center justify-between py-1"><span className="text-gray-500">Batch</span><span className="font-semibold text-gray-900">{success.request.batch}</span></div>
-            <div className="flex items-center justify-between py-1"><span className="text-gray-500">Egg type</span><span className="font-semibold text-gray-900">{success.request.eggTypeLabel}</span></div>
-            <div className="flex items-center justify-between py-1"><span className="text-gray-500">Quantity</span><span className="font-semibold text-gray-900">{success.request.quantity} crates</span></div>
-            <div className="flex items-center justify-between py-1"><span className="text-gray-500">Price type</span><span className="font-semibold text-gray-900">{success.request.priceType.toLowerCase()}</span></div>
-            <div className="flex items-center justify-between py-1"><span className="text-gray-500">Estimated total</span><span className="font-semibold text-gray-900">{fmtMoney(success.request.estimatedTotal)}</span></div>
+            <div className="flex items-center justify-between py-1"><span className="text-gray-500">Batch</span><span className="font-semibold text-gray-900">{success.checkout.batch.name}</span></div>
+            <div className="flex items-center justify-between py-1"><span className="text-gray-500">Egg type</span><span className="font-semibold text-gray-900">{success.checkout.batch.eggTypeLabel}</span></div>
+            <div className="flex items-center justify-between py-1"><span className="text-gray-500">Crates held</span><span className="font-semibold text-gray-900">{success.checkout.quantity}</span></div>
+            <div className="flex items-center justify-between py-1"><span className="text-gray-500">Total to pay</span><span className="font-semibold text-green-700">{fmtMoney(success.checkout.amountToPay)}</span></div>
+          </div>
+          <TransferInstructions amount={success.checkout.amountToPay} />
+          <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+            Once the transfer is confirmed, your eggs will be approved for pickup from today until the next 3 days.
           </div>
           <button
             type="button"
-            onClick={() => { onSubmitted(); onClose(); }}
+            onClick={() => { onFinished(); onClose(); }}
             className="w-full rounded-xl bg-green-600 px-4 py-3 text-sm font-semibold text-white hover:bg-green-700"
           >
             Done
@@ -416,13 +519,13 @@ function BuyNowModal({ batch, onClose, onSubmitted }) {
     <ModalShell title="Buy eggs now" onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          This sends a same-day purchase request to the team. It does not record payment yet.
+          Your crates will be held as soon as you continue. Card payment approves the order for pickup immediately. Transfer keeps the crates held while admin confirms the transfer.
         </div>
 
         <div className="rounded-2xl bg-gray-50 p-4 text-sm">
           <div className="flex items-center justify-between py-1"><span className="text-gray-500">Batch</span><span className="font-semibold text-gray-900">{batch.name}</span></div>
           <div className="flex items-center justify-between py-1"><span className="text-gray-500">Egg type</span><span className="font-semibold text-gray-900">{batch.eggTypeLabel}</span></div>
-          <div className="flex items-center justify-between py-1"><span className="text-gray-500">Ready now</span><span className="font-semibold text-gray-900">{fmt(batch.availableForSale)} crates</span></div>
+          <div className="flex items-center justify-between py-1"><span className="text-gray-500">Available to buy</span><span className="font-semibold text-gray-900">{fmt(batch.availableForSale)} crates</span></div>
           <div className="flex items-center justify-between py-1"><span className="text-gray-500">Received</span><span className="font-semibold text-gray-900">{fmtDate(batch.receivedDate || batch.expectedDate)}</span></div>
         </div>
 
@@ -439,7 +542,7 @@ function BuyNowModal({ batch, onClose, onSubmitted }) {
           </select>
         </Field>
 
-        <Field label="Quantity" help={`You can request up to ${fmt(batch.availableForSale)} crates right now.`}>
+        <Field label="How many crates do you want to buy?" help={`You can buy up to ${fmt(batch.availableForSale)} crates right now.`}>
           <input
             type="number"
             min="1"
@@ -453,24 +556,24 @@ function BuyNowModal({ batch, onClose, onSubmitted }) {
 
         <div className="rounded-2xl bg-green-50 p-4 text-sm">
           <div className="flex items-center justify-between py-1"><span className="text-gray-600">Price per crate</span><span className="font-semibold text-gray-900">{fmtMoney(unitPrice)}</span></div>
-          <div className="flex items-center justify-between py-1"><span className="text-gray-600">Estimated total</span><span className="font-semibold text-gray-900">{fmtMoney(estimatedTotal)}</span></div>
+          <div className="flex items-center justify-between py-1"><span className="text-gray-600">Total to pay</span><span className="font-semibold text-gray-900">{fmtMoney(orderValue)}</span></div>
         </div>
 
-        <Field label="Note for the team" help="Optional. Use this if you want pickup timing or anything else noted.">
-          <textarea
-            value={notes}
-            onChange={(event) => setNotes(event.target.value)}
-            rows={3}
-            className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500"
-          />
-        </Field>
+        <div>
+          <p className="mb-2 text-sm font-medium text-gray-700">Choose payment method</p>
+          <PaymentMethodSelector paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod} />
+        </div>
+
+        {paymentMethod === 'TRANSFER' && orderValue > 0 && (
+          <TransferInstructions amount={orderValue} title="Transfer to this account after you continue" />
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <button type="button" onClick={onClose} className="rounded-xl border border-gray-300 px-4 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50">
             Cancel
           </button>
           <button type="submit" disabled={loading || quantityValue < 1} className="rounded-xl bg-green-600 px-4 py-3 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50">
-            {loading ? 'Sending…' : 'Send request'}
+            {loading ? 'Please wait…' : paymentMethod === 'CARD' ? 'Continue to card payment' : 'Hold crates and pay by transfer'}
           </button>
         </div>
       </form>
@@ -492,91 +595,84 @@ function ModalShell({ title, children, onClose }) {
   );
 }
 
-function MyActivity({ bookings, requests, loading }) {
+function getOrderStatus(order) {
+  if (order.kind === 'BOOKING') {
+    if (order.source === 'BOOKING_CHECKOUT') {
+      if (order.status === 'AWAITING_PAYMENT') return { label: 'Waiting for card payment', tone: 'amber' };
+      if (order.status === 'AWAITING_TRANSFER') return { label: 'Transfer under review', tone: 'amber' };
+      if (order.status === 'FAILED') return { label: 'Card payment failed', tone: 'red' };
+      if (order.status === 'CANCELLED') return { label: 'Booking hold cancelled', tone: 'red' };
+    }
+    if (order.status === 'PICKED_UP') return { label: 'Picked up', tone: 'green' };
+    if (order.status === 'CANCELLED') return { label: 'Cancelled', tone: 'red' };
+    if (order.batchArrived && order.balance <= 0) return { label: 'Approved for pickup', tone: 'green' };
+    if (order.batchArrived && order.balance > 0) return { label: 'Batch arrived - pay balance', tone: 'amber' };
+    if (order.balance <= 0) return { label: 'Booked and fully paid', tone: 'green' };
+    return { label: 'Booked and held', tone: 'blue' };
+  }
+
+  if (order.source === 'BUY_NOW_CHECKOUT') {
+    if (order.status === 'AWAITING_PAYMENT') return { label: 'Waiting for card payment', tone: 'amber' };
+    if (order.status === 'AWAITING_TRANSFER') return { label: 'Transfer under review', tone: 'amber' };
+    if (order.status === 'FAILED') return { label: 'Card payment failed', tone: 'red' };
+    if (order.status === 'CANCELLED') return { label: 'Hold cancelled', tone: 'red' };
+  }
+  if (order.status === 'APPROVED_FOR_PICKUP') return { label: 'Approved for pickup', tone: 'green' };
+  if (order.status === 'FULFILLED') return { label: 'Picked up', tone: 'green' };
+  if (order.status === 'REJECTED') return { label: 'Rejected', tone: 'red' };
+  if (order.status === 'CANCELLED') return { label: 'Cancelled', tone: 'red' };
+  return { label: 'Open', tone: 'gray' };
+}
+
+function getOrderPaymentText(order) {
+  if (order.source === 'BOOKING_CHECKOUT' || order.source === 'BUY_NOW_CHECKOUT') {
+    return order.paymentMethod === 'CARD'
+      ? 'Card payment not completed yet'
+      : 'Waiting for transfer confirmation';
+  }
+  if (order.balance > 0) {
+    return `${fmtMoney(order.amountPaid)} paid · ${fmtMoney(order.balance)} left`;
+  }
+  return 'Fully paid';
+}
+
+function getOrderNextStep(order) {
+  if (order.kind === 'BOOKING') {
+    if (order.source === 'BOOKING_CHECKOUT') {
+      if (order.paymentMethod === 'CARD') {
+        return 'Complete the card payment to keep these crates reserved for you.';
+      }
+      return 'Make the transfer, then wait for admin to confirm it. If the transfer is rejected, the held crates will return to available stock.';
+    }
+    if (order.status === 'PICKED_UP') return 'This booking has already been collected.';
+    if (order.status === 'CANCELLED') return 'This booking is no longer active.';
+    if (order.batchArrived && order.balance > 0) return 'Your batch has arrived. Pay the remaining balance so pickup can be completed.';
+    if (order.batchArrived) return 'Your batch has arrived and is ready for pickup.';
+    return 'Your crates are reserved. We will let you know once the batch arrives.';
+  }
+
+  if (order.source === 'BUY_NOW_CHECKOUT') {
+    return order.paymentMethod === 'CARD'
+      ? 'Complete the card payment to keep this hold.'
+      : 'Make the transfer, then wait for admin confirmation. Once approved, pickup is allowed from today until the next 3 days.';
+  }
+  if (order.status === 'APPROVED_FOR_PICKUP') {
+    return 'Your eggs are approved for pickup. Please come between today and the next 3 days.';
+  }
+  if (order.status === 'FULFILLED') return 'This order has already been picked up.';
+  if (order.status === 'REJECTED') return 'This payment was rejected, so the held crates have gone back into available stock.';
+  return 'The team will update this order after reviewing it.';
+}
+
+function MyActivity({ orders, loading }) {
   const [selectedOrder, setSelectedOrder] = useState(null);
-
-  function getOrderSummary(order) {
-    if (order.kind === 'BOOKING') {
-      if (order.status === 'PICKED_UP') return 'Completed';
-      if (order.status === 'CANCELLED') return 'Cancelled';
-      return order.batchArrived ? 'Batch arrived' : 'Waiting for batch';
-    }
-
-    if (order.status === 'FULFILLED') return 'Completed';
-    if (order.status === 'CANCELLED') return 'Cancelled';
-    return 'Waiting for team';
-  }
-
-  function getNextStep(order) {
-    if (order.kind === 'BOOKING') {
-      if (order.status === 'PICKED_UP') return 'This booking has already been collected.';
-      if (order.status === 'CANCELLED') return 'This booking is no longer active.';
-      if (order.batchArrived) return 'Your batch has arrived. The team can now prepare pickup.';
-      if (order.balance > 0) return 'Complete the remaining payment before pickup.';
-      return 'Wait for the team to confirm when the batch arrives.';
-    }
-
-    if (order.status === 'FULFILLED') return 'This request has already been handled.';
-    if (order.status === 'CANCELLED') return 'This request is no longer active.';
-    return 'The team will confirm stock, pickup, and payment steps.';
-  }
-
-  const items = useMemo(() => {
-    const bookingItems = bookings.map((booking) => ({
-      kind: 'BOOKING',
-      id: booking.id,
-      title: booking.batch,
-      subtitle: booking.eggTypeLabel,
-      orderedOn: booking.createdAt,
-      updatedAt: booking.updatedAt,
-      status: booking.status,
-      quantity: booking.quantity,
-      orderValue: booking.orderValue,
-      amountPaid: booking.amountPaid,
-      balance: booking.balance,
-      paymentPercent: booking.paymentPercent,
-      expectedDate: booking.expectedDate,
-      batchArrivalDate: booking.batchArrivalDate,
-      batchArrived: booking.batchArrived,
-      batchStatus: booking.batchStatus,
-      channel: booking.channel,
-      notes: booking.notes,
-      paymentText: booking.balance > 0 ? `${fmtMoney(booking.amountPaid)} paid · ${fmtMoney(booking.balance)} left` : 'Fully paid',
-    }));
-    const requestItems = requests.map((request) => ({
-      kind: 'BUY_NOW',
-      id: request.id,
-      title: request.batch,
-      subtitle: request.eggTypeLabel,
-      orderedOn: request.createdAt,
-      updatedAt: request.updatedAt,
-      status: request.status,
-      quantity: request.quantity,
-      unitPrice: request.unitPrice,
-      estimatedTotal: request.estimatedTotal,
-      expectedDate: request.expectedDate,
-      batchArrivalDate: request.receivedDate,
-      batchArrived: request.batchArrived,
-      priceType: request.priceType,
-      notes: request.notes,
-      paymentText: 'Payment will be confirmed by the team',
-    }));
-
-    return [...bookingItems, ...requestItems]
-      .map((item) => ({
-        ...item,
-        summaryStatus: getOrderSummary(item),
-        nextStep: getNextStep(item),
-      }))
-      .sort((a, b) => new Date(b.orderedOn) - new Date(a.orderedOn));
-  }, [bookings, requests]);
 
   if (loading) {
     return <div className="rounded-2xl border border-gray-200 bg-white px-6 py-12 text-center text-sm text-gray-500">Loading your orders…</div>;
   }
 
-  if (items.length === 0) {
-    return <EmptyState title="No orders yet" body="Your bookings and same-day requests will appear here." />;
+  if (!orders.length) {
+    return <EmptyState title="No orders yet" body="Your portal orders will appear here once you start booking or buying." />;
   }
 
   return (
@@ -595,32 +691,33 @@ function MyActivity({ bookings, requests, loading }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {items.map((item) => (
-                <tr key={`${item.kind}-${item.id}`} className="hover:bg-gray-50">
-                  <td className="px-5 py-4">
-                    <div className="font-semibold text-gray-900">{item.title}</div>
-                    <div className="mt-1 text-xs text-gray-500">{item.subtitle}</div>
-                    <div className="mt-1 text-xs text-gray-400">{item.quantity} crates</div>
-                  </td>
-                  <td className="px-5 py-4 text-gray-600">{item.kind === 'BOOKING' ? 'Upcoming booking' : 'Buy now request'}</td>
-                  <td className="px-5 py-4 text-gray-600">{fmtDate(item.orderedOn)}</td>
-                  <td className="px-5 py-4">
-                    <div className="inline-flex rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
-                      {item.summaryStatus}
-                    </div>
-                  </td>
-                  <td className="px-5 py-4 text-gray-600">{item.paymentText}</td>
-                  <td className="px-5 py-4 text-right">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedOrder(item)}
-                      className="rounded-xl border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
-                    >
-                      View details
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {orders.map((order) => {
+                const status = getOrderStatus(order);
+                return (
+                  <tr key={`${order.source}-${order.id}`} className="hover:bg-gray-50">
+                    <td className="px-5 py-4">
+                      <div className="font-semibold text-gray-900">{order.batch}</div>
+                      <div className="mt-1 text-xs text-gray-500">{order.eggTypeLabel}</div>
+                      <div className="mt-1 text-xs text-gray-400">{order.quantity} crates</div>
+                    </td>
+                    <td className="px-5 py-4 text-gray-600">{order.kind === 'BOOKING' ? 'Upcoming booking' : 'Buy now'}</td>
+                    <td className="px-5 py-4 text-gray-600">{fmtDate(order.createdAt)}</td>
+                    <td className="px-5 py-4">
+                      <StatusPill tone={status.tone}>{status.label}</StatusPill>
+                    </td>
+                    <td className="px-5 py-4 text-gray-600">{getOrderPaymentText(order)}</td>
+                    <td className="px-5 py-4 text-right">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedOrder(order)}
+                        className="rounded-xl border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                      >
+                        View details
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -633,63 +730,70 @@ function MyActivity({ bookings, requests, loading }) {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-green-700">
-                    {selectedOrder.kind === 'BOOKING' ? 'Upcoming booking' : 'Buy now request'}
+                    {selectedOrder.kind === 'BOOKING' ? 'Upcoming booking' : 'Buy now'}
                   </p>
-                  <h4 className="mt-1 text-lg font-semibold text-gray-900">{selectedOrder.title}</h4>
-                  <p className="text-sm text-gray-600">{selectedOrder.subtitle}</p>
+                  <h4 className="mt-1 text-lg font-semibold text-gray-900">{selectedOrder.batch}</h4>
+                  <p className="text-sm text-gray-600">{selectedOrder.eggTypeLabel}</p>
                 </div>
-                <div className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-gray-700">
-                  {selectedOrder.summaryStatus}
-                </div>
+                <StatusPill tone={getOrderStatus(selectedOrder).tone}>{getOrderStatus(selectedOrder).label}</StatusPill>
               </div>
             </div>
 
             <div className="grid gap-3 rounded-2xl bg-gray-50 p-4 md:grid-cols-2">
               <Metric label="Quantity" value={`${selectedOrder.quantity} crates`} />
-              <Metric label="Ordered on" value={fmtDateTime(selectedOrder.orderedOn)} />
-              <Metric label="Last updated" value={fmtDateTime(selectedOrder.updatedAt || selectedOrder.orderedOn)} />
-              <Metric label="Expected batch date" value={selectedOrder.expectedDate ? fmtDate(selectedOrder.expectedDate) : 'Not available'} />
+              <Metric label="Order created" value={fmtDateTime(selectedOrder.createdAt)} />
+              <Metric label="Last updated" value={fmtDateTime(selectedOrder.updatedAt || selectedOrder.createdAt)} />
+              <Metric label="Expected batch date" value={fmtDate(selectedOrder.expectedDate)} />
             </div>
 
-            {selectedOrder.kind === 'BOOKING' ? (
-              <div className="grid gap-3 rounded-2xl bg-white p-4 md:grid-cols-2">
-                <Metric label="Order value" value={fmtMoney(selectedOrder.orderValue)} />
-                <Metric label="Payment made" value={fmtMoney(selectedOrder.amountPaid)} />
-                <Metric label="Payment remaining" value={fmtMoney(selectedOrder.balance)} />
-                <Metric label="Payment progress" value={`${selectedOrder.paymentPercent || 0}% paid`} />
-                <Metric label="Booking status" value={String(selectedOrder.status).replaceAll('_', ' ').toLowerCase()} />
-                <Metric label="Batch status" value={selectedOrder.batchArrived ? `Arrived${selectedOrder.batchArrivalDate ? ` on ${fmtDate(selectedOrder.batchArrivalDate)}` : ''}` : 'Not yet arrived'} />
-              </div>
-            ) : (
-              <div className="grid gap-3 rounded-2xl bg-white p-4 md:grid-cols-2">
-                <Metric label="Price type" value={String(selectedOrder.priceType || '').toLowerCase()} />
-                <Metric label="Price per crate" value={fmtMoney(selectedOrder.unitPrice)} />
-                <Metric label="Estimated total" value={fmtMoney(selectedOrder.estimatedTotal)} />
-                <Metric label="Request status" value={String(selectedOrder.status).replaceAll('_', ' ').toLowerCase()} />
-                <Metric label="Batch availability" value={selectedOrder.batchArrived ? `Available since ${fmtDate(selectedOrder.batchArrivalDate)}` : 'Waiting for stock'} />
-                <Metric label="Payment status" value="Team confirms payment when handling the request" />
+            <div className="grid gap-3 rounded-2xl bg-white p-4 md:grid-cols-2">
+              <Metric label="Order value" value={fmtMoney(selectedOrder.orderValue)} />
+              <Metric label="Payment made" value={fmtMoney(selectedOrder.amountPaid || 0)} />
+              <Metric label="Payment remaining" value={fmtMoney(selectedOrder.balance || 0)} />
+              <Metric label="Payment method" value={selectedOrder.paymentMethod ? String(selectedOrder.paymentMethod).toLowerCase() : '—'} />
+              <Metric label="Payment status" value={getOrderPaymentText(selectedOrder)} />
+              <Metric label="Batch arrival" value={selectedOrder.batchArrived ? `Arrived${selectedOrder.batchArrivalDate ? ` on ${fmtDate(selectedOrder.batchArrivalDate)}` : ''}` : 'Not yet arrived'} />
+            </div>
+
+            {selectedOrder.pickupWindowStart && (
+              <div className="rounded-2xl border border-green-200 bg-green-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-green-700">Pickup window</p>
+                <p className="mt-2 text-sm text-gray-800">
+                  You can pick up this order from <span className="font-semibold">{fmtDate(selectedOrder.pickupWindowStart)}</span> to{' '}
+                  <span className="font-semibold">{fmtDate(selectedOrder.pickupWindowEnd)}</span>.
+                </p>
               </div>
             )}
 
             <div className="rounded-2xl border border-gray-200 bg-white p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">What happens next</p>
-              <p className="mt-2 text-sm leading-6 text-gray-700">{selectedOrder.nextStep}</p>
+              <p className="mt-2 text-sm leading-6 text-gray-700">{getOrderNextStep(selectedOrder)}</p>
             </div>
 
             <div className="rounded-2xl border border-gray-200 bg-white p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">Dates and notes</p>
               <div className="mt-3 space-y-2 text-sm text-gray-700">
                 <div className="flex items-start justify-between gap-4">
+                  <span className="text-gray-500">Reference</span>
+                  <span className="text-right font-medium">{selectedOrder.reference || '—'}</span>
+                </div>
+                <div className="flex items-start justify-between gap-4">
                   <span className="text-gray-500">Order created</span>
-                  <span className="text-right font-medium">{fmtDateTime(selectedOrder.orderedOn)}</span>
+                  <span className="text-right font-medium">{fmtDateTime(selectedOrder.createdAt)}</span>
                 </div>
                 <div className="flex items-start justify-between gap-4">
                   <span className="text-gray-500">Last updated</span>
-                  <span className="text-right font-medium">{fmtDateTime(selectedOrder.updatedAt || selectedOrder.orderedOn)}</span>
+                  <span className="text-right font-medium">{fmtDateTime(selectedOrder.updatedAt || selectedOrder.createdAt)}</span>
                 </div>
+                {selectedOrder.paymentWindowEndsAt && (
+                  <div className="flex items-start justify-between gap-4">
+                    <span className="text-gray-500">Payment window ends</span>
+                    <span className="text-right font-medium">{fmtDateTime(selectedOrder.paymentWindowEndsAt)}</span>
+                  </div>
+                )}
                 <div className="flex items-start justify-between gap-4">
                   <span className="text-gray-500">Expected batch date</span>
-                  <span className="text-right font-medium">{selectedOrder.expectedDate ? fmtDate(selectedOrder.expectedDate) : 'Not available'}</span>
+                  <span className="text-right font-medium">{fmtDate(selectedOrder.expectedDate)}</span>
                 </div>
                 <div className="flex items-start justify-between gap-4">
                   <span className="text-gray-500">Batch arrived</span>
@@ -701,10 +805,18 @@ function MyActivity({ bookings, requests, loading }) {
                       : 'Not yet'}
                   </span>
                 </div>
-                <div className="flex items-start justify-between gap-4">
-                  <span className="text-gray-500">Channel</span>
-                  <span className="text-right font-medium">{selectedOrder.kind === 'BOOKING' ? (selectedOrder.channel || 'website') : 'portal request'}</span>
-                </div>
+                {selectedOrder.pickupWindowStart && (
+                  <>
+                    <div className="flex items-start justify-between gap-4">
+                      <span className="text-gray-500">Pickup starts</span>
+                      <span className="text-right font-medium">{fmtDateTime(selectedOrder.pickupWindowStart)}</span>
+                    </div>
+                    <div className="flex items-start justify-between gap-4">
+                      <span className="text-gray-500">Pickup ends</span>
+                      <span className="text-right font-medium">{fmtDateTime(selectedOrder.pickupWindowEnd)}</span>
+                    </div>
+                  </>
+                )}
                 <div className="pt-2">
                   <p className="text-gray-500">Note</p>
                   <p className="mt-1 leading-6 text-gray-700">{selectedOrder.notes || 'No extra note was added to this order.'}</p>
@@ -724,14 +836,15 @@ export default function Portal() {
   const [view, setView] = useState('home');
   const [upcomingBatches, setUpcomingBatches] = useState([]);
   const [availableNowBatches, setAvailableNowBatches] = useState([]);
-  const [bookings, setBookings] = useState([]);
-  const [buyNowRequests, setBuyNowRequests] = useState([]);
+  const [orders, setOrders] = useState([]);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showAuth, setShowAuth] = useState(false);
   const [bookingBatch, setBookingBatch] = useState(null);
   const [buyNowBatch, setBuyNowBatch] = useState(null);
   const [portalPolicy, setPortalPolicy] = useState(null);
+  const [paymentMessage, setPaymentMessage] = useState(null);
+  const paymentVerificationRef = useRef('');
 
   const activeUser = user || customerUser;
   const isLoggedIn = Boolean(activeUser);
@@ -749,18 +862,15 @@ export default function Portal() {
       setPortalPolicy(upcoming.policy || available.policy || null);
 
       if (isCustomerRole) {
-        const [profileData, bookingData, requestData] = await Promise.all([
+        const [profileData, ordersData] = await Promise.all([
           api.get('/portal/profile'),
-          api.get('/portal/my-bookings'),
-          api.get('/portal/my-buy-now-requests'),
+          api.get('/portal/orders'),
         ]);
         setProfile(profileData);
-        setBookings(bookingData.bookings || []);
-        setBuyNowRequests(requestData.requests || []);
+        setOrders(ordersData.orders || []);
       } else {
         setProfile(null);
-        setBookings([]);
-        setBuyNowRequests([]);
+        setOrders([]);
       }
     } finally {
       setLoading(false);
@@ -770,6 +880,36 @@ export default function Portal() {
   useEffect(() => {
     loadPortal();
   }, [loadPortal]);
+
+  useEffect(() => {
+    if (!isCustomerRole) return;
+    const params = new URLSearchParams(window.location.search);
+    const reference = params.get('reference');
+    if (!reference || paymentVerificationRef.current === reference) return;
+
+    paymentVerificationRef.current = reference;
+    api.post('/portal/checkouts/verify-card', { reference })
+      .then((result) => {
+        setPaymentMessage({
+          tone: 'green',
+          title: 'Payment confirmed',
+          body: result.message,
+        });
+        loadPortal();
+      })
+      .catch((err) => {
+        setPaymentMessage({
+          tone: 'red',
+          title: 'Payment not confirmed',
+          body: err.error || 'We could not confirm that payment yet.',
+        });
+      })
+      .finally(() => {
+        const cleanUrl = new URL(window.location.href);
+        cleanUrl.searchParams.delete('reference');
+        window.history.replaceState({}, '', cleanUrl.pathname + cleanUrl.search);
+      });
+  }, [isCustomerRole, loadPortal]);
 
   function handleAuth(nextUser) {
     setCustomerUser(nextUser);
@@ -785,11 +925,16 @@ export default function Portal() {
     setView('home');
   }
 
+  const orderCounts = useMemo(() => ({
+    bookings: orders.filter((order) => order.kind === 'BOOKING').length,
+    buyNow: orders.filter((order) => order.kind === 'BUY_NOW').length,
+  }), [orders]);
+
   const homeStats = [
     { label: 'Available now', value: `${availableNowBatches.length} batch${availableNowBatches.length === 1 ? '' : 'es'}` },
     { label: 'Upcoming batches', value: `${upcomingBatches.length} open` },
-    { label: 'My bookings', value: `${bookings.length}` },
-    { label: 'My buy-now requests', value: `${buyNowRequests.length}` },
+    { label: 'My bookings', value: `${orderCounts.bookings}` },
+    { label: 'My buy now', value: `${orderCounts.buyNow}` },
   ];
 
   return (
@@ -800,7 +945,7 @@ export default function Portal() {
             <img src="/logo.webp" alt="Fresh Eggs" className="h-10 w-10 object-contain" />
             <div>
               <h1 className="text-xl font-semibold">Fresh Eggs Market</h1>
-              <p className="text-sm text-gray-500">Choose what you need, then we guide you to the right next step.</p>
+              <p className="text-sm text-gray-500">Choose what you need, hold it, then pay the right way.</p>
             </div>
           </Link>
           <div className="flex items-center gap-3">
@@ -828,6 +973,17 @@ export default function Portal() {
           </div>
         ) : (
           <div className="space-y-8">
+            {paymentMessage && (
+              <div className={`rounded-2xl border px-4 py-4 text-sm ${
+                paymentMessage.tone === 'green'
+                  ? 'border-green-200 bg-green-50 text-green-800'
+                  : 'border-red-200 bg-red-50 text-red-800'
+              }`}>
+                <p className="font-semibold">{paymentMessage.title}</p>
+                <p className="mt-1">{paymentMessage.body}</p>
+              </div>
+            )}
+
             <section className="grid gap-6 rounded-[2rem] bg-white p-6 shadow-sm lg:grid-cols-[1.1fr_0.9fr]">
               <div>
                 <p className="text-sm font-semibold uppercase tracking-[0.25em] text-green-700">Customer portal</p>
@@ -839,7 +995,7 @@ export default function Portal() {
                 </p>
                 {!isLoggedIn && (
                   <div className="mt-6 rounded-2xl border border-green-200 bg-green-50 px-4 py-4 text-sm text-green-800">
-                    Sign in to save bookings and buy-now requests to your account.
+                    Sign in to pay, hold crates, and track your orders in one place.
                   </div>
                 )}
               </div>
@@ -856,16 +1012,16 @@ export default function Portal() {
             <section className="grid gap-4 md:grid-cols-2">
               <SectionCard
                 title="Buy eggs now"
-                body="See batches that are already received and ask for immediate pickup. This is best when you need eggs right away."
-                action="Ready now"
+                body="See batches that are already received, hold the crates you want, and pay right away."
+                action="Pay now"
                 active={view === 'buy-now'}
                 onClick={() => setView('buy-now')}
                 accent="amber"
               />
               <SectionCard
                 title="Book upcoming batch"
-                body="Reserve crates from an open batch before it arrives. This is best when you want to secure supply ahead of time."
-                action="Reserve early"
+                body="Reserve crates from an open batch, choose how much to pay now, and keep the rest for later."
+                action="Book and pay"
                 active={view === 'book-upcoming'}
                 onClick={() => setView('book-upcoming')}
               />
@@ -893,23 +1049,24 @@ export default function Portal() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h3 className="text-2xl font-semibold text-gray-900">Ready now</h3>
-                      <p className="text-sm text-gray-500">Choose from received batches with stock still available.</p>
+                      <h3 className="text-2xl font-semibold text-gray-900">Available to buy</h3>
+                      <p className="text-sm text-gray-500">Choose from received batches with stock ready right now.</p>
                     </div>
                     <button type="button" onClick={() => setView('buy-now')} className="text-sm font-semibold text-green-700 hover:text-green-800">See all</button>
                   </div>
                   {loading ? (
                     <div className="rounded-2xl border border-gray-200 bg-white px-6 py-12 text-center text-sm text-gray-500">Loading batches…</div>
                   ) : availableNowBatches.length === 0 ? (
-                    <EmptyState title="Nothing is ready right now" body="Check back soon or reserve an upcoming batch instead." />
+                    <EmptyState title="Nothing is ready right now" body="Check back soon or book an upcoming batch instead." />
                   ) : (
                     availableNowBatches.slice(0, 2).map((batch) => (
                       <BatchCard
                         key={batch.id}
                         batch={batch}
-                        helperText="Available for same-day request."
+                        mode="buy-now"
+                        helperText="Pay now and hold your crates immediately."
                         priceLabel="Buy now"
-                        actionLabel={isCustomerRole ? 'Request this batch' : 'Sign in to request'}
+                        actionLabel={isCustomerRole ? 'Buy now' : 'Sign in to buy'}
                         disabled={!isCustomerRole}
                         onAction={(selectedBatch) => isCustomerRole ? setBuyNowBatch(selectedBatch) : setShowAuth(true)}
                       />
@@ -934,9 +1091,10 @@ export default function Portal() {
                       <BatchCard
                         key={batch.id}
                         batch={batch}
-                        helperText="Reserve before arrival."
+                        mode="book-upcoming"
+                        helperText="Choose your crates, pay now, and keep them reserved."
                         priceLabel="Upcoming batch"
-                        actionLabel={isCustomerRole ? 'Book this batch' : 'Sign in to book'}
+                        actionLabel={isCustomerRole ? 'Book and pay' : 'Sign in to book'}
                         disabled={!isCustomerRole}
                         onAction={(selectedBatch) => isCustomerRole ? setBookingBatch(selectedBatch) : setShowAuth(true)}
                       />
@@ -950,21 +1108,22 @@ export default function Portal() {
               <section className="space-y-4">
                 <div>
                   <h3 className="text-2xl font-semibold text-gray-900">Buy eggs now</h3>
-                  <p className="mt-1 text-sm text-gray-500">Send a request for eggs that are already received and available for pickup.</p>
+                  <p className="mt-1 text-sm text-gray-500">Choose a ready batch, hold the crates, and pay right away.</p>
                 </div>
                 {loading ? (
-                  <div className="rounded-2xl border border-gray-200 bg-white px-6 py-12 text-center text-sm text-gray-500">Loading ready-now batches…</div>
+                  <div className="rounded-2xl border border-gray-200 bg-white px-6 py-12 text-center text-sm text-gray-500">Loading available stock…</div>
                 ) : availableNowBatches.length === 0 ? (
-                  <EmptyState title="No ready-now batches" body="There is no sale-ready stock in the portal right now." />
+                  <EmptyState title="No eggs ready to buy" body="There is no sale-ready stock in the portal right now." />
                 ) : (
                   <div className="grid gap-4 xl:grid-cols-2">
                     {availableNowBatches.map((batch) => (
                       <BatchCard
                         key={batch.id}
                         batch={batch}
-                        helperText="Available for same-day request."
-                        priceLabel="Ready now"
-                        actionLabel={isCustomerRole ? 'Request this batch' : 'Sign in to request'}
+                        mode="buy-now"
+                        helperText="Card payment approves pickup immediately. Transfer keeps the hold until admin confirms."
+                        priceLabel="Available now"
+                        actionLabel={isCustomerRole ? 'Buy now' : 'Sign in to buy'}
                         disabled={!isCustomerRole}
                         onAction={(selectedBatch) => isCustomerRole ? setBuyNowBatch(selectedBatch) : setShowAuth(true)}
                       />
@@ -978,21 +1137,22 @@ export default function Portal() {
               <section className="space-y-4">
                 <div>
                   <h3 className="text-2xl font-semibold text-gray-900">Book upcoming batch</h3>
-                  <p className="mt-1 text-sm text-gray-500">Reserve eggs from an open batch before it arrives.</p>
+                  <p className="mt-1 text-sm text-gray-500">Choose crates, decide how much to pay now, and keep the rest for later.</p>
                 </div>
                 {loading ? (
-                  <div className="rounded-2xl border border-gray-200 bg-white px-6 py-12 text-center text-sm text-gray-500">Loading upcoming batches…</div>
+                  <div className="rounded-2xl border border-gray-200 bg-white px-6 py-12 text-center text-sm text-gray-500">Loading open batches…</div>
                 ) : upcomingBatches.length === 0 ? (
-                  <EmptyState title="No open batches" body="There are no upcoming batches available for booking right now." />
+                  <EmptyState title="No open batches right now" body="When the next batch opens, you will see it here." />
                 ) : (
                   <div className="grid gap-4 xl:grid-cols-2">
                     {upcomingBatches.map((batch) => (
                       <BatchCard
                         key={batch.id}
                         batch={batch}
-                        helperText="Reserve before arrival."
-                        priceLabel="Upcoming batch"
-                        actionLabel={isCustomerRole ? 'Book this batch' : 'Sign in to book'}
+                        mode="book-upcoming"
+                        helperText="Pay at least the booking minimum to reserve your crates."
+                        priceLabel="Book upcoming"
+                        actionLabel={isCustomerRole ? 'Book and pay' : 'Sign in to book'}
                         disabled={!isCustomerRole}
                         onAction={(selectedBatch) => isCustomerRole ? setBookingBatch(selectedBatch) : setShowAuth(true)}
                       />
@@ -1002,13 +1162,13 @@ export default function Portal() {
               </section>
             )}
 
-            {view === 'activity' && isCustomerRole && (
+            {view === 'activity' && (
               <section className="space-y-4">
                 <div>
                   <h3 className="text-2xl font-semibold text-gray-900">Order status and history</h3>
-                  <p className="mt-1 text-sm text-gray-500">Track your upcoming bookings, buy-now requests, and past order activity in one place.</p>
+                  <p className="mt-1 text-sm text-gray-500">Track bookings, buy-now payments, approvals, pickup windows, and batch arrival updates in one place.</p>
                 </div>
-                <MyActivity bookings={bookings} requests={buyNowRequests} loading={loading} />
+                <MyActivity orders={orders} loading={loading} />
               </section>
             )}
           </div>
@@ -1016,26 +1176,20 @@ export default function Portal() {
       </main>
 
       {bookingBatch && (
-        <BookingModal
+        <BookingCheckoutModal
           batch={bookingBatch}
           profile={profile}
           policy={portalPolicy}
           onClose={() => setBookingBatch(null)}
-          onBooked={() => {
-            loadPortal();
-            setView('activity');
-          }}
+          onFinished={loadPortal}
         />
       )}
 
       {buyNowBatch && (
-        <BuyNowModal
+        <BuyNowCheckoutModal
           batch={buyNowBatch}
           onClose={() => setBuyNowBatch(null)}
-          onSubmitted={() => {
-            loadPortal();
-            setView('activity');
-          }}
+          onFinished={loadPortal}
         />
       )}
     </div>

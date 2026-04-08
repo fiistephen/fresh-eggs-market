@@ -16,4 +16,8 @@ export const config = {
 
   // CORS
   corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+
+  // Payments
+  paystackPublicKey: process.env.PAYSTACK_PUBLIC_KEY || 'pk_test_660175025ab36e5ebb808c3f0228201e59626954',
+  paystackSecretKey: process.env.PAYSTACK_SECRET_KEY || 'sk_test_79d598b17ef763c9c56e3bee7b8ee7249985b2c7',
 };

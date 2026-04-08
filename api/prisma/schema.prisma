@@ -70,6 +70,7 @@ model Customer {
 
   bookings         Booking[]
   portalOrderRequests PortalOrderRequest[]
+  portalCheckouts  PortalCheckout[]
   sales            Sale[]
   bankTransactions BankTransaction[]
   statementLines   BankStatementLine[]
@@ -109,6 +110,7 @@ model Batch {
   eggCodes    BatchEggCode[]
   bookings    Booking[]
   portalOrderRequests PortalOrderRequest[]
+  portalCheckouts PortalCheckout[]
   sales       Sale[]
   inventory   InventoryCount[]
 
@@ -172,7 +174,24 @@ enum BookingStatus {
 
 enum PortalOrderRequestStatus {
   OPEN
+  AWAITING_PAYMENT
+  PENDING_TRANSFER_CONFIRMATION
+  APPROVED_FOR_PICKUP
   FULFILLED
+  REJECTED
+  CANCELLED
+}
+
+enum PortalPaymentMethod {
+  CARD
+  TRANSFER
+}
+
+enum PortalPaymentStatus {
+  AWAITING_PAYMENT
+  AWAITING_TRANSFER
+  PAID
+  FAILED
   CANCELLED
 }
 
@@ -204,6 +223,7 @@ model Booking {
   batchEggCode BatchEggCode? @relation(fields: [batchEggCodeId], references: [id])
   sale     Sale?    // Linked when booking is picked up and converted to sale
   allocations BookingPaymentAllocation[]
+  portalCheckout PortalCheckout?
 
   @@map("bookings")
 }
@@ -214,18 +234,73 @@ model PortalOrderRequest {
   batchId        String                   @map("batch_id")
   requestType    PortalOrderRequestType   @default(BUY_NOW) @map("request_type")
   status         PortalOrderRequestStatus @default(OPEN)
+  paymentMethod  PortalPaymentMethod      @default(CARD) @map("payment_method")
+  paymentStatus  PortalPaymentStatus      @default(PAID) @map("payment_status")
   quantity       Int
   priceType      PortalPriceType          @map("price_type")
   unitPrice      Decimal                  @map("unit_price") @db.Decimal(12, 2)
   estimatedTotal Decimal                  @map("estimated_total") @db.Decimal(12, 2)
+  amountPaid     Decimal                  @default(0) @map("amount_paid") @db.Decimal(12, 2)
+  paymentReference String?                @unique @map("payment_reference")
+  pickupWindowStart DateTime?             @map("pickup_window_start")
+  pickupWindowEnd DateTime?               @map("pickup_window_end")
   notes          String?
   createdAt      DateTime                 @default(now()) @map("created_at")
   updatedAt      DateTime                 @updatedAt @map("updated_at")
 
   customer Customer @relation(fields: [customerId], references: [id])
   batch    Batch    @relation(fields: [batchId], references: [id])
+  checkout PortalCheckout?
 
   @@map("portal_order_requests")
+}
+
+enum PortalCheckoutType {
+  BOOK_UPCOMING
+  BUY_NOW
+}
+
+enum PortalCheckoutStatus {
+  AWAITING_PAYMENT
+  AWAITING_TRANSFER
+  PAID
+  FAILED
+  CANCELLED
+}
+
+model PortalCheckout {
+  id                   String                   @id @default(cuid())
+  customerId           String                   @map("customer_id")
+  batchId              String                   @map("batch_id")
+  bookingId            String?                  @unique @map("booking_id")
+  portalOrderRequestId String?                  @unique @map("portal_order_request_id")
+  checkoutType         PortalCheckoutType       @map("checkout_type")
+  paymentMethod        PortalPaymentMethod      @map("payment_method")
+  status               PortalCheckoutStatus     @default(AWAITING_PAYMENT)
+  quantity             Int
+  priceType            PortalPriceType?         @map("price_type")
+  unitPrice            Decimal?                 @map("unit_price") @db.Decimal(12, 2)
+  orderValue           Decimal                  @map("order_value") @db.Decimal(12, 2)
+  amountToPay          Decimal                  @map("amount_to_pay") @db.Decimal(12, 2)
+  balanceAfterPayment  Decimal                  @map("balance_after_payment") @db.Decimal(12, 2)
+  reference            String                   @unique
+  paystackReference    String?                  @unique @map("paystack_reference")
+  paystackAccessCode   String?                  @map("paystack_access_code")
+  paystackAuthorizationUrl String?              @map("paystack_authorization_url")
+  paymentWindowEndsAt  DateTime?                @map("payment_window_ends_at")
+  pickupWindowStart    DateTime?                @map("pickup_window_start")
+  pickupWindowEnd      DateTime?                @map("pickup_window_end")
+  notes                String?
+  verifiedAt           DateTime?                @map("verified_at")
+  createdAt            DateTime                 @default(now()) @map("created_at")
+  updatedAt            DateTime                 @updatedAt @map("updated_at")
+
+  customer             Customer                 @relation(fields: [customerId], references: [id])
+  batch                Batch                    @relation(fields: [batchId], references: [id])
+  booking              Booking?                 @relation(fields: [bookingId], references: [id])
+  portalOrderRequest   PortalOrderRequest?      @relation(fields: [portalOrderRequestId], references: [id])
+
+  @@map("portal_checkouts")
 }
 
 // ─── SALES ─────────────────────────────────────────────────────
