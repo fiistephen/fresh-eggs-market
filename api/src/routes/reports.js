@@ -30,6 +30,22 @@ function buildDateRangeWhere({ dateFrom, dateTo }) {
   return { saleDate };
 }
 
+function monthBucketLabel(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Unknown month';
+  return date.toLocaleDateString('en-NG', {
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+}
+
+function monthBucketKey(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'unknown';
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
 export default async function reportsRoutes(fastify) {
   fastify.get('/reports/sales', {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER')],
@@ -332,6 +348,12 @@ export default async function reportsRoutes(fastify) {
         let totalSold = 0;
         let crackedSoldQuantity = 0;
         let crackedSoldValue = 0;
+        const salesByType = {
+          WHOLESALE: { quantity: 0, amount: 0 },
+          RETAIL: { quantity: 0, amount: 0 },
+          CRACKED: { quantity: 0, amount: 0 },
+          WRITE_OFF: { quantity: 0, amount: 0 },
+        };
 
         for (const item of soldItems) {
           const lineValue = Number(item.lineTotal);
@@ -340,6 +362,10 @@ export default async function reportsRoutes(fastify) {
           totalRevenue += lineValue;
           totalSaleCost += lineCost;
           totalSold += item.quantity;
+          if (salesByType[item.saleType]) {
+            salesByType[item.saleType].quantity += item.quantity;
+            salesByType[item.saleType].amount += lineValue;
+          }
 
           if (item.saleType === 'CRACKED') {
             crackedSoldQuantity += item.quantity;
@@ -355,17 +381,21 @@ export default async function reportsRoutes(fastify) {
         const totalCrackImpact = crackedSoldQuantity + totalWriteOffs;
         const crackRatePercent = roundTo2(safeDivide(totalCrackImpact * 100, totalReceived));
         const crackAlert = buildCrackAlert(crackRatePercent, policy.crackAllowancePercent);
+        const batchDate = batch.closedDate || batch.receivedDate || batch.expectedDate;
 
         return {
           batchId: batch.id,
           batchName: batch.name,
           status: batch.status,
-          batchDate: batch.closedDate || batch.receivedDate || batch.expectedDate,
+          batchDate,
+          monthKey: monthBucketKey(batchDate),
+          monthLabel: monthBucketLabel(batchDate),
           totalReceived,
           totalSold,
           totalBookings,
           totalWriteOffs,
           remaining,
+          availableForSale: Math.max(0, remaining - totalBookings),
           totalRevenue,
           totalSaleCost,
           grossProfit,
@@ -374,8 +404,17 @@ export default async function reportsRoutes(fastify) {
           profitPerCrate,
           crackedSoldQuantity,
           crackedSoldValue,
+          totalCrackImpact,
           crackRatePercent,
           crackAlert,
+          eggCodeMix: batch.eggCodes.map((eggCode) => ({
+            code: eggCode.code,
+            quantity: eggCode.quantity,
+            freeQty: eggCode.freeQty,
+            costPrice: Number(eggCode.costPrice),
+            subtotal: Number(eggCode.costPrice) * eggCode.quantity,
+          })),
+          salesByType,
           latestCount: latestCount ? {
             countDate: latestCount.countDate,
             discrepancy: latestCount.discrepancy,
@@ -402,6 +441,55 @@ export default async function reportsRoutes(fastify) {
           batchSummary.reduce((sum, row) => sum + row.crackRatePercent, 0),
           batchSummary.length,
         )),
+      };
+
+      const monthlyTrendMap = new Map();
+      for (const row of batchSummary) {
+        const key = row.monthKey;
+        const bucket = monthlyTrendMap.get(key) || {
+          monthKey: key,
+          monthLabel: key,
+          totalBatches: 0,
+          totalReceived: 0,
+          totalActualProfit: 0,
+          totalExpectedProfit: 0,
+          totalVarianceToPolicy: 0,
+          totalCrackRatePercent: 0,
+          aboveTargetCount: 0,
+          belowTargetCount: 0,
+          crackAlertCount: 0,
+        };
+
+        bucket.totalBatches += 1;
+        bucket.totalReceived += row.totalReceived;
+        bucket.totalActualProfit += row.grossProfit;
+        bucket.totalExpectedProfit += row.expectedPolicyProfit;
+        bucket.totalVarianceToPolicy += row.varianceToPolicy;
+        bucket.totalCrackRatePercent += row.crackRatePercent;
+        if (row.varianceToPolicy > 0) bucket.aboveTargetCount += 1;
+        if (row.varianceToPolicy < 0) bucket.belowTargetCount += 1;
+        if (row.crackAlert.level === 'ALERT') bucket.crackAlertCount += 1;
+
+        bucket.monthLabel = row.monthLabel;
+        monthlyTrendMap.set(key, bucket);
+      }
+
+      const monthlyTrend = [...monthlyTrendMap.values()].map((bucket) => ({
+        ...bucket,
+        averageCrackRatePercent: roundTo2(safeDivide(bucket.totalCrackRatePercent, bucket.totalBatches)),
+        averageProfitPerCrate: roundTo2(safeDivide(bucket.totalActualProfit, bucket.totalReceived)),
+      })).sort((a, b) => a.monthKey.localeCompare(b.monthKey));
+
+      const highlights = {
+        strongestBatch: batchSummary.length
+          ? [...batchSummary].sort((a, b) => b.varianceToPolicy - a.varianceToPolicy)[0]
+          : null,
+        weakestBatch: batchSummary.length
+          ? [...batchSummary].sort((a, b) => a.varianceToPolicy - b.varianceToPolicy)[0]
+          : null,
+        highestCrackBatch: batchSummary.length
+          ? [...batchSummary].sort((a, b) => b.crackRatePercent - a.crackRatePercent)[0]
+          : null,
       };
 
       const activeInventory = batchSummary
@@ -442,6 +530,8 @@ export default async function reportsRoutes(fastify) {
         },
         batchSummary,
         monthlySummary,
+        monthlyTrend,
+        highlights,
         inventoryControl,
       });
     },

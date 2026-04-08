@@ -1063,3 +1063,34 @@ Minimum update format:
   - frontend build passed
 - What future Codex sessions should remember:
   - the next likely Batch V2 step is deeper batch analysis polish and monthly batch reporting tie-in
+
+## 28. 2026-04-08 Batch Analysis And Monthly Reporting Upgrade
+
+- Strengthened the management-facing batch reporting in:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/src/routes/reports.js`
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/pages/ReportDetail.jsx`
+- Backend improvements:
+  - batch operations reports now include:
+    - monthly trend buckets
+    - strongest batch highlight
+    - weakest batch highlight
+    - highest crack-rate batch highlight
+    - FE mix per batch
+    - sales mix per batch by sale type
+    - cracked sold value
+    - total crack impact
+    - available-for-sale remainder
+  - monthly trend is sorted chronologically for reporting views
+- Frontend improvements:
+  - `Batch Summary` report now includes:
+    - monthly batch trend chart
+    - management highlights panel
+    - monthly summary table
+    - richer per-batch cards with FE mix and crack/sales mix detail
+  - `AreaTrendChart` was updated so non-date labels such as month names can be rendered cleanly
+- Local verification completed:
+  - `node --check` passed for `reports.js`
+  - frontend build passed
+- What future Codex sessions should remember:
+  - this completes the deeper batch analysis / monthly tie-in slice
+  - likely next step after this is Portal V2 unless more batch polish is requested

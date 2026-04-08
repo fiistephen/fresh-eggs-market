@@ -535,6 +535,8 @@ function BatchSummaryReport({ data }) {
   const policy = data.policy || {};
   const monthly = data.monthlySummary || {};
   const batches = data.batchSummary || [];
+  const monthlyTrend = data.monthlyTrend || [];
+  const highlights = data.highlights || {};
 
   return (
     <div className="space-y-6">
@@ -571,6 +573,54 @@ function BatchSummaryReport({ data }) {
         </Panel>
       </div>
 
+      <div className="grid grid-cols-1 xl:grid-cols-[1.4fr_1fr] gap-6">
+        <Panel title="Monthly batch trend" body="This helps management see how each month performed against policy, not just individual batches.">
+          <AreaTrendChart
+            data={monthlyTrend}
+            labelKey="monthLabel"
+            valueKey="totalActualProfit"
+            valueFormatter={formatCurrency}
+            labelFormatter={(value) => value}
+          />
+        </Panel>
+
+        <Panel title="Management highlights" body="Use these quick notes when you need the story behind the numbers.">
+          <ExecutiveNote
+            label="Strongest batch"
+            value={highlights.strongestBatch ? `${highlights.strongestBatch.batchName} (${formatSignedCurrency(highlights.strongestBatch.varianceToPolicy)})` : 'No batch data yet'}
+          />
+          <ExecutiveNote
+            label="Weakest batch"
+            value={highlights.weakestBatch ? `${highlights.weakestBatch.batchName} (${formatSignedCurrency(highlights.weakestBatch.varianceToPolicy)})` : 'No batch data yet'}
+          />
+          <ExecutiveNote
+            label="Highest crack pressure"
+            value={highlights.highestCrackBatch ? `${highlights.highestCrackBatch.batchName} (${formatPercent(highlights.highestCrackBatch.crackRatePercent)})` : 'No batch data yet'}
+          />
+          <ExecutiveNote
+            label="Monthly average profit per crate"
+            value={formatCurrency(monthly.averageProfitPerCrate)}
+          />
+        </Panel>
+      </div>
+
+      <Panel title="Monthly batch summary" body="This is the roll-up view management can use for monthly review meetings.">
+        <DataTable
+          columns={['Month', 'Batches', 'Received', 'Actual profit', 'Policy target', 'Variance', 'Above target', 'Crack alerts']}
+          rows={monthlyTrend.map((row) => [
+            row.monthLabel,
+            row.totalBatches.toLocaleString(),
+            `${row.totalReceived.toLocaleString()} crates`,
+            formatCurrency(row.totalActualProfit),
+            formatCurrency(row.totalExpectedProfit),
+            formatSignedCurrency(row.totalVarianceToPolicy),
+            row.aboveTargetCount.toLocaleString(),
+            row.crackAlertCount.toLocaleString(),
+          ])}
+          emptyText="No monthly batch data found for this period."
+        />
+      </Panel>
+
       <Panel title="Batch summary" body="Open this when you need the full batch-by-batch picture for the selected period.">
         <div className="space-y-3">
           {batches.length === 0 ? (
@@ -605,6 +655,40 @@ function BatchSummaryReport({ data }) {
                   <MiniMetric label="Profit/crate" value={formatCurrency(batch.profitPerCrate)} />
                   <MiniMetric label="Crack rate" value={formatPercent(batch.crackRatePercent)} />
                   <MiniMetric label="Write-offs" value={`${batch.totalWriteOffs.toLocaleString()} crates`} />
+                </div>
+
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-4">
+                  <div className="rounded-xl bg-gray-50 p-4">
+                    <p className="text-xs uppercase tracking-wider text-gray-500">FE mix</p>
+                    <div className="mt-3 space-y-2">
+                      {(batch.eggCodeMix || []).map((row) => (
+                        <div key={`${batch.batchId}-${row.code}`} className="flex items-center justify-between gap-3 text-sm">
+                          <div>
+                            <p className="font-medium text-gray-900">{row.code}</p>
+                            <p className="text-xs text-gray-500">{formatCurrency(row.costPrice)} cost price</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-medium text-gray-900">{(row.quantity + row.freeQty).toLocaleString()} crates</p>
+                            <p className="text-xs text-gray-500">{row.freeQty > 0 ? `${row.freeQty} free` : 'No free crates'}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl bg-gray-50 p-4">
+                    <p className="text-xs uppercase tracking-wider text-gray-500">Sales and crack mix</p>
+                    <div className="mt-3 grid grid-cols-2 gap-3">
+                      <MiniMetric label="Wholesale" value={`${(batch.salesByType?.WHOLESALE?.quantity || 0).toLocaleString()} crates`} />
+                      <MiniMetric label="Retail" value={`${(batch.salesByType?.RETAIL?.quantity || 0).toLocaleString()} crates`} />
+                      <MiniMetric label="Cracked sold" value={`${batch.crackedSoldQuantity.toLocaleString()} crates`} />
+                      <MiniMetric label="Damaged write-off" value={`${batch.totalWriteOffs.toLocaleString()} crates`} />
+                    </div>
+                    <div className="mt-3 text-sm text-gray-600">
+                      <p>Cracked sold value: <span className="font-medium text-gray-900">{formatCurrency(batch.crackedSoldValue)}</span></p>
+                      <p className="mt-1">Sale-ready stock left: <span className="font-medium text-gray-900">{batch.availableForSale.toLocaleString()} crates</span></p>
+                    </div>
+                  </div>
                 </div>
 
                 {batch.latestCount && batch.latestCount.discrepancy !== 0 ? (
@@ -786,7 +870,7 @@ function DataTable({ columns, rows, footer, emptyText = 'No rows found.' }) {
   );
 }
 
-function AreaTrendChart({ data, labelKey, valueKey, valueFormatter }) {
+function AreaTrendChart({ data, labelKey, valueKey, valueFormatter, labelFormatter = (value) => formatDate(value) }) {
   if (!data?.length) {
     return <EmptyPanel text="No chart data found for this period." />;
   }
@@ -830,7 +914,7 @@ function AreaTrendChart({ data, labelKey, valueKey, valueFormatter }) {
           {points.map((point) => (
             <g key={point.label}>
               <circle cx={point.x} cy={point.y} r="4" fill="#10B981" />
-              <title>{`${formatDate(point.label)}: ${valueFormatter(point.value)}`}</title>
+              <title>{`${labelFormatter(point.label)}: ${valueFormatter(point.value)}`}</title>
             </g>
           ))}
         </svg>
@@ -839,7 +923,7 @@ function AreaTrendChart({ data, labelKey, valueKey, valueFormatter }) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-gray-500">
         {points.slice(-4).map((point) => (
           <div key={`legend-${point.label}`} className="rounded-lg bg-gray-50 px-3 py-2">
-            <p>{formatDate(point.label)}</p>
+            <p>{labelFormatter(point.label)}</p>
             <p className="font-medium text-gray-800 mt-1">{valueFormatter(point.value)}</p>
           </div>
         ))}
