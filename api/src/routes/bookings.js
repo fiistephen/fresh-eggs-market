@@ -1,7 +1,7 @@
 import prisma from '../plugins/prisma.js';
 import { authenticate } from '../plugins/auth.js';
 import { authorize } from '../middleware/authorize.js';
-import { getCustomerEggTypeConfig, getCustomerEggTypeLabel } from '../utils/appSettings.js';
+import { getCustomerEggTypeConfig, getCustomerEggTypeLabel, getOperationsPolicy } from '../utils/appSettings.js';
 
 const ELIGIBLE_BOOKING_PAYMENT_CATEGORIES = [
   'CUSTOMER_DEPOSIT',
@@ -31,10 +31,10 @@ function mapBatchEggCode(eggCode, batch = null) {
   };
 }
 
-function enrichBooking(booking, eggTypes = []) {
+function enrichBooking(booking, eggTypes = [], policy = { bookingMinimumPaymentPercent: 80 }) {
   const amountPaid = Number(booking.amountPaid);
   const orderValue = Number(booking.orderValue);
-  const minimumPayment = orderValue * 0.8;
+  const minimumPayment = orderValue * (Number(policy.bookingMinimumPaymentPercent || 80) / 100);
   const balance = Math.max(0, orderValue - amountPaid);
 
   return {
@@ -252,7 +252,7 @@ function validateBookingQuantity(quantity) {
   return null;
 }
 
-async function validateBookingBasics({ customerId, batchId, quantity, excludeBookingId = null }) {
+async function validateBookingBasics({ customerId, batchId, quantity, policy, excludeBookingId = null }) {
   const quantityError = validateBookingQuantity(quantity);
   if (quantityError) {
     return { error: quantityError };
@@ -291,12 +291,12 @@ async function validateBookingBasics({ customerId, batchId, quantity, excludeBoo
     };
   }
 
-  if (quantity > 100) {
-    return { error: 'Maximum booking is 100 crates per order' };
+  if (quantity > Number(policy.maxBookingCratesPerOrder || 100)) {
+    return { error: `Maximum booking is ${Number(policy.maxBookingCratesPerOrder || 100).toLocaleString()} crates per order` };
   }
 
-  if (customer.isFirstTime && quantity > 20) {
-    return { error: 'First-time customers can book a maximum of 20 crates' };
+  if (customer.isFirstTime && quantity > Number(policy.firstTimeBookingLimitCrates || 20)) {
+    return { error: `First-time customers can book a maximum of ${Number(policy.firstTimeBookingLimitCrates || 20).toLocaleString()} crates` };
   }
 
   return { batch, customer };
@@ -312,27 +312,32 @@ export default async function bookingRoutes(fastify) {
       if (customerId) where.customerId = customerId;
       if (status) where.status = status;
 
-      const bookings = await prisma.booking.findMany({
-        where,
-        include: buildBookingInclude(),
-        orderBy: { createdAt: 'desc' },
-      });
-      const eggTypes = await getCustomerEggTypeConfig();
-      return reply.send({ bookings: bookings.map((booking) => enrichBooking(booking, eggTypes)) });
+      const [bookings, eggTypes, policy] = await Promise.all([
+        prisma.booking.findMany({
+          where,
+          include: buildBookingInclude(),
+          orderBy: { createdAt: 'desc' },
+        }),
+        getCustomerEggTypeConfig(),
+        getOperationsPolicy(),
+      ]);
+      return reply.send({ bookings: bookings.map((booking) => enrichBooking(booking, eggTypes, policy)) });
     },
   });
 
   fastify.get('/bookings/:id', {
     preHandler: [authenticate],
     handler: async (request, reply) => {
-      const booking = await prisma.booking.findUnique({
-        where: { id: request.params.id },
-        include: buildBookingInclude(),
-      });
-
+      const [booking, eggTypes, policy] = await Promise.all([
+        prisma.booking.findUnique({
+          where: { id: request.params.id },
+          include: buildBookingInclude(),
+        }),
+        getCustomerEggTypeConfig(),
+        getOperationsPolicy(),
+      ]);
       if (!booking) return reply.code(404).send({ error: 'Booking not found' });
-      const eggTypes = await getCustomerEggTypeConfig();
-      return reply.send({ booking: enrichBooking(booking, eggTypes) });
+      return reply.send({ booking: enrichBooking(booking, eggTypes, policy) });
     },
   });
 
@@ -371,10 +376,12 @@ export default async function bookingRoutes(fastify) {
         return reply.code(400).send({ error: 'Missing required fields: customerId, batchId, quantity' });
       }
 
+      const policy = await getOperationsPolicy();
       const basics = await validateBookingBasics({
         customerId,
         batchId,
         quantity: Number(quantity),
+        policy,
       });
       if (basics.error) {
         return reply.code(400).send(basics);
@@ -382,7 +389,7 @@ export default async function bookingRoutes(fastify) {
 
       const { batch, customer } = basics;
       const orderValue = Number(quantity) * Number(batch.wholesalePrice);
-      const minimumPayment = orderValue * 0.8;
+      const minimumPayment = orderValue * (Number(policy.bookingMinimumPaymentPercent || 80) / 100);
 
       let finalAmountPaid = amountPaid == null ? null : Number(amountPaid);
       let normalizedAllocations = [];
@@ -407,7 +414,7 @@ export default async function bookingRoutes(fastify) {
 
       if (finalAmountPaid < minimumPayment) {
         return reply.code(400).send({
-          error: `Minimum payment is 80% of order value (₦${minimumPayment.toLocaleString()})`,
+          error: `Minimum payment is ${Number(policy.bookingMinimumPaymentPercent || 80)}% of order value (₦${minimumPayment.toLocaleString()})`,
           orderValue,
           minimumPayment,
           amountPaid: finalAmountPaid,
@@ -457,7 +464,7 @@ export default async function bookingRoutes(fastify) {
       });
 
       const eggTypes = await getCustomerEggTypeConfig();
-      return reply.code(201).send({ booking: enrichBooking(booking, eggTypes) });
+      return reply.code(201).send({ booking: enrichBooking(booking, eggTypes, policy) });
     },
   });
 
@@ -477,10 +484,12 @@ export default async function bookingRoutes(fastify) {
       const { quantity, amountPaid, notes, paymentAllocations } = request.body;
       const nextQuantity = quantity !== undefined ? Number(quantity) : existing.quantity;
 
+      const policy = await getOperationsPolicy();
       const basics = await validateBookingBasics({
         customerId: existing.customerId,
         batchId: existing.batchId,
         quantity: nextQuantity,
+        policy,
         excludeBookingId: existing.id,
       });
       if (basics.error) {
@@ -488,7 +497,7 @@ export default async function bookingRoutes(fastify) {
       }
 
       const orderValue = nextQuantity * Number(existing.batch.wholesalePrice);
-      const minimumPayment = orderValue * 0.8;
+      const minimumPayment = orderValue * (Number(policy.bookingMinimumPaymentPercent || 80) / 100);
 
       let nextAmountPaid = Number(existing.amountPaid);
       let normalizedAllocations = null;
@@ -511,7 +520,7 @@ export default async function bookingRoutes(fastify) {
       }
 
       if (nextAmountPaid < minimumPayment) {
-        return reply.code(400).send({ error: `Minimum payment is 80% (₦${minimumPayment.toLocaleString()})` });
+        return reply.code(400).send({ error: `Minimum payment is ${Number(policy.bookingMinimumPaymentPercent || 80)}% (₦${minimumPayment.toLocaleString()})` });
       }
 
       if (nextAmountPaid > orderValue + 0.009) {
@@ -553,7 +562,7 @@ export default async function bookingRoutes(fastify) {
       });
 
       const eggTypes = await getCustomerEggTypeConfig();
-      return reply.send({ booking: enrichBooking(booking, eggTypes) });
+      return reply.send({ booking: enrichBooking(booking, eggTypes, policy) });
     },
   });
 
@@ -620,7 +629,10 @@ export default async function bookingRoutes(fastify) {
   fastify.get('/bookings/open-batches', {
     preHandler: [authenticate],
     handler: async (request, reply) => {
-      const eggTypes = await getCustomerEggTypeConfig();
+      const [eggTypes, policy] = await Promise.all([
+        getCustomerEggTypeConfig(),
+        getOperationsPolicy(),
+      ]);
       const openBatches = await prisma.batch.findMany({
         where: { status: 'OPEN' },
         include: {
@@ -658,7 +670,7 @@ export default async function bookingRoutes(fastify) {
         };
       }));
 
-      return reply.send({ batches: result.filter((batch) => batch.remainingAvailable > 0) });
+      return reply.send({ batches: result.filter((batch) => batch.remainingAvailable > 0), policy });
     },
   });
 }

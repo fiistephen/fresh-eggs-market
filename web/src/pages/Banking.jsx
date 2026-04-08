@@ -168,6 +168,9 @@ export default function Banking() {
   const [selectedImportLines, setSelectedImportLines] = useState([]);
   const [customerBookingQueue, setCustomerBookingQueue] = useState([]);
   const [customerBookingBatches, setCustomerBookingBatches] = useState([]);
+  const [bankingPolicy, setBankingPolicy] = useState({
+    bookingMinimumPaymentPercent: 80,
+  });
   const [loading, setLoading] = useState(true);
   const [transactionsLoading, setTransactionsLoading] = useState(false);
   const [importsLoading, setImportsLoading] = useState(false);
@@ -327,6 +330,10 @@ export default function Banking() {
       const data = await api.get('/banking/customer-bookings');
       setCustomerBookingQueue(data.queue || []);
       setCustomerBookingBatches(data.openBatches || []);
+      setBankingPolicy((current) => ({
+        ...current,
+        ...(data.policy || {}),
+      }));
     } catch {
       setError('Failed to load customer booking links');
     } finally {
@@ -457,6 +464,7 @@ export default function Banking() {
           loading={customerBookingLoading}
           queue={customerBookingQueue}
           openBatches={customerBookingBatches}
+          policy={bankingPolicy}
           onRefresh={() => {
             loadCustomerBookings();
             loadTransactions();
@@ -2376,7 +2384,7 @@ function QuickCategoryCreator({ direction = 'INFLOW', onCreated }) {
   );
 }
 
-function CustomerBookingQueueView({ loading, queue, openBatches, onRefresh }) {
+function CustomerBookingQueueView({ loading, queue, openBatches, policy, onRefresh }) {
   const [activeTransaction, setActiveTransaction] = useState(null);
 
   if (loading) return <PanelLoading label="Loading customer booking queue…" />;
@@ -2761,7 +2769,7 @@ function CustomerBookingLinkModal({ transaction, openBatches, onClose, onSaved }
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h3 className="text-base font-semibold text-gray-900">Batch allocations</h3>
-                <p className="text-sm text-gray-500">Split the money across one or more open batches. The app checks the 80% minimum for each batch booking.</p>
+                <p className="text-sm text-gray-500">Split the money across one or more open batches. The app checks the {Number(policy?.bookingMinimumPaymentPercent || 80)}% minimum for each batch booking.</p>
               </div>
               <button
                 type="button"
@@ -2778,7 +2786,7 @@ function CustomerBookingLinkModal({ transaction, openBatches, onClose, onSaved }
                 const quantity = Number(row.quantity || 0);
                 const allocatedAmount = Number(row.allocatedAmount || 0);
                 const bookingValue = batch ? quantity * Number(batch.wholesalePrice) : 0;
-                const minimumPayment = bookingValue * 0.8;
+                const minimumPayment = bookingValue * (Number(policy?.bookingMinimumPaymentPercent || 80) / 100);
                 const paidPercent = bookingValue > 0 ? (allocatedAmount / bookingValue) * 100 : 0;
 
                 return (
@@ -2833,8 +2841,8 @@ function CustomerBookingLinkModal({ transaction, openBatches, onClose, onSaved }
                       <StatPill label="Crates booked" value={quantity || 0} />
                       <StatPill label="Price / crate" value={batch ? fmtMoney(batch.wholesalePrice) : '—'} />
                       <StatPill label="Booking value" value={fmtMoney(bookingValue)} />
-                      <StatPill label="Paid %" value={`${paidPercent.toFixed(1)}%`} danger={bookingValue > 0 && paidPercent < 80} />
-                      <StatPill label="80% minimum" value={fmtMoney(minimumPayment)} danger={bookingValue > 0 && allocatedAmount + 0.009 < minimumPayment} />
+                      <StatPill label="Paid %" value={`${paidPercent.toFixed(1)}%`} danger={bookingValue > 0 && paidPercent < Number(policy?.bookingMinimumPaymentPercent || 80)} />
+                      <StatPill label={`${Number(policy?.bookingMinimumPaymentPercent || 80)}% minimum`} value={fmtMoney(minimumPayment)} danger={bookingValue > 0 && allocatedAmount + 0.009 < minimumPayment} />
                     </div>
                   </div>
                 );

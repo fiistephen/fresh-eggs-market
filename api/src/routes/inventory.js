@@ -6,7 +6,7 @@ import {
   roundTo2,
   safeDivide,
 } from '../utils/operationsPolicy.js';
-import { getOperationsPolicy } from '../utils/appSettings.js';
+import { getOperationsPolicyHistory, resolveOperationsPolicyAt } from '../utils/appSettings.js';
 
 // Helper: compute system count for a batch (received - sold - written off)
 async function computeSystemCount(batchId) {
@@ -40,7 +40,7 @@ export default async function inventoryRoutes(fastify) {
   fastify.get('/inventory', {
     preHandler: [authenticate],
     handler: async (request, reply) => {
-      const policy = await getOperationsPolicy();
+      const policyHistory = await getOperationsPolicyHistory();
       // Get all received (not closed) batches — these are the ones with active stock
       const batches = await prisma.batch.findMany({
         where: { status: 'RECEIVED' },
@@ -53,6 +53,7 @@ export default async function inventoryRoutes(fastify) {
 
       const inventory = [];
       for (const batch of batches) {
+        const policy = resolveOperationsPolicyAt(policyHistory, batch.createdAt || batch.expectedDate);
         const totalReceived = batch.eggCodes.reduce((s, ec) => s + ec.quantity + ec.freeQty, 0);
 
         const soldAgg = await prisma.saleLineItem.aggregate({
@@ -93,7 +94,14 @@ export default async function inventoryRoutes(fastify) {
         });
 
         const crackRatePercent = roundTo2(safeDivide((totalWrittenOff + crackedSoldQuantity) * 100, totalReceived));
-        const crackAlert = buildCrackAlert(crackRatePercent, policy.crackAllowancePercent);
+        const crackAlert = buildCrackAlert({
+          ratePercent: crackRatePercent,
+          crackQuantity: totalWrittenOff + crackedSoldQuantity,
+          writeOffQuantity: totalWrittenOff,
+          thresholdPercent: policy.crackAllowancePercent,
+          crackedCratesAllowance: policy.crackedCratesAllowance,
+          writeOffCratesAllowance: policy.writeOffCratesAllowance,
+        });
 
         inventory.push({
           batch: {
@@ -114,6 +122,7 @@ export default async function inventoryRoutes(fastify) {
           crackedSoldQuantity,
           crackRatePercent,
           crackAlert,
+          policy,
           onHand,
           booked: totalBooked,
           available: Math.max(0, available),
@@ -150,7 +159,7 @@ export default async function inventoryRoutes(fastify) {
         inventory,
         totals,
         policy: {
-          crackAllowancePercent: policy.crackAllowancePercent,
+          crackAllowancePercent: inventory[0]?.policy?.crackAllowancePercent ?? null,
         },
       });
     },

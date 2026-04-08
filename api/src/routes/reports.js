@@ -10,6 +10,8 @@ import {
   getCustomerEggTypeConfig,
   getCustomerEggTypeLabel,
   getOperationsPolicy,
+  getOperationsPolicyHistory,
+  resolveOperationsPolicyAt,
 } from '../utils/appSettings.js';
 
 function startOfDay(value) {
@@ -339,7 +341,8 @@ export default async function reportsRoutes(fastify) {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER')],
     handler: async (request, reply) => {
       const { dateFrom, dateTo } = request.query;
-      const [policy, eggTypes] = await Promise.all([
+      const [policyHistory, currentPolicy, eggTypes] = await Promise.all([
+        getOperationsPolicyHistory(),
         getOperationsPolicy(),
         getCustomerEggTypeConfig(),
       ]);
@@ -379,6 +382,7 @@ export default async function reportsRoutes(fastify) {
       });
 
       const batchSummary = (await Promise.all(filteredBatches.map(async (batch) => {
+        const policy = resolveOperationsPolicyAt(policyHistory, batch.createdAt || batch.expectedDate);
         const totalReceived = batch.eggCodes.reduce((sum, eggCode) => sum + eggCode.quantity + eggCode.freeQty, 0);
         const totalBookings = batch.bookings.reduce((sum, booking) => sum + booking.quantity, 0);
         const totalWriteOffs = batch.inventory.reduce((sum, count) => sum + count.crackedWriteOff, 0);
@@ -432,7 +436,14 @@ export default async function reportsRoutes(fastify) {
         const profitPerCrate = roundTo2(safeDivide(grossProfit, totalReceived));
         const totalCrackImpact = crackedSoldQuantity + totalWriteOffs;
         const crackRatePercent = roundTo2(safeDivide(totalCrackImpact * 100, totalReceived));
-        const crackAlert = buildCrackAlert(crackRatePercent, policy.crackAllowancePercent);
+        const crackAlert = buildCrackAlert({
+          ratePercent: crackRatePercent,
+          crackQuantity: totalCrackImpact,
+          writeOffQuantity: totalWriteOffs,
+          thresholdPercent: policy.crackAllowancePercent,
+          crackedCratesAllowance: policy.crackedCratesAllowance,
+          writeOffCratesAllowance: policy.writeOffCratesAllowance,
+        });
         const batchDate = batch.closedDate || batch.receivedDate || batch.expectedDate;
 
         return {
@@ -461,6 +472,13 @@ export default async function reportsRoutes(fastify) {
           totalCrackImpact,
           crackRatePercent,
           crackAlert,
+          policyApplied: {
+            targetProfitPerCrate: policy.targetProfitPerCrate,
+            crackAllowancePercent: policy.crackAllowancePercent,
+            crackedCratesAllowance: policy.crackedCratesAllowance,
+            writeOffCratesAllowance: policy.writeOffCratesAllowance,
+            effectiveFrom: policy.effectiveFrom,
+          },
           eggCodeMix: batch.eggCodes.map((eggCode) => ({
             code: eggCode.code,
             quantity: eggCode.quantity,
@@ -579,8 +597,11 @@ export default async function reportsRoutes(fastify) {
           dateTo: dateTo || null,
         },
         policy: {
-          targetProfitPerCrate: policy.targetProfitPerCrate,
-          crackAllowancePercent: policy.crackAllowancePercent,
+          targetProfitPerCrate: currentPolicy.targetProfitPerCrate,
+          crackAllowancePercent: currentPolicy.crackAllowancePercent,
+          crackedCratesAllowance: currentPolicy.crackedCratesAllowance,
+          writeOffCratesAllowance: currentPolicy.writeOffCratesAllowance,
+          effectiveFrom: currentPolicy.effectiveFrom,
         },
         batchSummary,
         monthlySummary,

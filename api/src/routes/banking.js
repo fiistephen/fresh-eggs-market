@@ -13,6 +13,7 @@ import {
 import {
   getCustomerEggTypeConfig,
   getCustomerEggTypeLabel,
+  getOperationsPolicy,
   getTransactionCategoryConfig,
   saveTransactionCategoryConfig,
 } from '../utils/appSettings.js';
@@ -1051,8 +1052,9 @@ export default async function bankingRoutes(fastify) {
   fastify.get('/banking/customer-bookings', {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
     handler: async (request, reply) => {
-      const customerEggTypes = await getCustomerEggTypeConfig();
-      const [transactions, openBatches] = await Promise.all([
+      const [customerEggTypes, policy, transactions, openBatches] = await Promise.all([
+        getCustomerEggTypeConfig(),
+        getOperationsPolicy(),
         prisma.bankTransaction.findMany({
           where: {
             category: 'CUSTOMER_BOOKING',
@@ -1135,6 +1137,7 @@ export default async function bankingRoutes(fastify) {
       return reply.send({
         queue,
         openBatches: openBatchRows.filter((batch) => batch.remainingAvailable > 0),
+        policy,
       });
     },
   });
@@ -1230,6 +1233,7 @@ export default async function bankingRoutes(fastify) {
       if (!transaction.customerId) {
         return reply.code(400).send({ error: 'Link a customer before creating bookings from this money.' });
       }
+      const policy = await getOperationsPolicy();
 
       const bookingsInput = Array.isArray(request.body?.bookings) ? request.body.bookings : [];
       if (bookingsInput.length === 0) {
@@ -1269,12 +1273,12 @@ export default async function bankingRoutes(fastify) {
         }
 
         const orderValue = quantity * Number(batch.wholesalePrice);
-        const minimumPayment = orderValue * 0.8;
+        const minimumPayment = orderValue * (Number(policy.bookingMinimumPaymentPercent || 80) / 100);
         if (allocatedAmount > orderValue + 0.009) {
           return reply.code(400).send({ error: `Allocated amount for ${batch.name} is more than the booking value.` });
         }
         if (allocatedAmount + 0.009 < minimumPayment) {
-          return reply.code(400).send({ error: `${batch.name} has not reached the 80% minimum payment yet.` });
+          return reply.code(400).send({ error: `${batch.name} has not reached the ${Number(policy.bookingMinimumPaymentPercent || 80)}% minimum payment yet.` });
         }
 
         batchUsage.set(batch.id, (batchUsage.get(batch.id) || 0) + quantity);

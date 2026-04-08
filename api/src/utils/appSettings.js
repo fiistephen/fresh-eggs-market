@@ -1,6 +1,10 @@
 import prisma from '../plugins/prisma.js';
 import {
+  DEFAULT_BOOKING_MIN_PAYMENT_PERCENT,
   DEFAULT_CRACK_ALLOWANCE_PERCENT,
+  DEFAULT_FIRST_TIME_BOOKING_LIMIT_CRATES,
+  DEFAULT_LARGE_POS_PAYMENT_THRESHOLD,
+  DEFAULT_MAX_BOOKING_CRATES_PER_ORDER,
   DEFAULT_TARGET_PROFIT_PER_CRATE,
 } from './operationsPolicy.js';
 import {
@@ -17,7 +21,14 @@ export const CUSTOMER_EGG_TYPES_KEY = 'CUSTOMER_EGG_TYPES';
 export const DEFAULT_OPERATIONS_POLICY = {
   targetProfitPerCrate: DEFAULT_TARGET_PROFIT_PER_CRATE,
   crackAllowancePercent: DEFAULT_CRACK_ALLOWANCE_PERCENT,
+  crackedCratesAllowance: null,
+  writeOffCratesAllowance: null,
+  bookingMinimumPaymentPercent: DEFAULT_BOOKING_MIN_PAYMENT_PERCENT,
+  firstTimeBookingLimitCrates: DEFAULT_FIRST_TIME_BOOKING_LIMIT_CRATES,
+  maxBookingCratesPerOrder: DEFAULT_MAX_BOOKING_CRATES_PER_ORDER,
+  largePosPaymentThreshold: DEFAULT_LARGE_POS_PAYMENT_THRESHOLD,
 };
+const DEFAULT_POLICY_EFFECTIVE_FROM = '1970-01-01T00:00:00.000Z';
 
 export const DEFAULT_TRANSACTION_CATEGORIES = defaultTransactionCategories();
 export const DEFAULT_CUSTOMER_EGG_TYPES = [
@@ -44,20 +55,97 @@ export const DEFAULT_CUSTOMER_EGG_TYPES = [
   },
 ];
 
-function normalizePolicy(value) {
+function normalizeOptionalWholeNumber(value) {
+  if (value === '' || value === null || value === undefined) return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  return Math.round(parsed);
+}
+
+function normalizePolicy(value, fallback = DEFAULT_OPERATIONS_POLICY) {
   const raw = value && typeof value === 'object' ? value : {};
 
   const targetProfitPerCrate = Number(raw.targetProfitPerCrate);
   const crackAllowancePercent = Number(raw.crackAllowancePercent);
+  const bookingMinimumPaymentPercent = Number(raw.bookingMinimumPaymentPercent);
+  const firstTimeBookingLimitCrates = Number(raw.firstTimeBookingLimitCrates);
+  const maxBookingCratesPerOrder = Number(raw.maxBookingCratesPerOrder);
+  const largePosPaymentThreshold = Number(raw.largePosPaymentThreshold);
 
   return {
     targetProfitPerCrate: Number.isFinite(targetProfitPerCrate) && targetProfitPerCrate > 0
       ? targetProfitPerCrate
-      : DEFAULT_OPERATIONS_POLICY.targetProfitPerCrate,
+      : fallback.targetProfitPerCrate,
     crackAllowancePercent: Number.isFinite(crackAllowancePercent) && crackAllowancePercent >= 0
       ? crackAllowancePercent
-      : DEFAULT_OPERATIONS_POLICY.crackAllowancePercent,
+      : fallback.crackAllowancePercent,
+    crackedCratesAllowance: normalizeOptionalWholeNumber(raw.crackedCratesAllowance),
+    writeOffCratesAllowance: normalizeOptionalWholeNumber(raw.writeOffCratesAllowance),
+    bookingMinimumPaymentPercent: Number.isFinite(bookingMinimumPaymentPercent) && bookingMinimumPaymentPercent > 0 && bookingMinimumPaymentPercent <= 100
+      ? bookingMinimumPaymentPercent
+      : fallback.bookingMinimumPaymentPercent,
+    firstTimeBookingLimitCrates: Number.isFinite(firstTimeBookingLimitCrates) && firstTimeBookingLimitCrates > 0
+      ? Math.round(firstTimeBookingLimitCrates)
+      : fallback.firstTimeBookingLimitCrates,
+    maxBookingCratesPerOrder: Number.isFinite(maxBookingCratesPerOrder) && maxBookingCratesPerOrder > 0
+      ? Math.round(maxBookingCratesPerOrder)
+      : fallback.maxBookingCratesPerOrder,
+    largePosPaymentThreshold: Number.isFinite(largePosPaymentThreshold) && largePosPaymentThreshold >= 0
+      ? largePosPaymentThreshold
+      : fallback.largePosPaymentThreshold,
   };
+}
+
+function normalizePolicyVersion(value, fallbackPolicy = DEFAULT_OPERATIONS_POLICY) {
+  const normalizedPolicy = normalizePolicy(value, fallbackPolicy);
+  const effectiveDate = new Date(value?.effectiveFrom || DEFAULT_POLICY_EFFECTIVE_FROM);
+
+  return {
+    ...normalizedPolicy,
+    effectiveFrom: Number.isNaN(effectiveDate.getTime())
+      ? DEFAULT_POLICY_EFFECTIVE_FROM
+      : effectiveDate.toISOString(),
+  };
+}
+
+function normalizePolicyHistory(value) {
+  const rawValue = value ?? null;
+
+  if (Array.isArray(rawValue) && rawValue.length > 0) {
+    const versions = [];
+    let previousPolicy = DEFAULT_OPERATIONS_POLICY;
+
+    for (const entry of rawValue) {
+      const normalizedEntry = normalizePolicyVersion(entry, previousPolicy);
+      previousPolicy = {
+        targetProfitPerCrate: normalizedEntry.targetProfitPerCrate,
+        crackAllowancePercent: normalizedEntry.crackAllowancePercent,
+        crackedCratesAllowance: normalizedEntry.crackedCratesAllowance,
+        writeOffCratesAllowance: normalizedEntry.writeOffCratesAllowance,
+        bookingMinimumPaymentPercent: normalizedEntry.bookingMinimumPaymentPercent,
+        firstTimeBookingLimitCrates: normalizedEntry.firstTimeBookingLimitCrates,
+        maxBookingCratesPerOrder: normalizedEntry.maxBookingCratesPerOrder,
+        largePosPaymentThreshold: normalizedEntry.largePosPaymentThreshold,
+      };
+      versions.push(normalizedEntry);
+    }
+
+    return versions
+      .sort((a, b) => new Date(a.effectiveFrom) - new Date(b.effectiveFrom))
+      .filter((entry, index, list) => index === list.findIndex((item) => item.effectiveFrom === entry.effectiveFrom));
+  }
+
+  if (rawValue && typeof rawValue === 'object') {
+    return [{
+      ...normalizePolicy(rawValue),
+      effectiveFrom: DEFAULT_POLICY_EFFECTIVE_FROM,
+    }];
+  }
+
+  return [{
+    ...DEFAULT_OPERATIONS_POLICY,
+    effectiveFrom: DEFAULT_POLICY_EFFECTIVE_FROM,
+  }];
 }
 
 function normalizeTransactionCategories(value) {
@@ -139,39 +227,92 @@ export function getCustomerEggTypeLabel(types, key) {
   return findCustomerEggTypeByKey(types, key)?.label || DEFAULT_CUSTOMER_EGG_TYPES[0].label;
 }
 
-export async function getOperationsPolicy() {
+export function resolveOperationsPolicyAt(history, atDate = new Date()) {
+  const normalizedHistory = normalizePolicyHistory(history);
+  const targetDate = atDate instanceof Date ? atDate : new Date(atDate);
+  const safeTargetDate = Number.isNaN(targetDate.getTime()) ? new Date() : targetDate;
+
+  let selected = normalizedHistory[0];
+  for (const entry of normalizedHistory) {
+    if (new Date(entry.effectiveFrom) <= safeTargetDate) {
+      selected = entry;
+    } else {
+      break;
+    }
+  }
+
+  return selected;
+}
+
+export async function getOperationsPolicyHistory() {
   const setting = await prisma.appSetting.upsert({
     where: { key: OPERATIONS_POLICY_KEY },
     update: {},
     create: {
       key: OPERATIONS_POLICY_KEY,
-      value: DEFAULT_OPERATIONS_POLICY,
-      description: 'Company-wide policy settings for batch profitability and crack monitoring.',
+      value: [{
+        ...DEFAULT_OPERATIONS_POLICY,
+        effectiveFrom: DEFAULT_POLICY_EFFECTIVE_FROM,
+      }],
+      description: 'Company-wide policy settings with history so new policy changes apply only from their effective date onward.',
     },
   });
 
-  return normalizePolicy(setting.value);
+  const history = normalizePolicyHistory(setting.value);
+
+  if (JSON.stringify(history) !== JSON.stringify(setting.value)) {
+    await prisma.appSetting.update({
+      where: { key: OPERATIONS_POLICY_KEY },
+      data: {
+        value: history,
+        description: 'Company-wide policy settings with history so new policy changes apply only from their effective date onward.',
+      },
+    });
+  }
+
+  return history;
 }
 
-export async function saveOperationsPolicy(policy, updatedById) {
-  const normalized = normalizePolicy(policy);
+export async function getOperationsPolicy(atDate = new Date()) {
+  const history = await getOperationsPolicyHistory();
+  return resolveOperationsPolicyAt(history, atDate);
+}
+
+export async function saveOperationsPolicy(policy, updatedById, effectiveFrom = new Date()) {
+  const history = await getOperationsPolicyHistory();
+  const lastPolicy = history[history.length - 1] || {
+    ...DEFAULT_OPERATIONS_POLICY,
+    effectiveFrom: DEFAULT_POLICY_EFFECTIVE_FROM,
+  };
+  const normalized = normalizePolicyVersion({
+    ...policy,
+    effectiveFrom,
+  }, lastPolicy);
+
+  const nextHistory = [...history, normalized]
+    .sort((a, b) => new Date(a.effectiveFrom) - new Date(b.effectiveFrom))
+    .filter((entry, index, list) => index === list.findIndex((item) => item.effectiveFrom === entry.effectiveFrom));
 
   const setting = await prisma.appSetting.upsert({
     where: { key: OPERATIONS_POLICY_KEY },
     update: {
-      value: normalized,
+      value: nextHistory,
       updatedById,
-      description: 'Company-wide policy settings for batch profitability and crack monitoring.',
+      description: 'Company-wide policy settings with history so new policy changes apply only from their effective date onward.',
     },
     create: {
       key: OPERATIONS_POLICY_KEY,
-      value: normalized,
+      value: nextHistory,
       updatedById,
-      description: 'Company-wide policy settings for batch profitability and crack monitoring.',
+      description: 'Company-wide policy settings with history so new policy changes apply only from their effective date onward.',
     },
   });
 
-  return normalizePolicy(setting.value);
+  const savedHistory = normalizePolicyHistory(setting.value);
+  return {
+    policy: resolveOperationsPolicyAt(savedHistory, normalized.effectiveFrom),
+    history: savedHistory,
+  };
 }
 
 export async function getTransactionCategoryConfig() {

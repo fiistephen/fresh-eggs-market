@@ -8,7 +8,7 @@ import {
   authenticate,
 } from '../plugins/auth.js';
 import { authorize } from '../middleware/authorize.js';
-import { getCustomerEggTypeConfig, getCustomerEggTypeLabel } from '../utils/appSettings.js';
+import { getCustomerEggTypeConfig, getCustomerEggTypeLabel, getOperationsPolicy } from '../utils/appSettings.js';
 
 const SALT_ROUNDS = 12;
 
@@ -130,7 +130,10 @@ export default async function portalRoutes(fastify) {
   // ────────────────────────────────────────────────────────────
   fastify.get('/portal/batches', {
     handler: async (request, reply) => {
-      const eggTypes = await getCustomerEggTypeConfig();
+      const [eggTypes, policy] = await Promise.all([
+        getCustomerEggTypeConfig(),
+        getOperationsPolicy(),
+      ]);
       const batches = await prisma.batch.findMany({
         where: { status: 'OPEN' },
         include: {
@@ -167,13 +170,16 @@ export default async function portalRoutes(fastify) {
         });
       }
 
-      return reply.send({ batches: result });
+      return reply.send({ batches: result, policy });
     },
   });
 
   fastify.get('/portal/available-now', {
     handler: async (request, reply) => {
-      const eggTypes = await getCustomerEggTypeConfig();
+      const [eggTypes, policy] = await Promise.all([
+        getCustomerEggTypeConfig(),
+        getOperationsPolicy(),
+      ]);
       const receivedBatches = await prisma.batch.findMany({
         where: { status: 'RECEIVED' },
         include: {
@@ -196,7 +202,7 @@ export default async function portalRoutes(fastify) {
         }));
       }
 
-      return reply.send({ batches: result });
+      return reply.send({ batches: result, policy });
     },
   });
 
@@ -396,6 +402,7 @@ export default async function portalRoutes(fastify) {
 
       const { customer } = await getCustomerFromUser(request.user.sub);
       if (!customer) return reply.code(400).send({ error: 'No customer record found. Please contact support.' });
+      const policy = await getOperationsPolicy();
 
       // Get batch
       const batch = await prisma.batch.findUnique({
@@ -417,8 +424,7 @@ export default async function portalRoutes(fastify) {
         return reply.code(400).send({ error: `Only ${remainingAvailable} crates available for booking` });
       }
 
-      // Max 100 per batch per customer
-      const maxQty = 100;
+      const maxQty = Number(policy.maxBookingCratesPerOrder || 100);
       const customerBookedAgg = await prisma.booking.aggregate({
         where: { customerId: customer.id, batchId, status: 'CONFIRMED' },
         _sum: { quantity: true },
@@ -430,18 +436,16 @@ export default async function portalRoutes(fastify) {
         return reply.code(400).send({ error: `You can only book ${customerRemaining} more crates from this batch (max ${maxQty} per batch)` });
       }
 
-      // First-time customer max 20
-      if (customer.isFirstTime && quantity > 20) {
-        return reply.code(400).send({ error: 'First-time customers can book a maximum of 20 crates' });
+      if (customer.isFirstTime && quantity > Number(policy.firstTimeBookingLimitCrates || 20)) {
+        return reply.code(400).send({ error: `First-time customers can book a maximum of ${Number(policy.firstTimeBookingLimitCrates || 20).toLocaleString()} crates` });
       }
 
       // Calculate order value
       const orderValue = quantity * Number(batch.wholesalePrice);
 
-      // Min 80% payment
-      const minPayment = orderValue * 0.8;
+      const minPayment = orderValue * (Number(policy.bookingMinimumPaymentPercent || 80) / 100);
       if (amountPaid < minPayment) {
-        return reply.code(400).send({ error: `Minimum payment is 80% of order value (₦${minPayment.toLocaleString()})` });
+        return reply.code(400).send({ error: `Minimum payment is ${Number(policy.bookingMinimumPaymentPercent || 80)}% of order value (₦${minPayment.toLocaleString()})` });
       }
 
       // Create booking

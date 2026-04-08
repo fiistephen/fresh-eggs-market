@@ -49,7 +49,14 @@ export default function AdminConfig() {
   const [policy, setPolicy] = useState({
     targetProfitPerCrate: '',
     crackAllowancePercent: '',
+    crackedCratesAllowance: '',
+    writeOffCratesAllowance: '',
+    bookingMinimumPaymentPercent: '',
+    firstTimeBookingLimitCrates: '',
+    maxBookingCratesPerOrder: '',
+    largePosPaymentThreshold: '',
   });
+  const [policyHistory, setPolicyHistory] = useState([]);
   const [policySaving, setPolicySaving] = useState(false);
   const [transactionCategories, setTransactionCategories] = useState([]);
   const [transactionCategorySaving, setTransactionCategorySaving] = useState(false);
@@ -81,7 +88,14 @@ export default function AdminConfig() {
       setPolicy({
         targetProfitPerCrate: String(response.policy?.targetProfitPerCrate ?? ''),
         crackAllowancePercent: String(response.policy?.crackAllowancePercent ?? ''),
+        crackedCratesAllowance: response.policy?.crackedCratesAllowance == null ? '' : String(response.policy.crackedCratesAllowance),
+        writeOffCratesAllowance: response.policy?.writeOffCratesAllowance == null ? '' : String(response.policy.writeOffCratesAllowance),
+        bookingMinimumPaymentPercent: String(response.policy?.bookingMinimumPaymentPercent ?? ''),
+        firstTimeBookingLimitCrates: String(response.policy?.firstTimeBookingLimitCrates ?? ''),
+        maxBookingCratesPerOrder: String(response.policy?.maxBookingCratesPerOrder ?? ''),
+        largePosPaymentThreshold: String(response.policy?.largePosPaymentThreshold ?? ''),
       });
+      setPolicyHistory(response.policyHistory || []);
       setTransactionCategories(response.transactionCategories || []);
       setCustomerEggTypes(response.customerEggTypes || []);
       setAccounts(response.bankAccounts || []);
@@ -176,11 +190,24 @@ export default function AdminConfig() {
       const response = await api.patch('/admin/config/policy', {
         targetProfitPerCrate: Number(policy.targetProfitPerCrate),
         crackAllowancePercent: Number(policy.crackAllowancePercent),
+        crackedCratesAllowance: policy.crackedCratesAllowance === '' ? null : Number(policy.crackedCratesAllowance),
+        writeOffCratesAllowance: policy.writeOffCratesAllowance === '' ? null : Number(policy.writeOffCratesAllowance),
+        bookingMinimumPaymentPercent: Number(policy.bookingMinimumPaymentPercent),
+        firstTimeBookingLimitCrates: Number(policy.firstTimeBookingLimitCrates),
+        maxBookingCratesPerOrder: Number(policy.maxBookingCratesPerOrder),
+        largePosPaymentThreshold: Number(policy.largePosPaymentThreshold),
       });
       setPolicy({
         targetProfitPerCrate: String(response.policy.targetProfitPerCrate),
         crackAllowancePercent: String(response.policy.crackAllowancePercent),
+        crackedCratesAllowance: response.policy?.crackedCratesAllowance == null ? '' : String(response.policy.crackedCratesAllowance),
+        writeOffCratesAllowance: response.policy?.writeOffCratesAllowance == null ? '' : String(response.policy.writeOffCratesAllowance),
+        bookingMinimumPaymentPercent: String(response.policy.bookingMinimumPaymentPercent),
+        firstTimeBookingLimitCrates: String(response.policy.firstTimeBookingLimitCrates),
+        maxBookingCratesPerOrder: String(response.policy.maxBookingCratesPerOrder),
+        largePosPaymentThreshold: String(response.policy.largePosPaymentThreshold),
       });
+      setPolicyHistory(response.policyHistory || []);
       setSuccess('Policy settings updated.');
     } catch (err) {
       setError(err.error || 'Failed to save policy settings');
@@ -363,10 +390,10 @@ export default function AdminConfig() {
       <section className="bg-white rounded-xl border border-gray-200 p-5">
         <h2 className="text-lg font-semibold text-gray-900">Policy Settings</h2>
         <p className="text-sm text-gray-500 mt-1">
-          These numbers control how batch reports and inventory alerts behave across the app.
+          These rules control how the app behaves. When you save a change, it becomes the rule for new work from that moment onward. Older records keep the earlier policy that applied when they were created.
         </p>
 
-        <form onSubmit={savePolicy} className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5">
+        <form onSubmit={savePolicy} className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mt-5">
           <label className="block">
             <span className="block text-sm font-medium text-gray-700 mb-1">Target profit per crate (NGN)</span>
             <input
@@ -392,7 +419,88 @@ export default function AdminConfig() {
             <span className="block text-xs text-gray-500 mt-1">Inventory and batch pages flag batches above this level.</span>
           </label>
 
-          <div className="md:col-span-2 flex justify-end">
+          <label className="block">
+            <span className="block text-sm font-medium text-gray-700 mb-1">Allowable cracked crates</span>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={policy.crackedCratesAllowance}
+              onChange={(e) => setPolicy((current) => ({ ...current, crackedCratesAllowance: e.target.value }))}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              placeholder="Leave blank if you only want percentage control"
+            />
+            <span className="block text-xs text-gray-500 mt-1">Optional hard cap for total cracked crates in a batch.</span>
+          </label>
+
+          <label className="block">
+            <span className="block text-sm font-medium text-gray-700 mb-1">Allowable written-off crates</span>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={policy.writeOffCratesAllowance}
+              onChange={(e) => setPolicy((current) => ({ ...current, writeOffCratesAllowance: e.target.value }))}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              placeholder="Leave blank if you do not want a fixed limit"
+            />
+            <span className="block text-xs text-gray-500 mt-1">Optional hard cap for badly damaged crates written off from a batch.</span>
+          </label>
+
+          <label className="block">
+            <span className="block text-sm font-medium text-gray-700 mb-1">Minimum booking payment (%)</span>
+            <input
+              type="number"
+              min="1"
+              max="100"
+              step="1"
+              value={policy.bookingMinimumPaymentPercent}
+              onChange={(e) => setPolicy((current) => ({ ...current, bookingMinimumPaymentPercent: e.target.value }))}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            />
+            <span className="block text-xs text-gray-500 mt-1">New bookings must reach this percentage before they can be confirmed.</span>
+          </label>
+
+          <label className="block">
+            <span className="block text-sm font-medium text-gray-700 mb-1">First-time customer limit (crates)</span>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value={policy.firstTimeBookingLimitCrates}
+              onChange={(e) => setPolicy((current) => ({ ...current, firstTimeBookingLimitCrates: e.target.value }))}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            />
+            <span className="block text-xs text-gray-500 mt-1">Used for new customers in portal and booking workflows.</span>
+          </label>
+
+          <label className="block">
+            <span className="block text-sm font-medium text-gray-700 mb-1">Maximum booking per order (crates)</span>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value={policy.maxBookingCratesPerOrder}
+              onChange={(e) => setPolicy((current) => ({ ...current, maxBookingCratesPerOrder: e.target.value }))}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            />
+            <span className="block text-xs text-gray-500 mt-1">The app blocks any single booking above this size.</span>
+          </label>
+
+          <label className="block">
+            <span className="block text-sm font-medium text-gray-700 mb-1">Large POS alert threshold (NGN)</span>
+            <input
+              type="number"
+              min="0"
+              step="1000"
+              value={policy.largePosPaymentThreshold}
+              onChange={(e) => setPolicy((current) => ({ ...current, largePosPaymentThreshold: e.target.value }))}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            />
+            <span className="block text-xs text-gray-500 mt-1">Card payments at or above this amount appear in alerts for review.</span>
+          </label>
+
+          <div className="md:col-span-2 xl:col-span-4 flex justify-end">
             <button
               type="submit"
               disabled={policySaving}
@@ -402,6 +510,55 @@ export default function AdminConfig() {
             </button>
           </div>
         </form>
+
+        <div className="mt-6 rounded-xl border border-gray-200 overflow-hidden">
+          <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
+            <h3 className="text-sm font-semibold text-gray-900">Policy history</h3>
+            <p className="mt-1 text-xs text-gray-500">This shows when a policy version started. Older work continues to use the policy that was active when that work began.</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[920px]">
+              <thead className="bg-white">
+                <tr className="border-b border-gray-100">
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Effective from</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Profit / crate</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Crack %</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Cracked crates</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Written-off crates</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Min payment</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">1st-time cap</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Order cap</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Large POS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {policyHistory.map((entry, index) => (
+                  <tr key={`${entry.effectiveFrom}-${index}`} className="border-b border-gray-100">
+                    <td className="px-4 py-3 text-sm text-gray-800">
+                      {new Date(entry.effectiveFrom).toLocaleString('en-NG', {
+                        dateStyle: 'medium',
+                        timeStyle: 'short',
+                      })}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-800">₦{Number(entry.targetProfitPerCrate || 0).toLocaleString()}</td>
+                    <td className="px-4 py-3 text-sm text-gray-800">{Number(entry.crackAllowancePercent || 0).toLocaleString()}%</td>
+                    <td className="px-4 py-3 text-sm text-gray-800">{entry.crackedCratesAllowance == null ? '—' : Number(entry.crackedCratesAllowance).toLocaleString()}</td>
+                    <td className="px-4 py-3 text-sm text-gray-800">{entry.writeOffCratesAllowance == null ? '—' : Number(entry.writeOffCratesAllowance).toLocaleString()}</td>
+                    <td className="px-4 py-3 text-sm text-gray-800">{Number(entry.bookingMinimumPaymentPercent || 0).toLocaleString()}%</td>
+                    <td className="px-4 py-3 text-sm text-gray-800">{Number(entry.firstTimeBookingLimitCrates || 0).toLocaleString()} crates</td>
+                    <td className="px-4 py-3 text-sm text-gray-800">{Number(entry.maxBookingCratesPerOrder || 0).toLocaleString()} crates</td>
+                    <td className="px-4 py-3 text-sm text-gray-800">₦{Number(entry.largePosPaymentThreshold || 0).toLocaleString()}</td>
+                  </tr>
+                ))}
+                {policyHistory.length === 0 ? (
+                  <tr>
+                    <td className="px-4 py-4 text-sm text-gray-500" colSpan={9}>No policy history yet.</td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </section>
 
       <section className="bg-white rounded-xl border border-gray-200 p-5">

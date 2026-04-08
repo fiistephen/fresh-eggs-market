@@ -240,6 +240,11 @@ function CreateBookingModal({ onClose, onCreated }) {
 
   const [funds, setFunds] = useState([]);
   const [loadingFunds, setLoadingFunds] = useState(false);
+  const [bookingPolicy, setBookingPolicy] = useState({
+    bookingMinimumPaymentPercent: 80,
+    firstTimeBookingLimitCrates: 20,
+    maxBookingCratesPerOrder: 100,
+  });
   const [allocationDrafts, setAllocationDrafts] = useState({});
 
   const [submitting, setSubmitting] = useState(false);
@@ -285,6 +290,10 @@ function CreateBookingModal({ onClose, onCreated }) {
     try {
       const data = await api.get('/bookings/open-batches');
       setOpenBatches(data.batches || []);
+      setBookingPolicy((current) => ({
+        ...current,
+        ...(data.policy || {}),
+      }));
     } catch {
       setOpenBatches([]);
     } finally {
@@ -313,8 +322,10 @@ function CreateBookingModal({ onClose, onCreated }) {
   }
 
   const orderValue = selectedBatch && quantity ? Number(quantity) * Number(selectedBatch.wholesalePrice) : 0;
-  const minimumPayment = orderValue * 0.8;
-  const maxQty = selectedCustomer?.isFirstTime ? 20 : 100;
+  const minimumPayment = orderValue * (Number(bookingPolicy.bookingMinimumPaymentPercent || 80) / 100);
+  const maxQty = selectedCustomer?.isFirstTime
+    ? Number(bookingPolicy.firstTimeBookingLimitCrates || 20)
+    : Number(bookingPolicy.maxBookingCratesPerOrder || 100);
   const batchRemaining = selectedBatch?.remainingAvailable || 0;
   const effectiveMax = Math.min(maxQty, batchRemaining);
 
@@ -461,6 +472,7 @@ function CreateBookingModal({ onClose, onCreated }) {
             <div className="space-y-5">
               <SelectedCustomerCard
                 customer={selectedCustomer}
+                policy={bookingPolicy}
                 onChange={() => {
                   setStep(1);
                   setSelectedBatch(null);
@@ -580,7 +592,7 @@ function CreateBookingModal({ onClose, onCreated }) {
 
           {step === 3 && (
             <form onSubmit={handleSubmit} className="space-y-5">
-              <SelectedCustomerCard customer={selectedCustomer} onChange={() => setStep(1)} />
+              <SelectedCustomerCard customer={selectedCustomer} policy={bookingPolicy} onChange={() => setStep(1)} />
 
               <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
@@ -726,7 +738,7 @@ function BookingStat({ label, value, tone = 'gray' }) {
   );
 }
 
-function SelectedCustomerCard({ customer, onChange }) {
+function SelectedCustomerCard({ customer, policy, onChange }) {
   return (
     <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
       <div>
@@ -735,7 +747,7 @@ function SelectedCustomerCard({ customer, onChange }) {
         <p className="text-xs text-gray-500">{customer?.phone}</p>
       </div>
       {customer?.isFirstTime && (
-        <span className="rounded bg-yellow-100 px-2 py-1 text-xs font-medium text-yellow-700">New customer: max 20 crates</span>
+        <span className="rounded bg-yellow-100 px-2 py-1 text-xs font-medium text-yellow-700">New customer: max {Number(policy?.firstTimeBookingLimitCrates || 20)} crates</span>
       )}
       <button onClick={onChange} type="button" className="ml-auto text-sm font-medium text-gray-500 hover:text-gray-700">
         Change

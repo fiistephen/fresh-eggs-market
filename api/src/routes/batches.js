@@ -10,6 +10,8 @@ import {
   findCustomerEggTypeByKey,
   getCustomerEggTypeConfig,
   getOperationsPolicy,
+  getOperationsPolicyHistory,
+  resolveOperationsPolicyAt,
 } from '../utils/appSettings.js';
 import { ensureItemForEggCode, normalizeItemCode } from '../utils/items.js';
 
@@ -100,7 +102,14 @@ async function buildBatchOverview(batch, policy, options = {}) {
   const onHand = Math.max(0, totalReceived - totalSold - totalWrittenOff);
   const availableForSale = Math.max(0, onHand - totalBooked);
   const crackRatePercent = roundTo2(safeDivide((totalWrittenOff + crackedSoldQuantity) * 100, totalReceived));
-  const crackAlert = buildCrackAlert(crackRatePercent, policy.crackAllowancePercent);
+  const crackAlert = buildCrackAlert({
+    ratePercent: crackRatePercent,
+    crackQuantity: totalWrittenOff + crackedSoldQuantity,
+    writeOffQuantity: totalWrittenOff,
+    thresholdPercent: policy.crackAllowancePercent,
+    crackedCratesAllowance: policy.crackedCratesAllowance,
+    writeOffCratesAllowance: policy.writeOffCratesAllowance,
+  });
   const grossProfit = totalRevenue - totalSaleCost;
   const expectedPolicyProfit = totalReceived * policy.targetProfitPerCrate;
   const varianceToPolicy = grossProfit - expectedPolicyProfit;
@@ -184,8 +193,8 @@ export default async function batchRoutes(fastify) {
     preHandler: [authenticate],
     handler: async (request, reply) => {
       const { status, search } = request.query;
-      const [policy, eggTypes] = await Promise.all([
-        getOperationsPolicy(),
+      const [policyHistory, eggTypes] = await Promise.all([
+        getOperationsPolicyHistory(),
         getCustomerEggTypeConfig(),
       ]);
       const where = {};
@@ -219,11 +228,13 @@ export default async function batchRoutes(fastify) {
       });
 
       const enriched = await Promise.all(batches.map(async (batch) => {
-        const overview = await buildBatchOverview(batch, policy);
+        const batchPolicy = resolveOperationsPolicyAt(policyHistory, batch.createdAt || batch.expectedDate);
+        const overview = await buildBatchOverview(batch, batchPolicy);
         const eggType = mapEggTypeMeta(eggTypes, batch.eggTypeKey);
         return {
           ...batch,
           overview,
+          policy: batchPolicy,
           ...eggType,
           wholesalePrice: Number(batch.wholesalePrice),
           retailPrice: Number(batch.retailPrice),
@@ -241,8 +252,8 @@ export default async function batchRoutes(fastify) {
   fastify.get('/batches/:id', {
     preHandler: [authenticate],
     handler: async (request, reply) => {
-      const [policy, eggTypes] = await Promise.all([
-        getOperationsPolicy(),
+      const [policyHistory, eggTypes] = await Promise.all([
+        getOperationsPolicyHistory(),
         getCustomerEggTypeConfig(),
       ]);
       const batch = await prisma.batch.findUnique({
@@ -265,6 +276,7 @@ export default async function batchRoutes(fastify) {
       });
 
       if (!batch) return reply.code(404).send({ error: 'Batch not found' });
+      const policy = resolveOperationsPolicyAt(policyHistory, batch.createdAt || batch.expectedDate);
       const batchSales = await findSalesForBatch(batch.id);
       const overview = await buildBatchOverview(batch, policy, { batchSales });
 
@@ -701,7 +713,6 @@ export default async function batchRoutes(fastify) {
   fastify.get('/batches/:id/analysis', {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER')],
     handler: async (request, reply) => {
-      const policy = await getOperationsPolicy();
       const batch = await prisma.batch.findUnique({
         where: { id: request.params.id },
         include: {
@@ -711,6 +722,7 @@ export default async function batchRoutes(fastify) {
       });
 
       if (!batch) return reply.code(404).send({ error: 'Batch not found' });
+      const policy = await getOperationsPolicy(batch.createdAt || batch.expectedDate);
       const batchSales = await findSalesForBatch(batch.id);
 
       // Calculate costs
@@ -754,7 +766,14 @@ export default async function batchRoutes(fastify) {
       const crackedSoldValue = salesBreakdown.CRACKED || 0;
       const totalCrackImpact = crackedSoldQuantity + totalDamagedWriteOff;
       const crackRatePercent = roundTo2(safeDivide(totalCrackImpact * 100, totalReceived));
-      const crackAlert = buildCrackAlert(crackRatePercent, policy.crackAllowancePercent);
+      const crackAlert = buildCrackAlert({
+        ratePercent: crackRatePercent,
+        crackQuantity: totalCrackImpact,
+        writeOffQuantity: totalDamagedWriteOff,
+        thresholdPercent: policy.crackAllowancePercent,
+        crackedCratesAllowance: policy.crackedCratesAllowance,
+        writeOffCratesAllowance: policy.writeOffCratesAllowance,
+      });
       const grossProfit = totalRevenue - totalSaleCost;
       const expectedPolicyProfit = totalReceived * policy.targetProfitPerCrate;
       const varianceToPolicy = grossProfit - expectedPolicyProfit;
@@ -824,6 +843,9 @@ export default async function batchRoutes(fastify) {
         policy: {
           targetProfitPerCrate: policy.targetProfitPerCrate,
           crackAllowancePercent: policy.crackAllowancePercent,
+          crackedCratesAllowance: policy.crackedCratesAllowance,
+          writeOffCratesAllowance: policy.writeOffCratesAllowance,
+          effectiveFrom: policy.effectiveFrom,
         },
       });
     },

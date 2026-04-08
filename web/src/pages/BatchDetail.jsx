@@ -537,7 +537,7 @@ function DetailsTab({ batch, analysis }) {
               <span className="font-medium text-gray-900">Crack impact is tracked in crates.</span> Mildly cracked crates sold at discount and badly damaged write-offs are shown separately in analysis.
             </div>
             <div className="rounded-xl bg-gray-50 px-4 py-3">
-              <span className="font-medium text-gray-900">Company target:</span> about {formatCurrency(analysis?.policy?.targetProfitPerCrate || 500)} profit per crate for each batch.
+              <span className="font-medium text-gray-900">Company target for this batch:</span> about {formatCurrency(analysis?.policy?.targetProfitPerCrate || 500)} profit per crate.
             </div>
           </div>
         </div>

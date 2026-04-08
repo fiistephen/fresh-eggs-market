@@ -225,17 +225,20 @@ function Metric({ label, value }) {
   );
 }
 
-function BookingModal({ batch, profile, onClose, onBooked }) {
+function BookingModal({ batch, profile, policy, onClose, onBooked }) {
   const [quantity, setQuantity] = useState('');
   const [amountPaid, setAmountPaid] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(null);
 
-  const maxQty = Math.min(batch.remainingAvailable, 100, profile?.isFirstTime ? 20 : 100);
+  const maxBooking = Number(policy?.maxBookingCratesPerOrder || 100);
+  const firstTimeLimit = Number(policy?.firstTimeBookingLimitCrates || 20);
+  const minPaymentPercent = Number(policy?.bookingMinimumPaymentPercent || 80);
+  const maxQty = Math.min(batch.remainingAvailable, maxBooking, profile?.isFirstTime ? firstTimeLimit : maxBooking);
   const quantityValue = parseInt(quantity, 10) || 0;
   const orderValue = quantityValue * Number(batch.wholesalePrice);
-  const minPayment = orderValue * 0.8;
+  const minPayment = orderValue * (minPaymentPercent / 100);
 
   useEffect(() => {
     if (quantityValue > 0) {
@@ -301,7 +304,7 @@ function BookingModal({ batch, profile, onClose, onBooked }) {
           <div className="flex items-center justify-between py-1"><span className="text-gray-500">Available to book</span><span className="font-semibold text-gray-900">{fmt(batch.remainingAvailable)} crates</span></div>
           {profile?.isFirstTime && (
             <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              First-time customers can book up to 20 crates per batch.
+              First-time customers can book up to {firstTimeLimit} crates per batch.
             </div>
           )}
         </div>
@@ -327,7 +330,7 @@ function BookingModal({ batch, profile, onClose, onBooked }) {
           </div>
         )}
 
-        <Field label="Amount already paid into the bank" help="Use the amount you have already transferred. Minimum payment is 80% of the order value.">
+        <Field label="Amount already paid into the bank" help={`Use the amount you have already transferred. Minimum payment is ${minPaymentPercent}% of the order value.`}>
           <input
             type="number"
             min={minPayment || 0}
@@ -728,6 +731,7 @@ export default function Portal() {
   const [showAuth, setShowAuth] = useState(false);
   const [bookingBatch, setBookingBatch] = useState(null);
   const [buyNowBatch, setBuyNowBatch] = useState(null);
+  const [portalPolicy, setPortalPolicy] = useState(null);
 
   const activeUser = user || customerUser;
   const isLoggedIn = Boolean(activeUser);
@@ -742,6 +746,7 @@ export default function Portal() {
       ]);
       setUpcomingBatches(upcoming.batches || []);
       setAvailableNowBatches(available.batches || []);
+      setPortalPolicy(upcoming.policy || available.policy || null);
 
       if (isCustomerRole) {
         const [profileData, bookingData, requestData] = await Promise.all([
@@ -1014,6 +1019,7 @@ export default function Portal() {
         <BookingModal
           batch={bookingBatch}
           profile={profile}
+          policy={portalPolicy}
           onClose={() => setBookingBatch(null)}
           onBooked={() => {
             loadPortal();

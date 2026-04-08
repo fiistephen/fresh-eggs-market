@@ -1,6 +1,7 @@
 import prisma from '../plugins/prisma.js';
 import { authenticate } from '../plugins/auth.js';
 import { authorize } from '../middleware/authorize.js';
+import { getOperationsPolicy } from '../utils/appSettings.js';
 
 export default async function alertRoutes(fastify) {
   // ────────────────────────────────────────────────────────────
@@ -9,6 +10,7 @@ export default async function alertRoutes(fastify) {
   fastify.get('/alerts', {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER')],
     handler: async (request, reply) => {
+      const policy = await getOperationsPolicy();
       const alerts = [];
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -81,7 +83,7 @@ export default async function alertRoutes(fastify) {
         include: { customer: { select: { name: true } } },
       });
 
-      const POS_THRESHOLD = 500000; // ₦500k — large card payments flagged
+      const POS_THRESHOLD = Number(policy.largePosPaymentThreshold || 500000);
       for (const sale of recentPOSSales) {
         const amount = Number(sale.totalAmount);
         if (amount >= POS_THRESHOLD) {

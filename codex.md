@@ -1372,3 +1372,26 @@ Minimum update format:
   - clean only the demo namespace it owns
   - preserve unrelated staging records
   - create scenario-driven batches, customers, bookings, allocations, sales, banking data, statement import lines, and portal history
+
+## 2026-04-08 — Policy history and admin expansion
+
+- Company policy is no longer treated as one mutable global value in code.
+- A policy history implementation plan now exists at:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/POLICY_HISTORY_IMPLEMENTATION_PLAN.md`
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/POLICY_HISTORY_IMPLEMENTATION_PLAN.md`
+- Admin policy settings now cover:
+  - target profit per crate
+  - crack allowance percent
+  - allowable cracked crates
+  - allowable written-off crates
+  - minimum booking payment percent
+  - first-time customer booking limit
+  - maximum booking size per order
+  - large POS payment alert threshold
+- Policy saves now create a dated version so new work uses the new rule while older records keep the earlier policy.
+- Current-rule workflows now read live policy:
+  - portal booking
+  - backend booking
+  - banking customer-booking allocation
+  - POS alerts
+- Historical batch and inventory reporting now resolve policy using the batch start date so older batches are not re-scored by newer policy changes.

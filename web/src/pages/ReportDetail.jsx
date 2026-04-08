@@ -792,7 +792,7 @@ function BatchSummaryReport({ data }) {
       <div className="bg-white rounded-xl border border-gray-200 p-4">
         <p className="text-sm font-medium text-gray-900">How to read this report</p>
         <p className="text-sm text-gray-600 mt-1">
-          This page compares each batch against the current company target of {formatCurrency(policy.targetProfitPerCrate)} profit per crate.
+          This page compares each batch against the policy that was active when that batch started. The current company target is {formatCurrency(policy.targetProfitPerCrate)} profit per crate.
         </p>
       </div>
 
@@ -818,7 +818,9 @@ function BatchSummaryReport({ data }) {
           <ExecutiveNote label="Average profit per crate" value={formatCurrency(monthly.averageProfitPerCrate)} />
           <ExecutiveNote label="Above target batches" value={`${monthly.aboveTargetCount || 0} batches`} />
           <ExecutiveNote label="Below target batches" value={`${monthly.belowTargetCount || 0} batches`} />
-          <ExecutiveNote label="Current crack allowance" value={`${policy.crackAllowancePercent || 0}% temporary threshold`} />
+          <ExecutiveNote label="Current crack allowance" value={`${policy.crackAllowancePercent || 0}%`} />
+          <ExecutiveNote label="Current cracked crate cap" value={policy.crackedCratesAllowance == null ? 'No fixed cap' : `${policy.crackedCratesAllowance} crates`} />
+          <ExecutiveNote label="Current write-off cap" value={policy.writeOffCratesAllowance == null ? 'No fixed cap' : `${policy.writeOffCratesAllowance} crates`} />
         </Panel>
       </div>
 
@@ -966,7 +968,7 @@ function InventoryControlReport({ data }) {
       <div className="bg-white rounded-xl border border-gray-200 p-4">
         <p className="text-sm font-medium text-gray-900">What needs attention</p>
         <p className="text-sm text-gray-600 mt-1">
-          This report helps the team catch stock issues early. Batches are flagged when cracks move close to or above the current {policy.crackAllowancePercent || 0}% crack allowance, or when the last count has a discrepancy.
+          This report helps the team catch stock issues early. Batches are flagged when cracks move close to or above the policy that applied to that batch, or when the last count has a discrepancy.
         </p>
       </div>
 

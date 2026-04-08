@@ -4,6 +4,7 @@ import { authorize } from '../middleware/authorize.js';
 import {
   getCustomerEggTypeConfig,
   getOperationsPolicy,
+  getOperationsPolicyHistory,
   getTransactionCategoryConfig,
   saveCustomerEggTypeConfig,
   saveOperationsPolicy,
@@ -37,8 +38,9 @@ export default async function adminRoutes(fastify) {
   fastify.get('/admin/config', {
     preHandler: [authenticate, authorize('ADMIN')],
     handler: async () => {
-      const [policy, bankAccounts, transactionCategories, customerEggTypes] = await Promise.all([
+      const [policy, policyHistory, bankAccounts, transactionCategories, customerEggTypes] = await Promise.all([
         getOperationsPolicy(),
+        getOperationsPolicyHistory(),
         loadBankAccounts(),
         getTransactionCategoryConfig(),
         getCustomerEggTypeConfig(),
@@ -46,6 +48,7 @@ export default async function adminRoutes(fastify) {
 
       return {
         policy,
+        policyHistory: [...policyHistory].sort((a, b) => new Date(b.effectiveFrom) - new Date(a.effectiveFrom)),
         bankAccounts,
         transactionCategories,
         customerEggTypes,
@@ -56,7 +59,16 @@ export default async function adminRoutes(fastify) {
   fastify.patch('/admin/config/policy', {
     preHandler: [authenticate, authorize('ADMIN')],
     handler: async (request, reply) => {
-      const { targetProfitPerCrate, crackAllowancePercent } = request.body;
+      const {
+        targetProfitPerCrate,
+        crackAllowancePercent,
+        crackedCratesAllowance,
+        writeOffCratesAllowance,
+        bookingMinimumPaymentPercent,
+        firstTimeBookingLimitCrates,
+        maxBookingCratesPerOrder,
+        largePosPaymentThreshold,
+      } = request.body;
 
       if (targetProfitPerCrate == null || Number(targetProfitPerCrate) <= 0) {
         return reply.code(400).send({ error: 'Target profit per crate must be greater than zero.' });
@@ -66,12 +78,49 @@ export default async function adminRoutes(fastify) {
         return reply.code(400).send({ error: 'Crack allowance must be zero or higher.' });
       }
 
-      const policy = await saveOperationsPolicy({
+      if (crackedCratesAllowance !== null && crackedCratesAllowance !== undefined && (!Number.isInteger(Number(crackedCratesAllowance)) || Number(crackedCratesAllowance) < 0)) {
+        return reply.code(400).send({ error: 'Allowable cracked crates must be a whole number or left blank.' });
+      }
+
+      if (writeOffCratesAllowance !== null && writeOffCratesAllowance !== undefined && (!Number.isInteger(Number(writeOffCratesAllowance)) || Number(writeOffCratesAllowance) < 0)) {
+        return reply.code(400).send({ error: 'Allowable written-off crates must be a whole number or left blank.' });
+      }
+
+      if (bookingMinimumPaymentPercent == null || Number(bookingMinimumPaymentPercent) <= 0 || Number(bookingMinimumPaymentPercent) > 100) {
+        return reply.code(400).send({ error: 'Minimum booking payment must be above zero and not more than 100%.' });
+      }
+
+      if (firstTimeBookingLimitCrates == null || Number(firstTimeBookingLimitCrates) <= 0) {
+        return reply.code(400).send({ error: 'First-time customer booking limit must be greater than zero.' });
+      }
+
+      if (maxBookingCratesPerOrder == null || Number(maxBookingCratesPerOrder) <= 0) {
+        return reply.code(400).send({ error: 'Maximum booking per order must be greater than zero.' });
+      }
+
+      if (Number(firstTimeBookingLimitCrates) > Number(maxBookingCratesPerOrder)) {
+        return reply.code(400).send({ error: 'First-time customer booking limit cannot be more than the maximum booking per order.' });
+      }
+
+      if (largePosPaymentThreshold == null || Number(largePosPaymentThreshold) < 0) {
+        return reply.code(400).send({ error: 'Large POS alert threshold must be zero or higher.' });
+      }
+
+      const { policy, history } = await saveOperationsPolicy({
         targetProfitPerCrate: Number(targetProfitPerCrate),
         crackAllowancePercent: Number(crackAllowancePercent),
+        crackedCratesAllowance: crackedCratesAllowance === '' ? null : crackedCratesAllowance,
+        writeOffCratesAllowance: writeOffCratesAllowance === '' ? null : writeOffCratesAllowance,
+        bookingMinimumPaymentPercent: Number(bookingMinimumPaymentPercent),
+        firstTimeBookingLimitCrates: Number(firstTimeBookingLimitCrates),
+        maxBookingCratesPerOrder: Number(maxBookingCratesPerOrder),
+        largePosPaymentThreshold: Number(largePosPaymentThreshold),
       }, request.user.sub);
 
-      return { policy };
+      return {
+        policy,
+        policyHistory: [...history].sort((a, b) => new Date(b.effectiveFrom) - new Date(a.effectiveFrom)),
+      };
     },
   });
 
