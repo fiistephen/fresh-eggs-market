@@ -1291,3 +1291,28 @@ Minimum update format:
   - Prisma client generation passed
   - direct module import passed for `api/src/routes/banking.js`
   - frontend build passed
+
+## 2026-04-08 — Phone-first customer identity and portal order history
+
+- Customer identity:
+  - customer phone number is now the unique identifier
+  - customer email is optional
+  - portal/customer sign-in now accepts either phone number or email as the identifier
+  - phone number is required during customer self-registration
+- Portal visibility:
+  - the customer portal now emphasizes `Order status and history`
+  - the authenticated customer views both booking history and buy-now request history from the same activity area
+- Implementation notes:
+  - `users.email` was relaxed to optional unique
+  - `customers.phone` is unique
+  - portal customer lookup now matches by phone first, then email fallback for older records
+  - auth payloads now include `phone`
+- Important bug fix:
+  - refresh tokens now include a random `jti`
+  - this fixed a staging issue where logging in by phone and then by email in the same second could collide on the hashed refresh token and throw `P2002`
+- Staging verification completed:
+  - portal registration passed with required phone + optional email
+  - sign-in by phone passed
+  - sign-in by email passed
+  - `/api/portal/my-bookings` returned the correct customer-scoped history payload
+  - `/api/portal/my-buy-now-requests` returned the correct customer-scoped history payload
