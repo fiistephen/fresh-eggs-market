@@ -234,15 +234,48 @@ export default async function reportsRoutes(fastify) {
           saleDate: sale.saleDate,
           customer: sale.customer,
           batch: sale.batch,
+          recordedBy: sale.recordedBy
+            ? {
+                id: sale.recordedBy.id,
+                name: `${sale.recordedBy.firstName} ${sale.recordedBy.lastName}`.trim(),
+              }
+            : null,
           paymentMethod: sale.paymentMethod,
           totalQuantity: sale.totalQuantity,
           totalAmount,
           totalCost,
           grossProfit,
           sourceType,
+          lineItems: sale.lineItems.map((lineItem) => {
+            const quantity = lineItem.quantity;
+            const lineTotal = Number(lineItem.lineTotal);
+            const totalCost = quantity * Number(lineItem.costPrice);
+            const eggTypeKey = lineItem.batchEggCode?.batch?.eggTypeKey || 'REGULAR';
+            const eggTypeLabel = getCustomerEggTypeLabel(eggTypes, eggTypeKey);
+            const item = lineItem.batchEggCode?.item;
+            const itemLabel = item?.category === 'FE_EGGS' || lineItem.batchEggCode?.batch
+              ? eggTypeLabel
+              : item?.name || item?.code || lineItem.batchEggCode?.code || 'Unknown item';
+
+            return {
+              id: lineItem.id,
+              itemCode: item?.code || lineItem.batchEggCode?.code || eggTypeKey,
+              itemLabel,
+              saleType: lineItem.saleType,
+              quantity,
+              unitPrice: Number(lineItem.unitPrice),
+              costPrice: Number(lineItem.costPrice),
+              lineTotal,
+              totalCost,
+              grossProfit: lineTotal - totalCost,
+            };
+          }),
           paymentTransaction: sale.paymentTransaction ? {
             id: sale.paymentTransaction.id,
             amount: Number(sale.paymentTransaction.amount),
+            category: sale.paymentTransaction.category,
+            reference: sale.paymentTransaction.reference,
+            transactionDate: sale.paymentTransaction.transactionDate,
             bankAccount: sale.paymentTransaction.bankAccount,
           } : null,
         };

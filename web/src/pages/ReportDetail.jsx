@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { getReportCard } from './reportsCatalog';
@@ -478,16 +478,96 @@ function SalesByEmployeeReport({ data }) {
 }
 
 function ReceiptsReport({ data }) {
+  const [search, setSearch] = useState('');
+  const [paymentFilter, setPaymentFilter] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('');
+  const [selectedReceiptId, setSelectedReceiptId] = useState('');
+
+  const filteredReceipts = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return (data.receipts || []).filter((receipt) => {
+      if (paymentFilter && receipt.paymentMethod !== paymentFilter) return false;
+      if (sourceFilter && receipt.sourceType !== sourceFilter) return false;
+
+      if (!term) return true;
+
+      const haystack = [
+        receipt.receiptNumber,
+        receipt.customer?.name,
+        receipt.customer?.phone,
+        receipt.batch?.name,
+        receipt.paymentTransaction?.reference,
+        receipt.recordedBy?.name,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      return haystack.includes(term);
+    });
+  }, [data.receipts, paymentFilter, search, sourceFilter]);
+
+  const selectedReceipt = filteredReceipts.find((receipt) => receipt.id === selectedReceiptId)
+    || data.receipts.find((receipt) => receipt.id === selectedReceiptId)
+    || filteredReceipts[0]
+    || null;
+
+  const directCount = data.receipts.filter((receipt) => receipt.sourceType === 'DIRECT').length;
+  const bookingCount = data.receipts.filter((receipt) => receipt.sourceType === 'BOOKING').length;
+  const linkedMoneyTrailCount = data.receipts.filter((receipt) => receipt.paymentTransaction).length;
+
+  useEffect(() => {
+    if (!selectedReceiptId && filteredReceipts[0]?.id) {
+      setSelectedReceiptId(filteredReceipts[0].id);
+      return;
+    }
+    if (selectedReceiptId && !filteredReceipts.some((receipt) => receipt.id === selectedReceiptId)) {
+      setSelectedReceiptId(filteredReceipts[0]?.id || '');
+    }
+  }, [filteredReceipts, selectedReceiptId]);
+
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <SummaryCard label="All receipts" value={data.receipts.length.toLocaleString()} />
-        <SummaryCard label="Sales receipts" value={data.receipts.length.toLocaleString()} />
-        <SummaryCard label="Refund receipts" value="0" />
+        <SummaryCard label="Direct sale receipts" value={directCount.toLocaleString()} />
+        <SummaryCard label="Booking pickup receipts" value={bookingCount.toLocaleString()} />
+        <SummaryCard label="Linked bank trail" value={linkedMoneyTrailCount.toLocaleString()} hint={`${data.receipts.length - linkedMoneyTrailCount} pre-paid before pickup`} />
       </div>
 
-      <Panel title="Receipt log" body="This is the detailed receipt list for the selected period.">
-        {data.receipts.length === 0 ? (
+      <Panel title="Receipt tools" body="Search the receipt log, narrow it to one payment type, and open the full receipt when you need more detail.">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_220px_220px]">
+          <input
+            type="text"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search by receipt number, customer, phone, or batch"
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500"
+          />
+          <select
+            value={paymentFilter}
+            onChange={(event) => setPaymentFilter(event.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500"
+          >
+            <option value="">All payment methods</option>
+            {Object.entries(PAYMENT_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+          <select
+            value={sourceFilter}
+            onChange={(event) => setSourceFilter(event.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500"
+          >
+            <option value="">All receipt types</option>
+            <option value="DIRECT">Direct sale</option>
+            <option value="BOOKING">Booking pickup</option>
+          </select>
+        </div>
+      </Panel>
+
+      <Panel title="Receipt log" body="This is the detailed receipt list for the selected period. Click one row to open the full receipt.">
+        {filteredReceipts.length === 0 ? (
           <EmptyPanel text="No receipts found for this period." />
         ) : (
           <div className="overflow-x-auto">
@@ -501,11 +581,15 @@ function ReceiptsReport({ data }) {
                   <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Payment</th>
                   <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Money trail</th>
                   <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+                  <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Detail</th>
                 </tr>
               </thead>
               <tbody>
-                {data.receipts.map((receipt) => (
-                  <tr key={receipt.id} className="border-b border-gray-50">
+                {filteredReceipts.map((receipt) => (
+                  <tr
+                    key={receipt.id}
+                    className={`border-b border-gray-50 transition-colors hover:bg-gray-50 ${selectedReceipt?.id === receipt.id ? 'bg-brand-50/60' : ''}`}
+                  >
                     <td className="py-3 px-4 text-sm font-mono text-gray-700">{receipt.receiptNumber}</td>
                     <td className="py-3 px-4 text-sm text-gray-600">{formatDateTime(receipt.saleDate)}</td>
                     <td className="py-3 px-4 text-sm">
@@ -520,6 +604,15 @@ function ReceiptsReport({ data }) {
                         : 'Already covered before pickup'}
                     </td>
                     <td className="py-3 px-4 text-sm text-right font-medium">{formatCurrency(receipt.totalAmount)}</td>
+                    <td className="py-3 px-4 text-sm text-right">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedReceiptId(receipt.id)}
+                        className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                      >
+                        Open
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -527,6 +620,162 @@ function ReceiptsReport({ data }) {
           </div>
         )}
       </Panel>
+
+      <Panel title="Receipt detail" body="This is the full view of the selected receipt, including line items and payment trail.">
+        {selectedReceipt ? (
+          <ReceiptDetailCard receipt={selectedReceipt} />
+        ) : (
+          <EmptyPanel text="Open a receipt from the log to see the full detail." />
+        )}
+      </Panel>
+    </div>
+  );
+}
+
+function ReceiptDetailCard({ receipt }) {
+  function handlePrint() {
+    if (typeof window === 'undefined') return;
+    const printWindow = window.open('', '_blank', 'width=900,height=700');
+    if (!printWindow) return;
+
+    const rows = (receipt.lineItems || []).map((lineItem) => `
+      <tr>
+        <td style="padding:8px;border-bottom:1px solid #e5e7eb;">${lineItem.itemLabel}</td>
+        <td style="padding:8px;border-bottom:1px solid #e5e7eb;">${SALE_TYPE_LABELS[lineItem.saleType] || lineItem.saleType}</td>
+        <td style="padding:8px;border-bottom:1px solid #e5e7eb;text-align:right;">${lineItem.quantity}</td>
+        <td style="padding:8px;border-bottom:1px solid #e5e7eb;text-align:right;">${formatCurrency(lineItem.unitPrice)}</td>
+        <td style="padding:8px;border-bottom:1px solid #e5e7eb;text-align:right;">${formatCurrency(lineItem.lineTotal)}</td>
+      </tr>
+    `).join('');
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Receipt ${receipt.receiptNumber}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 24px; color: #111827; }
+            h1, h2, p { margin: 0 0 8px; }
+            .meta { margin-bottom: 20px; }
+            .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+            .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+            th { text-align: left; padding: 8px; font-size: 12px; text-transform: uppercase; color: #6b7280; border-bottom: 1px solid #e5e7eb; }
+            td { font-size: 14px; }
+          </style>
+        </head>
+        <body>
+          <h1>Receipt ${receipt.receiptNumber}</h1>
+          <p>${formatDateTime(receipt.saleDate)}</p>
+          <div class="grid">
+            <div class="card">
+              <h2>Customer</h2>
+              <p>${receipt.customer?.name || '—'}</p>
+              <p>${receipt.customer?.phone || '—'}</p>
+            </div>
+            <div class="card">
+              <h2>Payment</h2>
+              <p>${PAYMENT_LABELS[receipt.paymentMethod] || receipt.paymentMethod}</p>
+              <p>${receipt.paymentTransaction ? `${receipt.paymentTransaction.bankAccount?.name || 'Linked account'} · ${formatCurrency(receipt.paymentTransaction.amount)}` : 'Already covered before pickup'}</p>
+            </div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Sale type</th>
+                <th style="text-align:right;">Qty</th>
+                <th style="text-align:right;">Unit price</th>
+                <th style="text-align:right;">Line total</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+          <div class="grid" style="margin-top:20px;">
+            <div class="card">
+              <h2>Receipt summary</h2>
+              <p>Total quantity: ${receipt.totalQuantity} crates</p>
+              <p>Total amount: ${formatCurrency(receipt.totalAmount)}</p>
+              <p>Gross profit: ${formatCurrency(receipt.grossProfit)}</p>
+            </div>
+            <div class="card">
+              <h2>Recorded by</h2>
+              <p>${receipt.recordedBy?.name || '—'}</p>
+              <p>${SOURCE_LABELS[receipt.sourceType] || receipt.sourceType}</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-xl font-semibold text-gray-900">{receipt.receiptNumber}</h3>
+            <StatusPill label={SOURCE_LABELS[receipt.sourceType] || receipt.sourceType} tone={receipt.sourceType === 'BOOKING' ? 'green' : 'slate'} />
+          </div>
+          <p className="mt-2 text-sm text-gray-500">{formatDateTime(receipt.saleDate)}</p>
+        </div>
+        <button
+          type="button"
+          onClick={handlePrint}
+          className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+        >
+          Print receipt
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <div className="rounded-xl border border-gray-200 p-4">
+          <p className="text-xs uppercase tracking-wide text-gray-400">Customer</p>
+          <p className="mt-2 text-base font-semibold text-gray-900">{receipt.customer?.name || '—'}</p>
+          <p className="mt-1 text-sm text-gray-500">{receipt.customer?.phone || 'No phone saved'}</p>
+        </div>
+        <div className="rounded-xl border border-gray-200 p-4">
+          <p className="text-xs uppercase tracking-wide text-gray-400">Payment trail</p>
+          <p className="mt-2 text-base font-semibold text-gray-900">{PAYMENT_LABELS[receipt.paymentMethod] || receipt.paymentMethod}</p>
+          <p className="mt-1 text-sm text-gray-500">
+            {receipt.paymentTransaction
+              ? `${receipt.paymentTransaction.bankAccount?.name || 'Linked account'} · ${formatCurrency(receipt.paymentTransaction.amount)}`
+              : 'Already paid before pickup'}
+          </p>
+          {receipt.paymentTransaction?.reference && (
+            <p className="mt-1 text-xs text-gray-400">Ref: {receipt.paymentTransaction.reference}</p>
+          )}
+        </div>
+        <div className="rounded-xl border border-gray-200 p-4">
+          <p className="text-xs uppercase tracking-wide text-gray-400">Receipt summary</p>
+          <p className="mt-2 text-base font-semibold text-gray-900">{formatCurrency(receipt.totalAmount)}</p>
+          <p className="mt-1 text-sm text-gray-500">{receipt.totalQuantity} crates sold</p>
+          <p className="mt-1 text-sm text-gray-500">Recorded by {receipt.recordedBy?.name || '—'}</p>
+        </div>
+      </div>
+
+      <DataTable
+        columns={['Item', 'Sale type', 'Qty', 'Unit price', 'Line total', 'Gross profit']}
+        rows={(receipt.lineItems || []).map((lineItem) => [
+          lineItem.itemLabel,
+          SALE_TYPE_LABELS[lineItem.saleType] || lineItem.saleType,
+          lineItem.quantity.toLocaleString(),
+          formatCurrency(lineItem.unitPrice),
+          formatCurrency(lineItem.lineTotal),
+          formatCurrency(lineItem.grossProfit),
+        ])}
+        footer={[
+          'Total',
+          '—',
+          receipt.totalQuantity.toLocaleString(),
+          '—',
+          formatCurrency(receipt.totalAmount),
+          formatCurrency(receipt.grossProfit),
+        ]}
+        emptyText="No receipt line items found."
+      />
     </div>
   );
 }
