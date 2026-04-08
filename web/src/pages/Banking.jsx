@@ -280,7 +280,12 @@ export default function Banking() {
       const data = await api.get('/banking/imports?limit=20');
       const nextImports = data.imports || [];
       setImports(nextImports);
-      setSelectedImportId((current) => current || nextImports[0]?.id || '');
+      setSelectedImportId((current) => {
+        if (current && nextImports.some((importRecord) => importRecord.id === current)) {
+          return current;
+        }
+        return nextImports[0]?.id || '';
+      });
     } catch {
       setError('Failed to load statement imports');
     } finally {
