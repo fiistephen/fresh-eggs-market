@@ -449,6 +449,7 @@ export default function Banking() {
           total={transactionsTotal}
           loading={transactionsLoading}
           filters={filters}
+          categoryMap={categoryMap}
           onFilterChange={(next) => setFilters((current) => ({ ...current, ...next }))}
         />
       )}
