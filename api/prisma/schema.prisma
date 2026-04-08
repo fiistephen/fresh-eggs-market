@@ -34,6 +34,7 @@ model User {
 
   refreshTokens  RefreshToken[]
   salesRecorded    Sale[]              @relation("SaleRecordedBy")
+  salesLimitOverrides Sale[]           @relation("SaleLimitOverrideBy")
   bankTransactions BankTransaction[]   @relation("TransactionEnteredBy")
   inventoryCounts  InventoryCount[]    @relation("CountEnteredBy")
   statementImports BankStatementImport[] @relation("StatementImportedBy")
@@ -326,6 +327,9 @@ model Sale {
   batchId        String?       @map("batch_id")
   bookingId      String?       @unique @map("booking_id") // If fulfilling a booking
   recordedById   String        @map("recorded_by_id")
+  limitOverrideNote String?    @map("limit_override_note")
+  limitOverrideById String?    @map("limit_override_by_id")
+  limitOverrideAt DateTime?    @map("limit_override_at")
 
   totalQuantity  Int           @map("total_quantity")
   totalAmount    Decimal       @map("total_amount") @db.Decimal(12, 2)
@@ -339,6 +343,7 @@ model Sale {
   batch      Batch?        @relation(fields: [batchId], references: [id])
   booking    Booking?      @relation(fields: [bookingId], references: [id])
   recordedBy User          @relation("SaleRecordedBy", fields: [recordedById], references: [id])
+  limitOverrideBy User?    @relation("SaleLimitOverrideBy", fields: [limitOverrideById], references: [id])
   lineItems  SaleLineItem[]
   paymentTransaction BankTransaction? @relation("SalePaymentTransaction")
 

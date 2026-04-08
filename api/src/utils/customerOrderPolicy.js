@@ -51,7 +51,7 @@ export function getPerOrderCrateLimit(policy = {}, trackedOrderCount = 0) {
 export async function getCustomerTrackedOrderCount(customerId) {
   if (!customerId) return 0;
 
-  const [bookingCount, portalOrderCount, checkoutHoldCount] = await Promise.all([
+  const [bookingCount, portalOrderCount, checkoutHoldCount, directSaleCount] = await Promise.all([
     prisma.booking.count({
       where: {
         customerId,
@@ -80,9 +80,15 @@ export async function getCustomerTrackedOrderCount(customerId) {
         ],
       },
     }),
+    prisma.sale.count({
+      where: {
+        customerId,
+        bookingId: null,
+      },
+    }),
   ]);
 
-  return bookingCount + portalOrderCount + checkoutHoldCount;
+  return bookingCount + portalOrderCount + checkoutHoldCount + directSaleCount;
 }
 
 export async function getCustomerOrderLimitProfile(customerId, policy = {}) {

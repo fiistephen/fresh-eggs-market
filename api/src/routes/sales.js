@@ -1,7 +1,8 @@
 import prisma from '../plugins/prisma.js';
 import { authenticate } from '../plugins/auth.js';
 import { authorize } from '../middleware/authorize.js';
-import { getCustomerEggTypeConfig, getCustomerEggTypeLabel } from '../utils/appSettings.js';
+import { getCustomerEggTypeConfig, getCustomerEggTypeLabel, getOperationsPolicy } from '../utils/appSettings.js';
+import { buildCustomerOrderLimitProfile, getCustomerTrackedOrderCount } from '../utils/customerOrderPolicy.js';
 import { getActivePortalBuyNowHoldQuantity } from '../utils/portalCheckout.js';
 
 const VALID_SALE_TYPES = ['WHOLESALE', 'RETAIL', 'CRACKED', 'WRITE_OFF'];
@@ -139,6 +140,14 @@ function deriveSaleBatchSummary(sale) {
   return `${names.length} batches`;
 }
 
+function formatOrderLimitMessage(orderLimitProfile) {
+  if (!orderLimitProfile) return null;
+  if (orderLimitProfile.isUsingEarlyOrderLimit) {
+    return `This customer is still under the early-order limit of ${Number(orderLimitProfile.currentPerOrderLimit || 0).toLocaleString()} crates for order ${orderLimitProfile.nextOrderNumber}.`;
+  }
+  return `This customer can buy up to ${Number(orderLimitProfile.currentPerOrderLimit || 0).toLocaleString()} crates in one order.`;
+}
+
 function mapBookingForWorkspace(booking, eggTypes = []) {
   const amountPaid = Number(booking.amountPaid);
   const orderValue = Number(booking.orderValue);
@@ -178,6 +187,15 @@ function enrichSale(sale, eggTypes = []) {
       ...sale.paymentTransaction,
       amount: Number(sale.paymentTransaction.amount),
     } : undefined,
+    limitOverride: sale.limitOverrideNote
+      ? {
+          note: sale.limitOverrideNote,
+          at: sale.limitOverrideAt,
+          by: sale.limitOverrideBy
+            ? `${sale.limitOverrideBy.firstName} ${sale.limitOverrideBy.lastName}`.trim()
+            : null,
+        }
+      : null,
     booking: sale.booking ? {
       ...sale.booking,
       amountPaid: Number(sale.booking.amountPaid),
@@ -242,6 +260,7 @@ function buildSaleInclude() {
       },
     },
     recordedBy: { select: { firstName: true, lastName: true } },
+    limitOverrideBy: { select: { firstName: true, lastName: true } },
   };
 }
 
@@ -353,7 +372,10 @@ export default async function salesRoutes(fastify) {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'SHOP_FLOOR')],
     handler: async (request, reply) => {
       const { customerId } = request.params;
-      const eggTypes = await getCustomerEggTypeConfig();
+      const [eggTypes, policy] = await Promise.all([
+        getCustomerEggTypeConfig(),
+        getOperationsPolicy(),
+      ]);
 
       const customer = await prisma.customer.findUnique({
         where: { id: customerId },
@@ -395,6 +417,8 @@ export default async function salesRoutes(fastify) {
       ]);
 
       const batchSnapshots = await Promise.all(batches.map((batch) => getBatchStockSnapshot(batch.id, eggTypes)));
+      const trackedOrderCount = await getCustomerTrackedOrderCount(customerId);
+      const orderLimitProfile = buildCustomerOrderLimitProfile(policy, trackedOrderCount);
       const saleReadyBatches = batchSnapshots
         .filter(Boolean)
         .filter((snapshot) => snapshot.availableForSale > 0);
@@ -410,7 +434,11 @@ export default async function salesRoutes(fastify) {
       ));
 
       return reply.send({
-        customer,
+        customer: {
+          ...customer,
+          orderLimitProfile,
+          orderLimitMessage: formatOrderLimitMessage(orderLimitProfile),
+        },
         bookings: bookings.map((booking) => mapBookingForWorkspace(booking, eggTypes)),
         directSaleBatches: saleReadyBatches.map((snapshot) => ({
           ...snapshot.batch,
@@ -427,15 +455,61 @@ export default async function salesRoutes(fastify) {
   fastify.post('/sales', {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'SHOP_FLOOR')],
     handler: async (request, reply) => {
-      const { customerId, batchId, bookingId, paymentMethod, lineItems, saleDate } = request.body;
+      const {
+        customerId,
+        newCustomer,
+        batchId,
+        bookingId,
+        paymentMethod,
+        lineItems,
+        saleDate,
+        limitOverrideNote,
+      } = request.body;
+      const trimmedLimitOverrideNote = String(limitOverrideNote || '').trim();
 
-      if (!customerId) return reply.code(400).send({ error: 'Customer is required' });
+      if (!customerId && !newCustomer) return reply.code(400).send({ error: 'Customer is required' });
       if (!lineItems || !Array.isArray(lineItems) || lineItems.length === 0) {
         return reply.code(400).send({ error: 'At least one line item is required' });
       }
 
-      const customer = await prisma.customer.findUnique({ where: { id: customerId } });
-      if (!customer) return reply.code(404).send({ error: 'Customer not found' });
+      let customer = null;
+      let trackedOrderCount = 0;
+      let createCustomerInput = null;
+
+      if (customerId) {
+        customer = await prisma.customer.findUnique({ where: { id: customerId } });
+        if (!customer) return reply.code(404).send({ error: 'Customer not found' });
+        trackedOrderCount = await getCustomerTrackedOrderCount(customerId);
+      } else {
+        const name = String(newCustomer?.name || '').trim();
+        const phone = String(newCustomer?.phone || '').trim();
+        const email = String(newCustomer?.email || '').trim();
+        const notes = String(newCustomer?.notes || '').trim();
+
+        if (!name || !phone) {
+          return reply.code(400).send({ error: 'New customer name and phone are required' });
+        }
+
+        const existingByPhone = await prisma.customer.findUnique({ where: { phone } });
+        if (existingByPhone) {
+          return reply.code(409).send({
+            error: `Customer with phone ${phone} already exists`,
+            existingCustomer: {
+              id: existingByPhone.id,
+              name: existingByPhone.name,
+              phone: existingByPhone.phone,
+              email: existingByPhone.email,
+            },
+          });
+        }
+
+        createCustomerInput = {
+          name,
+          phone,
+          email: email || null,
+          notes: notes || null,
+        };
+      }
 
       let booking = null;
       if (bookingId) {
@@ -559,6 +633,15 @@ export default async function salesRoutes(fastify) {
         eggCodeMap.set(eggCode.id, eggCode);
       }
 
+      const policy = await getOperationsPolicy();
+      const orderLimitProfile = buildCustomerOrderLimitProfile(policy, trackedOrderCount);
+
+      if (!booking && totalQuantity > Number(orderLimitProfile.currentPerOrderLimit || 0) && !trimmedLimitOverrideNote) {
+        return reply.code(400).send({
+          error: `This order is above the limit of ${Number(orderLimitProfile.currentPerOrderLimit || 0).toLocaleString()} crates. Add a note before overriding this limit.`,
+        });
+      }
+
       if (booking && totalQuantity !== booking.quantity) {
         return reply.code(400).send({
           error: `This booking is for ${booking.quantity} crates. Enter exactly that quantity or update the booking first.`,
@@ -621,13 +704,27 @@ export default async function salesRoutes(fastify) {
         : null;
 
       const sale = await prisma.$transaction(async (tx) => {
+        let persistedCustomer = customer;
+        if (!persistedCustomer && createCustomerInput) {
+          persistedCustomer = await tx.customer.create({ data: createCustomerInput });
+        }
+
         const createdSale = await tx.sale.create({
           data: {
             receiptNumber,
-            customerId,
+            customerId: persistedCustomer.id,
             batchId: headerBatchId,
             bookingId: bookingId || null,
             recordedById: request.user.sub,
+            limitOverrideNote: !bookingId && totalQuantity > Number(orderLimitProfile.currentPerOrderLimit || 0)
+              ? trimmedLimitOverrideNote
+              : null,
+            limitOverrideById: !bookingId && totalQuantity > Number(orderLimitProfile.currentPerOrderLimit || 0)
+              ? request.user.sub
+              : null,
+            limitOverrideAt: !bookingId && totalQuantity > Number(orderLimitProfile.currentPerOrderLimit || 0)
+              ? new Date()
+              : null,
             totalQuantity,
             totalAmount,
             totalCost,
@@ -649,7 +746,7 @@ export default async function salesRoutes(fastify) {
               amount: totalAmount,
               description: directSalePaymentDescription({
                 paymentMethod: resolvedPaymentMethod,
-                customer,
+                customer: persistedCustomer,
                 batch: batchLabel,
                 receiptNumber,
               }),
@@ -658,7 +755,7 @@ export default async function salesRoutes(fastify) {
               sourceType: 'SYSTEM',
               sourceFingerprint: `sale:${createdSale.id}:payment`,
               saleId: createdSale.id,
-              customerId,
+              customerId: persistedCustomer.id,
               enteredById: request.user.sub,
               postedAt: new Date(),
             },

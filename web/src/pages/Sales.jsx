@@ -52,6 +52,14 @@ function saleBatchLabel(sale) {
   return sale.batchSummary || sale.batch?.name || '—';
 }
 
+function orderLimitMessage(orderLimitProfile) {
+  if (!orderLimitProfile) return '';
+  if (orderLimitProfile.isUsingEarlyOrderLimit) {
+    return `This customer is still under the early-order limit: ${orderLimitProfile.currentPerOrderLimit} crates for order ${orderLimitProfile.nextOrderNumber}.`;
+  }
+  return `This customer can buy up to ${orderLimitProfile.currentPerOrderLimit} crates in one order.`;
+}
+
 export default function Sales() {
   const { user } = useAuth();
   const [sales, setSales] = useState([]);
@@ -301,10 +309,23 @@ function RecordSaleModal({ onClose, onRecorded }) {
   const [customers, setCustomers] = useState([]);
   const [searchingCustomers, setSearchingCustomers] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [showCreateCustomer, setShowCreateCustomer] = useState(false);
+  const [creatingCustomer, setCreatingCustomer] = useState(false);
+  const [newCustomerForm, setNewCustomerForm] = useState({
+    name: '',
+    phone: '',
+    email: '',
+    notes: '',
+  });
 
   const [loadingWorkspace, setLoadingWorkspace] = useState(false);
   const [workspaceError, setWorkspaceError] = useState('');
-  const [customerWorkspace, setCustomerWorkspace] = useState({ bookings: [], directSaleBatches: [], mixedDirectSaleStock: [] });
+  const [customerWorkspace, setCustomerWorkspace] = useState({
+    customer: null,
+    bookings: [],
+    directSaleBatches: [],
+    mixedDirectSaleStock: [],
+  });
 
   const [workflow, setWorkflow] = useState('');
   const [selectedBooking, setSelectedBooking] = useState(null);
@@ -312,6 +333,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
   const [saleScopeLabel, setSaleScopeLabel] = useState('');
   const [lineItems, setLineItems] = useState([]);
   const [paymentMethod, setPaymentMethod] = useState('CASH');
+  const [limitOverrideNote, setLimitOverrideNote] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -349,13 +371,14 @@ function RecordSaleModal({ onClose, onRecorded }) {
     try {
       const data = await api.get(`/sales/customer-workspace/${customerId}`);
       setCustomerWorkspace({
+        customer: data.customer || null,
         bookings: data.bookings || [],
         directSaleBatches: data.directSaleBatches || [],
         mixedDirectSaleStock: data.mixedDirectSaleStock || [],
       });
     } catch {
       setWorkspaceError('Failed to load this customer’s sales options');
-      setCustomerWorkspace({ bookings: [], directSaleBatches: [], mixedDirectSaleStock: [] });
+      setCustomerWorkspace({ customer: null, bookings: [], directSaleBatches: [], mixedDirectSaleStock: [] });
     } finally {
       setLoadingWorkspace(false);
     }
@@ -399,8 +422,36 @@ function RecordSaleModal({ onClose, onRecorded }) {
     setWorkflow('');
     setLineItems([]);
     setPaymentMethod('CASH');
+    setLimitOverrideNote('');
     setError('');
     setStep(2);
+  }
+
+  async function handleCreateCustomer(e) {
+    e.preventDefault();
+    setCreatingCustomer(true);
+    setError('');
+    try {
+      const data = await api.post('/customers', {
+        name: newCustomerForm.name.trim(),
+        phone: newCustomerForm.phone.trim(),
+        email: newCustomerForm.email.trim() || undefined,
+        notes: newCustomerForm.notes.trim() || undefined,
+      });
+      setShowCreateCustomer(false);
+      setNewCustomerForm({ name: '', phone: '', email: '', notes: '' });
+      chooseCustomer(data.customer);
+    } catch (err) {
+      if (err.existingCustomer) {
+        setCustomers((current) => {
+          const existing = current.find((customer) => customer.id === err.existingCustomer.id);
+          return existing ? current : [err.existingCustomer, ...current];
+        });
+      }
+      setError(err.error || 'Failed to create customer');
+    } finally {
+      setCreatingCustomer(false);
+    }
   }
 
   function chooseBooking(booking) {
@@ -409,6 +460,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
     setSelectedBatch(booking.batch);
     setSaleScopeLabel(booking.batch?.name || 'Booked batch');
     setPaymentMethod('PRE_ORDER');
+    setLimitOverrideNote('');
     const preferredRows = booking.batchEggCodeId
       ? (booking.batch?.eggCodes || []).filter((eggCode) => eggCode.id === booking.batchEggCodeId)
       : booking.batch?.eggCodes || [];
@@ -430,6 +482,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
     setSelectedBatch(batch);
     setSaleScopeLabel(batch.name);
     setPaymentMethod('CASH');
+    setLimitOverrideNote('');
     initializeLineItems(batch);
     setError('');
     setStep(3);
@@ -441,6 +494,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
     setSelectedBatch(null);
     setSaleScopeLabel('Multiple batches');
     setPaymentMethod('CASH');
+    setLimitOverrideNote('');
     initializeLineItemsFromRows(customerWorkspace.mixedDirectSaleStock || []);
     setError('');
     setStep(3);
@@ -467,10 +521,13 @@ function RecordSaleModal({ onClose, onRecorded }) {
   const profit = totalAmount - totalCost;
   const bookingQuantityGap = selectedBooking ? selectedBooking.quantity - totalQty : 0;
   const isBookingQuantityReady = !selectedBooking || bookingQuantityGap === 0;
+  const orderLimitProfile = customerWorkspace.customer?.orderLimitProfile || null;
+  const currentPerOrderLimit = Number(orderLimitProfile?.currentPerOrderLimit || 0);
+  const needsLimitOverride = workflow === 'DIRECT' && currentPerOrderLimit > 0 && totalQty > currentPerOrderLimit;
   const canSubmit =
     workflow === 'BOOKING'
       ? !!selectedBooking && selectedBooking.isFullyPaid && isBookingQuantityReady
-      : totalQty > 0;
+      : totalQty > 0 && (!needsLimitOverride || limitOverrideNote.trim().length > 0);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -501,6 +558,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
         bookingId: workflow === 'BOOKING' ? selectedBooking.id : undefined,
         batchId: workflow === 'DIRECT' ? selectedBatch?.id : undefined,
         paymentMethod: workflow === 'DIRECT' ? paymentMethod : undefined,
+        limitOverrideNote: workflow === 'DIRECT' ? limitOverrideNote.trim() || undefined : undefined,
         lineItems: activeItems.map((lineItem) => ({
           batchEggCodeId: lineItem.batchEggCodeId,
           saleType: lineItem.saleType,
@@ -557,6 +615,84 @@ function RecordSaleModal({ onClose, onRecorded }) {
                 </p>
               </div>
 
+              <div className="rounded-xl border border-dashed border-gray-300 p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">Need a new customer?</p>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Create the customer here first, then continue with the sale.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowCreateCustomer((current) => !current);
+                      setError('');
+                    }}
+                    className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-sm font-medium text-gray-700"
+                  >
+                    {showCreateCustomer ? 'Hide new customer form' : 'Create new customer'}
+                  </button>
+                </div>
+
+                {showCreateCustomer && (
+                  <form onSubmit={handleCreateCustomer} className="mt-4 space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Customer name</label>
+                        <input
+                          type="text"
+                          value={newCustomerForm.name}
+                          onChange={(e) => setNewCustomerForm((current) => ({ ...current, name: e.target.value }))}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Phone number</label>
+                        <input
+                          type="tel"
+                          value={newCustomerForm.phone}
+                          onChange={(e) => setNewCustomerForm((current) => ({ ...current, phone: e.target.value }))}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Email address</label>
+                        <input
+                          type="email"
+                          value={newCustomerForm.email}
+                          onChange={(e) => setNewCustomerForm((current) => ({ ...current, email: e.target.value }))}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                        <input
+                          type="text"
+                          value={newCustomerForm.notes}
+                          onChange={(e) => setNewCustomerForm((current) => ({ ...current, notes: e.target.value }))}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+                        />
+                      </div>
+                    </div>
+                    <div className="rounded-lg bg-amber-50 px-3 py-3 text-sm text-amber-800">
+                      New customers start under the early-order limit. If this sale goes above that limit later, a staff note will be required and saved with the sale.
+                    </div>
+                    <div className="flex justify-end">
+                      <button
+                        type="submit"
+                        disabled={creatingCustomer}
+                        className="px-4 py-2 rounded-lg bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white text-sm font-medium"
+                      >
+                        {creatingCustomer ? 'Creating customer...' : 'Save customer and continue'}
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+
               {searchingCustomers && <p className="text-sm text-gray-400">Searching...</p>}
 
               {customers.length > 0 && (
@@ -603,6 +739,22 @@ function RecordSaleModal({ onClose, onRecorded }) {
                   Change
                 </button>
               </div>
+
+              {orderLimitProfile && (
+                <div className={`rounded-xl p-4 ${orderLimitProfile.isUsingEarlyOrderLimit ? 'bg-amber-50' : 'bg-gray-50'}`}>
+                  <p className={`text-sm font-semibold ${orderLimitProfile.isUsingEarlyOrderLimit ? 'text-amber-800' : 'text-gray-800'}`}>
+                    {orderLimitProfile.isUsingEarlyOrderLimit ? 'Early-order limit still applies' : 'Standard order limit'}
+                  </p>
+                  <p className={`text-sm mt-1 ${orderLimitProfile.isUsingEarlyOrderLimit ? 'text-amber-700' : 'text-gray-600'}`}>
+                    {orderLimitMessage(orderLimitProfile)}
+                  </p>
+                  {orderLimitProfile.isUsingEarlyOrderLimit && (
+                    <p className="text-xs text-amber-700 mt-2">
+                      This lighter cap stays active for the first {orderLimitProfile.earlyOrderLimitCount} orders.
+                    </p>
+                  )}
+                </div>
+              )}
 
               <div className="bg-white border border-gray-200 rounded-xl p-4">
                 <p className="text-base font-semibold text-gray-900">Choose what you want to do</p>
@@ -757,9 +909,9 @@ function RecordSaleModal({ onClose, onRecorded }) {
 
           {step === 3 && (
             <form onSubmit={handleSubmit} className="space-y-5">
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 text-sm">
-                <div className="bg-gray-50 rounded-lg px-3 py-3">
-                  <p className="text-gray-500">Customer</p>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 text-sm">
+                  <div className="bg-gray-50 rounded-lg px-3 py-3">
+                    <p className="text-gray-500">Customer</p>
                   <p className="font-medium text-gray-900">{selectedCustomer?.name}</p>
                 </div>
                 <div className="bg-gray-50 rounded-lg px-3 py-3">
@@ -789,6 +941,34 @@ function RecordSaleModal({ onClose, onRecorded }) {
                   <p className="text-sm text-blue-700 mt-1">
                     Enter what the customer bought and choose how they paid.
                   </p>
+                </div>
+              )}
+
+              {workflow === 'DIRECT' && orderLimitProfile && (
+                <div className={`rounded-xl p-4 ${needsLimitOverride ? 'bg-red-50 border border-red-200' : orderLimitProfile.isUsingEarlyOrderLimit ? 'bg-amber-50' : 'bg-gray-50'}`}>
+                  <p className={`text-sm font-semibold ${needsLimitOverride ? 'text-red-800' : orderLimitProfile.isUsingEarlyOrderLimit ? 'text-amber-800' : 'text-gray-800'}`}>
+                    {needsLimitOverride ? 'This sale is above the customer limit' : 'Customer sale limit'}
+                  </p>
+                  <p className={`text-sm mt-1 ${needsLimitOverride ? 'text-red-700' : orderLimitProfile.isUsingEarlyOrderLimit ? 'text-amber-700' : 'text-gray-600'}`}>
+                    {orderLimitMessage(orderLimitProfile)}
+                  </p>
+                  {needsLimitOverride && (
+                    <div className="mt-3 space-y-2">
+                      <label className="block text-sm font-medium text-red-900">
+                        Why are you overriding this limit?
+                      </label>
+                      <textarea
+                        value={limitOverrideNote}
+                        onChange={(e) => setLimitOverrideNote(e.target.value)}
+                        rows={3}
+                        placeholder="Explain why this sale is going above the customer limit."
+                        className="w-full border border-red-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-400 focus:border-red-400 outline-none"
+                      />
+                      <p className="text-xs text-red-700">
+                        Your note and your staff name will be saved with this sale.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1015,6 +1195,13 @@ function SaleDetailModal({ sale, onClose }) {
                 {sale.recordedBy ? `${sale.recordedBy.firstName} ${sale.recordedBy.lastName}` : '—'}
               </p>
             </div>
+            {sale.limitOverride && (
+              <div>
+                <p className="text-gray-400">Limit override</p>
+                <p className="font-medium text-gray-900">{sale.limitOverride.by || 'Recorded override'}</p>
+                {sale.limitOverride.at && <p className="text-xs text-gray-500">{formatDate(sale.limitOverride.at)}</p>}
+              </div>
+            )}
             {sale.booking && (
               <div>
                 <p className="text-gray-400">Booking</p>
@@ -1032,6 +1219,13 @@ function SaleDetailModal({ sale, onClose }) {
               </div>
             )}
           </div>
+
+          {sale.limitOverride?.note && (
+            <div className="bg-amber-50 rounded-lg p-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-amber-800">Limit Override Note</p>
+              <p className="text-sm text-amber-900 mt-1 whitespace-pre-wrap">{sale.limitOverride.note}</p>
+            </div>
+          )}
 
           {sale.lineItems && sale.lineItems.length > 0 && (
             <div>
