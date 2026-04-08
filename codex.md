@@ -1338,3 +1338,21 @@ Minimum update format:
 - Staging verification completed:
   - staging portal route returned `200 OK`
   - staging API health returned `ok`
+
+## 2026-04-08 — Demo data strategy
+
+- A scenario-driven demo data plan now exists at:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/DEMO_DATA_PLAN.md`
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/DEMO_DATA_PLAN.md`
+- Strategy decision:
+  - keep `seed.js` minimal for system setup
+  - add a separate staging-only demo seed later
+  - prefer a small set of realistic business stories over a large noisy dataset
+- Planned demo dataset should cover:
+  - open, received, and closed batches
+  - booking payments and allocation
+  - direct sales, booking pickups, cash, transfer, and POS flows
+  - buy-now requests
+  - crack/write-off pressure
+  - above-target and below-target batch performance
+  - meaningful portal order history
