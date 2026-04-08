@@ -509,7 +509,6 @@ function ReceiptsReport({ data }) {
 
   const selectedReceipt = filteredReceipts.find((receipt) => receipt.id === selectedReceiptId)
     || data.receipts.find((receipt) => receipt.id === selectedReceiptId)
-    || filteredReceipts[0]
     || null;
 
   const directCount = data.receipts.filter((receipt) => receipt.sourceType === 'DIRECT').length;
@@ -517,12 +516,8 @@ function ReceiptsReport({ data }) {
   const linkedMoneyTrailCount = data.receipts.filter((receipt) => receipt.paymentTransaction).length;
 
   useEffect(() => {
-    if (!selectedReceiptId && filteredReceipts[0]?.id) {
-      setSelectedReceiptId(filteredReceipts[0].id);
-      return;
-    }
     if (selectedReceiptId && !filteredReceipts.some((receipt) => receipt.id === selectedReceiptId)) {
-      setSelectedReceiptId(filteredReceipts[0]?.id || '');
+      setSelectedReceiptId('');
     }
   }, [filteredReceipts, selectedReceiptId]);
 
@@ -621,13 +616,38 @@ function ReceiptsReport({ data }) {
         )}
       </Panel>
 
-      <Panel title="Receipt detail" body="This is the full view of the selected receipt, including line items and payment trail.">
-        {selectedReceipt ? (
-          <ReceiptDetailCard receipt={selectedReceipt} />
-        ) : (
-          <EmptyPanel text="Open a receipt from the log to see the full detail." />
-        )}
-      </Panel>
+      {selectedReceipt && (
+        <ReceiptDetailModal receipt={selectedReceipt} onClose={() => setSelectedReceiptId('')} />
+      )}
+    </div>
+  );
+}
+
+function ReceiptDetailModal({ receipt, onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-4" onClick={onClose}>
+      <div
+        className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-2xl bg-white shadow-xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-gray-100 px-4 py-4 sm:px-6">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Receipt {receipt.receiptNumber}</h3>
+            <p className="mt-1 text-sm text-gray-500">{formatDateTime(receipt.saleDate)}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-800"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="p-4 sm:p-6">
+          <ReceiptDetailCard receipt={receipt} />
+        </div>
+      </div>
     </div>
   );
 }

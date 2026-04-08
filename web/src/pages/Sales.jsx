@@ -35,6 +35,17 @@ function formatDate(d) {
   });
 }
 
+function formatDateTime(d) {
+  if (!d) return '—';
+  return new Date(d).toLocaleString('en-NG', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -1160,13 +1171,218 @@ function RecordSaleModal({ onClose, onRecorded }) {
 function SaleDetailModal({ sale, onClose }) {
   const profit = sale.totalAmount - sale.totalCost;
 
+  function customerLineItems(currentSale) {
+    return (currentSale.lineItems || []).map((lineItem) => ({
+      label: `Crate of Eggs${lineItem.batchEggCode?.code ? ` (${lineItem.batchEggCode.code})` : ''} (${SALE_TYPE_LABELS[lineItem.saleType] || lineItem.saleType})`,
+      quantity: lineItem.quantity,
+      unitPrice: lineItem.unitPrice,
+      lineTotal: lineItem.lineTotal,
+    }));
+  }
+
+  function handleCustomerPrint() {
+    if (typeof window === 'undefined') return;
+    const printWindow = window.open('', '_blank', 'width=420,height=900');
+    if (!printWindow) return;
+
+    const rows = customerLineItems(sale).map((lineItem) => `
+      <tr>
+        <td class="item">
+          <div class="name">${lineItem.label}</div>
+          <div class="meta">${lineItem.quantity} x ${formatCurrency(lineItem.unitPrice)}</div>
+        </td>
+        <td class="amount">${formatCurrency(lineItem.lineTotal)}</td>
+      </tr>
+    `).join('');
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Customer Receipt ${sale.receiptNumber}</title>
+          <style>
+            @page { size: 80mm auto; margin: 6mm; }
+            body {
+              margin: 0;
+              font-family: Arial, Helvetica, sans-serif;
+              color: #111827;
+              background: #ffffff;
+            }
+            .receipt {
+              width: 72mm;
+              margin: 0 auto;
+              padding: 2mm 0;
+              font-size: 13px;
+              line-height: 1.5;
+            }
+            .center { text-align: center; }
+            .hero-amount {
+              font-size: 18px;
+              font-weight: 700;
+              margin-bottom: 2px;
+            }
+            .hero-label {
+              font-size: 11px;
+              color: #6b7280;
+            }
+            .rule {
+              border-top: 1px solid #d1d5db;
+              margin: 10px 0;
+            }
+            .meta-row {
+              display: flex;
+              justify-content: space-between;
+              gap: 12px;
+              margin: 4px 0;
+            }
+            .meta-stack {
+              margin: 6px 0;
+            }
+            .meta-stack-label {
+              color: #374151;
+              font-weight: 400;
+              margin-bottom: 2px;
+            }
+            .meta-stack-value {
+              font-weight: 500;
+            }
+            .muted {
+              color: #6b7280;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+            }
+            td {
+              vertical-align: top;
+              padding: 5px 0;
+            }
+            .item {
+              width: 70%;
+            }
+            .amount {
+              width: 30%;
+              text-align: right;
+              white-space: nowrap;
+              font-weight: 600;
+            }
+            .name {
+              font-weight: 500;
+              font-size: 13px;
+            }
+            .meta {
+              color: #6b7280;
+              font-size: 12px;
+            }
+            .summary-row td {
+              padding: 3px 0;
+            }
+            .summary-label {
+              color: #4b5563;
+            }
+            .summary-value {
+              text-align: right;
+              font-weight: 600;
+            }
+            .total-row td {
+              padding-top: 6px;
+              font-size: 14px;
+              font-weight: 700;
+            }
+            .footer-row {
+              display: flex;
+              justify-content: space-between;
+              gap: 12px;
+              margin-top: 8px;
+              color: #6b7280;
+              font-size: 12px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="receipt">
+            <div class="center">
+              <div class="hero-amount">${formatCurrency(sale.totalAmount)}</div>
+              <div class="hero-label">Total</div>
+            </div>
+
+            <div class="rule"></div>
+
+            <div class="meta-stack">
+              <div class="meta-stack-label">Employee: ${sale.recordedBy ? `${sale.recordedBy.firstName} ${sale.recordedBy.lastName}` : '—'}</div>
+              <div class="meta-stack-value">POS: Shop Floor POS</div>
+            </div>
+            
+            <div class="rule"></div>
+
+            <div class="meta-stack">
+              <div class="meta-stack-label">Customer: ${sale.customer?.name || 'Walk-in customer'}</div>
+              ${sale.customer?.phone ? `<div class="meta-stack-value">${sale.customer.phone}</div>` : ''}
+            </div>
+
+            <div class="rule"></div>
+
+            <table>
+              <tbody>${rows}</tbody>
+            </table>
+
+            <div class="rule"></div>
+
+            <table>
+              <tbody>
+                <tr class="summary-row">
+                  <td class="summary-label">Subtotal</td>
+                  <td class="summary-value">${formatCurrency(sale.totalAmount)}</td>
+                </tr>
+                <tr class="summary-row total-row">
+                  <td class="summary-label">Total</td>
+                  <td class="summary-value">${formatCurrency(sale.totalAmount)}</td>
+                </tr>
+                <tr class="summary-row">
+                  <td class="summary-label">Amount due</td>
+                  <td class="summary-value">${formatCurrency(0)}</td>
+                </tr>
+                <tr class="summary-row">
+                  <td class="summary-label">${PAYMENT_LABELS[sale.paymentMethod] || sale.paymentMethod}</td>
+                  <td class="summary-value">${formatCurrency(sale.totalAmount)}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div class="rule"></div>
+
+            <div class="footer-row">
+              <span>${formatDateTime(sale.saleDate)}</span>
+              <span>No ${sale.receiptNumber}</span>
+            </div>
+          </div>
+          <script>
+            window.onload = function () {
+              window.focus();
+              window.print();
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  }
+
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-3 sm:p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="px-4 sm:px-6 py-4 border-b border-gray-100">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">Receipt {sale.receiptNumber}</h2>
-            <span className="text-sm text-gray-400">{formatDate(sale.saleDate)}</span>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Receipt {sale.receiptNumber}</h2>
+              <span className="text-sm text-gray-400">{formatDate(sale.saleDate)}</span>
+            </div>
+            <button
+              type="button"
+              onClick={handleCustomerPrint}
+              className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700"
+            >
+              Print customer receipt
+            </button>
           </div>
         </div>
 
