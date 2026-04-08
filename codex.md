@@ -1451,3 +1451,23 @@ Minimum update format:
   - backend booking creation
   - banking customer-booking allocation
 - Internal booking screens now show the current per-order limit from the live policy instead of relying on the old new/returning customer flag.
+
+## 2026-04-08 — Customer receipt and thermal print
+
+- Receipts now have two layers in the reports module:
+  - an internal receipt with audit detail for staff
+  - a customer receipt with only buyer-facing information
+- The customer receipt intentionally excludes:
+  - cost
+  - gross profit
+  - money trail / linked bank account
+  - recorded-by staff detail
+  - internal batch audit context
+- The customer receipt keeps:
+  - receipt number
+  - date/time
+  - customer name and phone when available
+  - payment method
+  - customer-facing line items
+  - quantity and total paid
+- Added a thermal-printer-friendly print layout sized for typical 80mm receipt printers.

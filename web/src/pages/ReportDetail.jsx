@@ -633,7 +633,16 @@ function ReceiptsReport({ data }) {
 }
 
 function ReceiptDetailCard({ receipt }) {
-  function handlePrint() {
+  function customerLineItems(receipt) {
+    return (receipt.lineItems || []).map((lineItem) => ({
+      label: lineItem.itemLabel,
+      quantity: lineItem.quantity,
+      unitPrice: lineItem.unitPrice,
+      lineTotal: lineItem.lineTotal,
+    }));
+  }
+
+  function handleInternalPrint() {
     if (typeof window === 'undefined') return;
     const printWindow = window.open('', '_blank', 'width=900,height=700');
     if (!printWindow) return;
@@ -711,6 +720,127 @@ function ReceiptDetailCard({ receipt }) {
     printWindow.print();
   }
 
+  function handleCustomerPrint() {
+    if (typeof window === 'undefined') return;
+    const printWindow = window.open('', '_blank', 'width=420,height=900');
+    if (!printWindow) return;
+
+    const rows = customerLineItems(receipt).map((lineItem) => `
+      <tr>
+        <td class="item">
+          <div class="name">${lineItem.label}</div>
+          <div class="meta">${lineItem.quantity} x ${formatCurrency(lineItem.unitPrice)}</div>
+        </td>
+        <td class="amount">${formatCurrency(lineItem.lineTotal)}</td>
+      </tr>
+    `).join('');
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Customer Receipt ${receipt.receiptNumber}</title>
+          <style>
+            @page { size: 80mm auto; margin: 6mm; }
+            body {
+              margin: 0;
+              font-family: "Courier New", Courier, monospace;
+              color: #111;
+              background: #fff;
+            }
+            .receipt {
+              width: 72mm;
+              margin: 0 auto;
+              padding: 2mm 0;
+              font-size: 12px;
+              line-height: 1.45;
+            }
+            .center { text-align: center; }
+            .title { font-size: 16px; font-weight: 700; }
+            .muted { color: #444; }
+            .rule {
+              border-top: 1px dashed #000;
+              margin: 8px 0;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+            }
+            td {
+              vertical-align: top;
+              padding: 4px 0;
+            }
+            .item { width: 70%; }
+            .amount {
+              width: 30%;
+              text-align: right;
+              white-space: nowrap;
+            }
+            .name { font-weight: 700; }
+            .meta { color: #444; font-size: 11px; }
+            .summary-row td {
+              padding: 2px 0;
+            }
+            .summary-row .label { color: #444; }
+            .summary-row .value {
+              text-align: right;
+              white-space: nowrap;
+            }
+            .total {
+              font-size: 14px;
+              font-weight: 700;
+            }
+            .thanks {
+              margin-top: 10px;
+              text-align: center;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="receipt">
+            <div class="center">
+              <div class="title">Fresh Eggs Market</div>
+              <div class="muted">Customer Receipt</div>
+            </div>
+            <div class="rule"></div>
+            <div><strong>Receipt No:</strong> ${receipt.receiptNumber}</div>
+            <div><strong>Date:</strong> ${formatDateTime(receipt.saleDate)}</div>
+            <div><strong>Customer:</strong> ${receipt.customer?.name || 'Walk-in customer'}</div>
+            ${receipt.customer?.phone ? `<div><strong>Phone:</strong> ${receipt.customer.phone}</div>` : ''}
+            <div><strong>Payment:</strong> ${PAYMENT_LABELS[receipt.paymentMethod] || receipt.paymentMethod}</div>
+            <div class="rule"></div>
+            <table>
+              <tbody>${rows}</tbody>
+            </table>
+            <div class="rule"></div>
+            <table>
+              <tbody>
+                <tr class="summary-row">
+                  <td class="label">Crates</td>
+                  <td class="value">${receipt.totalQuantity}</td>
+                </tr>
+                <tr class="summary-row total">
+                  <td class="label">Total Paid</td>
+                  <td class="value">${formatCurrency(receipt.totalAmount)}</td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="rule"></div>
+            <div class="thanks">
+              Thank you for your purchase.
+            </div>
+          </div>
+          <script>
+            window.onload = function () {
+              window.focus();
+              window.print();
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -723,10 +853,102 @@ function ReceiptDetailCard({ receipt }) {
         </div>
         <button
           type="button"
-          onClick={handlePrint}
+          onClick={handleCustomerPrint}
           className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
         >
-          Print receipt
+          Print customer receipt
+        </button>
+      </div>
+
+      <div className="rounded-2xl border border-green-200 bg-green-50 p-5">
+        <div className="flex flex-col gap-3 border-b border-green-100 pb-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-green-700">Customer receipt</p>
+            <h4 className="mt-2 text-lg font-semibold text-gray-900">Simple receipt for the buyer</h4>
+            <p className="mt-1 text-sm text-gray-600">
+              This version keeps only the sale details a customer typically needs: receipt number, date, items, quantity, payment method, and total paid.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleCustomerPrint}
+            className="rounded-lg border border-green-300 bg-white px-4 py-2 text-sm font-medium text-green-700 hover:bg-green-100"
+          >
+            Thermal print
+          </button>
+        </div>
+
+        <div className="mx-auto mt-5 max-w-md rounded-2xl border border-dashed border-green-200 bg-white p-5 shadow-sm">
+          <div className="text-center">
+            <p className="text-lg font-bold text-gray-900">Fresh Eggs Market</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-gray-500">Customer Receipt</p>
+          </div>
+
+          <div className="mt-4 space-y-1 text-sm">
+            <div className="flex items-start justify-between gap-4">
+              <span className="text-gray-500">Receipt No</span>
+              <span className="font-medium text-gray-900">{receipt.receiptNumber}</span>
+            </div>
+            <div className="flex items-start justify-between gap-4">
+              <span className="text-gray-500">Date</span>
+              <span className="font-medium text-gray-900">{formatDateTime(receipt.saleDate)}</span>
+            </div>
+            <div className="flex items-start justify-between gap-4">
+              <span className="text-gray-500">Customer</span>
+              <span className="text-right font-medium text-gray-900">{receipt.customer?.name || 'Walk-in customer'}</span>
+            </div>
+            {receipt.customer?.phone && (
+              <div className="flex items-start justify-between gap-4">
+                <span className="text-gray-500">Phone</span>
+                <span className="font-medium text-gray-900">{receipt.customer.phone}</span>
+              </div>
+            )}
+            <div className="flex items-start justify-between gap-4">
+              <span className="text-gray-500">Payment</span>
+              <span className="font-medium text-gray-900">{PAYMENT_LABELS[receipt.paymentMethod] || receipt.paymentMethod}</span>
+            </div>
+          </div>
+
+          <div className="my-4 border-t border-dashed border-gray-300" />
+
+          <div className="space-y-3">
+            {customerLineItems(receipt).map((lineItem, index) => (
+              <div key={`${lineItem.label}-${index}`} className="flex items-start justify-between gap-4 text-sm">
+                <div>
+                  <p className="font-medium text-gray-900">{lineItem.label}</p>
+                  <p className="text-xs text-gray-500">{lineItem.quantity} x {formatCurrency(lineItem.unitPrice)}</p>
+                </div>
+                <p className="font-semibold text-gray-900">{formatCurrency(lineItem.lineTotal)}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="my-4 border-t border-dashed border-gray-300" />
+
+          <div className="space-y-1 text-sm">
+            <div className="flex items-start justify-between gap-4">
+              <span className="text-gray-500">Crates</span>
+              <span className="font-medium text-gray-900">{receipt.totalQuantity}</span>
+            </div>
+            <div className="flex items-start justify-between gap-4 text-base">
+              <span className="font-semibold text-gray-900">Total paid</span>
+              <span className="font-bold text-gray-900">{formatCurrency(receipt.totalAmount)}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">Internal receipt</p>
+          <p className="mt-1 text-sm text-gray-500">This version keeps the admin-level audit detail for staff review.</p>
+        </div>
+        <button
+          type="button"
+          onClick={handleInternalPrint}
+          className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        >
+          Print internal receipt
         </button>
       </div>
 
