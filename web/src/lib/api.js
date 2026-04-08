@@ -37,15 +37,19 @@ class ApiClient {
     });
 
     // If 401 and we have a refresh token, try refreshing
-    if (res.status === 401 && this.refreshToken) {
-      const refreshed = await this.tryRefresh();
-      if (refreshed) {
-        headers['Authorization'] = `Bearer ${this.accessToken}`;
-        res = await fetch(`${API_BASE}${path}`, {
-          method,
-          headers,
-          body: body ? JSON.stringify(body) : null,
-        });
+    if (res.status === 401) {
+      if (this.refreshToken) {
+        const refreshed = await this.tryRefresh();
+        if (refreshed) {
+          headers['Authorization'] = `Bearer ${this.accessToken}`;
+          res = await fetch(`${API_BASE}${path}`, {
+            method,
+            headers,
+            body: body ? JSON.stringify(body) : null,
+          });
+        }
+      } else {
+        this.clearTokens();
       }
     }
 

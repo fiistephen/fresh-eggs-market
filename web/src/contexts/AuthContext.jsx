@@ -5,6 +5,7 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
+    if (!localStorage.getItem('accessToken')) return null;
     const stored = localStorage.getItem('user');
     return stored ? JSON.parse(stored) : null;
   });
@@ -24,6 +25,8 @@ export function AuthProvider({ children }) {
         })
         .finally(() => setLoading(false));
     } else {
+      localStorage.removeItem('user');
+      setUser(null);
       setLoading(false);
     }
   }, []);
