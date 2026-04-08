@@ -5,6 +5,7 @@ import { api } from '../lib/api';
 const fmt = (n) => Number(n || 0).toLocaleString('en-NG');
 const fmtMoney = (n) => '₦' + Number(n || 0).toLocaleString('en-NG', { minimumFractionDigits: 0 });
 const fmtDate = (d) => new Date(d).toLocaleDateString('en-NG', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+const fmtDateTime = (d) => new Date(d).toLocaleString('en-NG', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 
 function SectionCard({ title, body, action, active, onClick, accent = 'green' }) {
   const activeClasses = active
@@ -488,63 +489,228 @@ function ModalShell({ title, children, onClose }) {
 }
 
 function MyActivity({ bookings, requests, loading }) {
+  const [selectedOrder, setSelectedOrder] = useState(null);
+
+  function getOrderSummary(order) {
+    if (order.kind === 'BOOKING') {
+      if (order.status === 'PICKED_UP') return 'Completed';
+      if (order.status === 'CANCELLED') return 'Cancelled';
+      return order.batchArrived ? 'Batch arrived' : 'Waiting for batch';
+    }
+
+    if (order.status === 'FULFILLED') return 'Completed';
+    if (order.status === 'CANCELLED') return 'Cancelled';
+    return 'Waiting for team';
+  }
+
+  function getNextStep(order) {
+    if (order.kind === 'BOOKING') {
+      if (order.status === 'PICKED_UP') return 'This booking has already been collected.';
+      if (order.status === 'CANCELLED') return 'This booking is no longer active.';
+      if (order.batchArrived) return 'Your batch has arrived. The team can now prepare pickup.';
+      if (order.balance > 0) return 'Complete the remaining payment before pickup.';
+      return 'Wait for the team to confirm when the batch arrives.';
+    }
+
+    if (order.status === 'FULFILLED') return 'This request has already been handled.';
+    if (order.status === 'CANCELLED') return 'This request is no longer active.';
+    return 'The team will confirm stock, pickup, and payment steps.';
+  }
+
   const items = useMemo(() => {
     const bookingItems = bookings.map((booking) => ({
       kind: 'BOOKING',
       id: booking.id,
       title: booking.batch,
       subtitle: booking.eggTypeLabel,
-      date: booking.createdAt,
+      orderedOn: booking.createdAt,
+      updatedAt: booking.updatedAt,
       status: booking.status,
       quantity: booking.quantity,
-      meta: booking.balance > 0 ? `Balance: ${fmtMoney(booking.balance)}` : 'Fully paid',
+      orderValue: booking.orderValue,
+      amountPaid: booking.amountPaid,
+      balance: booking.balance,
+      paymentPercent: booking.paymentPercent,
+      expectedDate: booking.expectedDate,
+      batchArrivalDate: booking.batchArrivalDate,
+      batchArrived: booking.batchArrived,
+      batchStatus: booking.batchStatus,
+      channel: booking.channel,
+      notes: booking.notes,
+      paymentText: booking.balance > 0 ? `${fmtMoney(booking.amountPaid)} paid · ${fmtMoney(booking.balance)} left` : 'Fully paid',
     }));
     const requestItems = requests.map((request) => ({
       kind: 'BUY_NOW',
       id: request.id,
       title: request.batch,
       subtitle: request.eggTypeLabel,
-      date: request.createdAt,
+      orderedOn: request.createdAt,
+      updatedAt: request.updatedAt,
       status: request.status,
       quantity: request.quantity,
-      meta: `${request.priceType.toLowerCase()} · ${fmtMoney(request.estimatedTotal)}`,
+      unitPrice: request.unitPrice,
+      estimatedTotal: request.estimatedTotal,
+      expectedDate: request.expectedDate,
+      batchArrivalDate: request.receivedDate,
+      batchArrived: request.batchArrived,
+      priceType: request.priceType,
+      notes: request.notes,
+      paymentText: 'Payment will be confirmed by the team',
     }));
-    return [...bookingItems, ...requestItems].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    return [...bookingItems, ...requestItems]
+      .map((item) => ({
+        ...item,
+        summaryStatus: getOrderSummary(item),
+        nextStep: getNextStep(item),
+      }))
+      .sort((a, b) => new Date(b.orderedOn) - new Date(a.orderedOn));
   }, [bookings, requests]);
 
   if (loading) {
-    return <div className="rounded-2xl border border-gray-200 bg-white px-6 py-12 text-center text-sm text-gray-500">Loading your activity…</div>;
+    return <div className="rounded-2xl border border-gray-200 bg-white px-6 py-12 text-center text-sm text-gray-500">Loading your orders…</div>;
   }
 
   if (items.length === 0) {
-    return <EmptyState title="No activity yet" body="Your bookings and same-day requests will appear here." />;
+    return <EmptyState title="No orders yet" body="Your bookings and same-day requests will appear here." />;
   }
 
   return (
-    <div className="space-y-3">
-      {items.map((item) => (
-        <div key={`${item.kind}-${item.id}`} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${item.kind === 'BUY_NOW' ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800'}`}>
-                  {item.kind === 'BUY_NOW' ? 'Buy now request' : 'Upcoming booking'}
-                </span>
-                <span className="text-xs text-gray-400">{fmtDate(item.date)}</span>
-              </div>
-              <h3 className="mt-2 text-lg font-semibold text-gray-900">{item.title}</h3>
-              <p className="text-sm text-gray-500">{item.subtitle}</p>
-            </div>
-            <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">{String(item.status).replaceAll('_', ' ').toLowerCase()}</span>
-          </div>
-          <div className="mt-3 grid grid-cols-2 gap-3 rounded-2xl bg-gray-50 p-3 text-sm md:grid-cols-3">
-            <Metric label="Quantity" value={`${item.quantity} crates`} />
-            <Metric label="Status note" value={item.meta} />
-            <Metric label="Next step" value={item.kind === 'BUY_NOW' ? 'Team will confirm pickup' : 'Watch for batch arrival'} />
-          </div>
+    <>
+      <div className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200 text-sm">
+            <thead className="bg-gray-50 text-left text-xs uppercase tracking-[0.16em] text-gray-500">
+              <tr>
+                <th className="px-5 py-4 font-medium">Order</th>
+                <th className="px-5 py-4 font-medium">Type</th>
+                <th className="px-5 py-4 font-medium">Ordered</th>
+                <th className="px-5 py-4 font-medium">Status</th>
+                <th className="px-5 py-4 font-medium">Payment</th>
+                <th className="px-5 py-4 font-medium text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {items.map((item) => (
+                <tr key={`${item.kind}-${item.id}`} className="hover:bg-gray-50">
+                  <td className="px-5 py-4">
+                    <div className="font-semibold text-gray-900">{item.title}</div>
+                    <div className="mt-1 text-xs text-gray-500">{item.subtitle}</div>
+                    <div className="mt-1 text-xs text-gray-400">{item.quantity} crates</div>
+                  </td>
+                  <td className="px-5 py-4 text-gray-600">{item.kind === 'BOOKING' ? 'Upcoming booking' : 'Buy now request'}</td>
+                  <td className="px-5 py-4 text-gray-600">{fmtDate(item.orderedOn)}</td>
+                  <td className="px-5 py-4">
+                    <div className="inline-flex rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
+                      {item.summaryStatus}
+                    </div>
+                  </td>
+                  <td className="px-5 py-4 text-gray-600">{item.paymentText}</td>
+                  <td className="px-5 py-4 text-right">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedOrder(item)}
+                      className="rounded-xl border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                    >
+                      View details
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-      ))}
-    </div>
+      </div>
+
+      {selectedOrder && (
+        <ModalShell title="Order details" onClose={() => setSelectedOrder(null)}>
+          <div className="space-y-4 text-sm">
+            <div className="rounded-2xl border border-green-200 bg-green-50 px-4 py-4 text-green-900">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-green-700">
+                    {selectedOrder.kind === 'BOOKING' ? 'Upcoming booking' : 'Buy now request'}
+                  </p>
+                  <h4 className="mt-1 text-lg font-semibold text-gray-900">{selectedOrder.title}</h4>
+                  <p className="text-sm text-gray-600">{selectedOrder.subtitle}</p>
+                </div>
+                <div className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-gray-700">
+                  {selectedOrder.summaryStatus}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-3 rounded-2xl bg-gray-50 p-4 md:grid-cols-2">
+              <Metric label="Quantity" value={`${selectedOrder.quantity} crates`} />
+              <Metric label="Ordered on" value={fmtDateTime(selectedOrder.orderedOn)} />
+              <Metric label="Last updated" value={fmtDateTime(selectedOrder.updatedAt || selectedOrder.orderedOn)} />
+              <Metric label="Expected batch date" value={selectedOrder.expectedDate ? fmtDate(selectedOrder.expectedDate) : 'Not available'} />
+            </div>
+
+            {selectedOrder.kind === 'BOOKING' ? (
+              <div className="grid gap-3 rounded-2xl bg-white p-4 md:grid-cols-2">
+                <Metric label="Order value" value={fmtMoney(selectedOrder.orderValue)} />
+                <Metric label="Payment made" value={fmtMoney(selectedOrder.amountPaid)} />
+                <Metric label="Payment remaining" value={fmtMoney(selectedOrder.balance)} />
+                <Metric label="Payment progress" value={`${selectedOrder.paymentPercent || 0}% paid`} />
+                <Metric label="Booking status" value={String(selectedOrder.status).replaceAll('_', ' ').toLowerCase()} />
+                <Metric label="Batch status" value={selectedOrder.batchArrived ? `Arrived${selectedOrder.batchArrivalDate ? ` on ${fmtDate(selectedOrder.batchArrivalDate)}` : ''}` : 'Not yet arrived'} />
+              </div>
+            ) : (
+              <div className="grid gap-3 rounded-2xl bg-white p-4 md:grid-cols-2">
+                <Metric label="Price type" value={String(selectedOrder.priceType || '').toLowerCase()} />
+                <Metric label="Price per crate" value={fmtMoney(selectedOrder.unitPrice)} />
+                <Metric label="Estimated total" value={fmtMoney(selectedOrder.estimatedTotal)} />
+                <Metric label="Request status" value={String(selectedOrder.status).replaceAll('_', ' ').toLowerCase()} />
+                <Metric label="Batch availability" value={selectedOrder.batchArrived ? `Available since ${fmtDate(selectedOrder.batchArrivalDate)}` : 'Waiting for stock'} />
+                <Metric label="Payment status" value="Team confirms payment when handling the request" />
+              </div>
+            )}
+
+            <div className="rounded-2xl border border-gray-200 bg-white p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">What happens next</p>
+              <p className="mt-2 text-sm leading-6 text-gray-700">{selectedOrder.nextStep}</p>
+            </div>
+
+            <div className="rounded-2xl border border-gray-200 bg-white p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">Dates and notes</p>
+              <div className="mt-3 space-y-2 text-sm text-gray-700">
+                <div className="flex items-start justify-between gap-4">
+                  <span className="text-gray-500">Order created</span>
+                  <span className="text-right font-medium">{fmtDateTime(selectedOrder.orderedOn)}</span>
+                </div>
+                <div className="flex items-start justify-between gap-4">
+                  <span className="text-gray-500">Last updated</span>
+                  <span className="text-right font-medium">{fmtDateTime(selectedOrder.updatedAt || selectedOrder.orderedOn)}</span>
+                </div>
+                <div className="flex items-start justify-between gap-4">
+                  <span className="text-gray-500">Expected batch date</span>
+                  <span className="text-right font-medium">{selectedOrder.expectedDate ? fmtDate(selectedOrder.expectedDate) : 'Not available'}</span>
+                </div>
+                <div className="flex items-start justify-between gap-4">
+                  <span className="text-gray-500">Batch arrived</span>
+                  <span className="text-right font-medium">
+                    {selectedOrder.batchArrived
+                      ? selectedOrder.batchArrivalDate
+                        ? fmtDateTime(selectedOrder.batchArrivalDate)
+                        : 'Yes'
+                      : 'Not yet'}
+                  </span>
+                </div>
+                <div className="flex items-start justify-between gap-4">
+                  <span className="text-gray-500">Channel</span>
+                  <span className="text-right font-medium">{selectedOrder.kind === 'BOOKING' ? (selectedOrder.channel || 'website') : 'portal request'}</span>
+                </div>
+                <div className="pt-2">
+                  <p className="text-gray-500">Note</p>
+                  <p className="mt-1 leading-6 text-gray-700">{selectedOrder.notes || 'No extra note was added to this order.'}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </ModalShell>
+      )}
+    </>
   );
 }
 

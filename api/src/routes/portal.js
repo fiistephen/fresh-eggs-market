@@ -306,7 +306,7 @@ export default async function portalRoutes(fastify) {
       const bookings = await prisma.booking.findMany({
         where: { customerId: customer.id },
         include: {
-          batch: { select: { id: true, name: true, expectedDate: true, status: true, wholesalePrice: true, eggTypeKey: true } },
+          batch: { select: { id: true, name: true, expectedDate: true, receivedDate: true, status: true, wholesalePrice: true, eggTypeKey: true } },
           batchEggCode: { select: { id: true, code: true, wholesalePrice: true } },
         },
         orderBy: { createdAt: 'desc' },
@@ -317,18 +317,26 @@ export default async function portalRoutes(fastify) {
         customerId: customer.id,
         bookings: bookings.map(b => ({
           id: b.id,
+          orderType: 'BOOKING',
           batch: b.batch.name,
           eggTypeLabel: getCustomerEggTypeLabel(eggTypes, b.batch.eggTypeKey || 'REGULAR'),
           batchStatus: b.batch.status,
+          batchArrived: b.batch.status !== 'OPEN',
+          batchArrivalDate: b.batch.receivedDate,
           itemCode: b.batchEggCode?.code || null,
           expectedDate: b.batch.expectedDate,
           quantity: b.quantity,
           orderValue: Number(b.orderValue),
           amountPaid: Number(b.amountPaid),
           balance: Number(b.orderValue) - Number(b.amountPaid),
+          paymentPercent: b.orderValue > 0
+            ? Math.round((Number(b.amountPaid) / Number(b.orderValue)) * 100)
+            : 0,
           status: b.status,
           channel: b.channel,
+          notes: b.notes,
           createdAt: b.createdAt,
+          updatedAt: b.updatedAt,
         })),
       });
     },
@@ -353,11 +361,13 @@ export default async function portalRoutes(fastify) {
         customerId: customer.id,
         requests: requests.map((entry) => ({
           id: entry.id,
+          orderType: 'BUY_NOW',
           batchId: entry.batchId,
           batch: entry.batch.name,
           eggTypeLabel: getCustomerEggTypeLabel(eggTypes, entry.batch.eggTypeKey || 'REGULAR'),
           expectedDate: entry.batch.expectedDate,
           receivedDate: entry.batch.receivedDate,
+          batchArrived: Boolean(entry.batch.receivedDate),
           quantity: entry.quantity,
           priceType: entry.priceType,
           unitPrice: Number(entry.unitPrice),
@@ -365,6 +375,7 @@ export default async function portalRoutes(fastify) {
           status: entry.status,
           notes: entry.notes,
           createdAt: entry.createdAt,
+          updatedAt: entry.updatedAt,
         })),
       });
     },
