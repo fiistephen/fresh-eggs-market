@@ -37,6 +37,10 @@ function normalizeEmail(value) {
   return email || null;
 }
 
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+}
+
 function normalizePhone(value) {
   return String(value || '').replace(/\s+/g, '').trim();
 }
@@ -80,11 +84,9 @@ function mapPortalBatch(batch, eggTypes, extra = {}) {
   };
 }
 
-function buildPortalCustomerEmail(user, customer) {
-  const email = normalizeEmail(user?.email || customer?.email);
-  if (email) return email;
-  const phoneDigits = String(customer?.phone || user?.phone || 'portalcustomer').replace(/\D+/g, '');
-  return `${phoneDigits || 'portalcustomer'}@portal.fresheggs.local`;
+function buildPortalCustomerEmail(user, customer, checkoutEmail = null) {
+  const email = normalizeEmail(checkoutEmail || user?.email || customer?.email);
+  return email || null;
 }
 
 function getRequestOrigin(request) {
@@ -808,6 +810,7 @@ export default async function portalRoutes(fastify) {
         quantity,
         paymentMethod,
         amountToPay,
+        checkoutEmail,
         notes,
       } = request.body;
 
@@ -846,6 +849,11 @@ export default async function portalRoutes(fastify) {
         },
       });
       if (!batch) return reply.code(404).send({ error: 'Batch not found.' });
+
+      const cardPaymentEmail = buildPortalCustomerEmail(user, customer, checkoutEmail);
+      if (paymentMethod === 'CARD' && (!cardPaymentEmail || !isValidEmail(cardPaymentEmail))) {
+        return reply.code(400).send({ error: 'Enter a valid email address before continuing to card payment.' });
+      }
 
       let orderValue = 0;
       let unitPrice = 0;
@@ -953,7 +961,7 @@ export default async function portalRoutes(fastify) {
       try {
         const callbackUrl = `${getRequestOrigin(request)}/portal`;
         const paystack = await initializePaystackTransaction({
-          email: buildPortalCustomerEmail(user, customer),
+          email: cardPaymentEmail,
           amountKobo: Math.round(paymentDue * 100),
           reference: checkout.reference,
           callbackUrl,

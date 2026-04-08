@@ -302,6 +302,7 @@ function BookingCheckoutModal({ batch, profile, policy, onClose, onFinished }) {
   const [quantity, setQuantity] = useState('');
   const [amountToPay, setAmountToPay] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('CARD');
+  const [checkoutEmail, setCheckoutEmail] = useState(profile?.user?.email || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(null);
@@ -329,6 +330,7 @@ function BookingCheckoutModal({ batch, profile, policy, onClose, onFinished }) {
         quantity: quantityValue,
         amountToPay: payNow,
         paymentMethod,
+        checkoutEmail: paymentMethod === 'CARD' ? checkoutEmail.trim() : undefined,
       });
 
       if (paymentMethod === 'CARD' && response.authorizationUrl) {
@@ -441,6 +443,22 @@ function BookingCheckoutModal({ batch, profile, policy, onClose, onFinished }) {
           <TransferInstructions amount={payNow} title="Transfer to this account after you continue" />
         )}
 
+        {paymentMethod === 'CARD' && (
+          <Field
+            label="Email for card payment"
+            help="Paystack needs a real email address for card checkout. You can type one here even if your portal account was created without email."
+          >
+            <input
+              type="email"
+              required
+              value={checkoutEmail}
+              onChange={(event) => setCheckoutEmail(event.target.value)}
+              placeholder="you@example.com"
+              className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+          </Field>
+        )}
+
         <div className="grid grid-cols-2 gap-3">
           <button type="button" onClick={onClose} className="rounded-xl border border-gray-300 px-4 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50">
             Cancel
@@ -457,6 +475,7 @@ function BookingCheckoutModal({ batch, profile, policy, onClose, onFinished }) {
 function BuyNowCheckoutModal({ batch, profile, policy, onClose, onFinished }) {
   const [quantity, setQuantity] = useState('1');
   const [paymentMethod, setPaymentMethod] = useState('CARD');
+  const [checkoutEmail, setCheckoutEmail] = useState(profile?.user?.email || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(null);
@@ -480,6 +499,7 @@ function BuyNowCheckoutModal({ batch, profile, policy, onClose, onFinished }) {
         batchId: batch.id,
         quantity: quantityValue,
         paymentMethod,
+        checkoutEmail: paymentMethod === 'CARD' ? checkoutEmail.trim() : undefined,
       });
 
       if (paymentMethod === 'CARD' && response.authorizationUrl) {
@@ -571,6 +591,22 @@ function BuyNowCheckoutModal({ batch, profile, policy, onClose, onFinished }) {
 
         {paymentMethod === 'TRANSFER' && orderValue > 0 && (
           <TransferInstructions amount={orderValue} title="Transfer to this account after you continue" />
+        )}
+
+        {paymentMethod === 'CARD' && (
+          <Field
+            label="Email for card payment"
+            help="Paystack needs a real email address for card checkout. You can type one here even if your portal account was created without email."
+          >
+            <input
+              type="email"
+              required
+              value={checkoutEmail}
+              onChange={(event) => setCheckoutEmail(event.target.value)}
+              placeholder="you@example.com"
+              className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+          </Field>
         )}
 
         <div className="grid grid-cols-2 gap-3">
