@@ -1531,7 +1531,7 @@ function RecordTransactionModal({ accounts, transactionCategories, categoryMap, 
   const [form, setForm] = useState({
     bankAccountId: accounts[0]?.id || '',
     direction: 'INFLOW',
-    category: categoryOptionsForDirection('INFLOW', categoryMap)[0] || INFLOW_CATEGORIES[0],
+    category: categoryOptionsForDirection('INFLOW', categoryMap, 'UNALLOCATED_INCOME')[0] || 'UNALLOCATED_INCOME',
     amount: '',
     description: '',
     reference: '',
@@ -1565,11 +1565,12 @@ function RecordTransactionModal({ accounts, transactionCategories, categoryMap, 
   const needsCustomer = ['CUSTOMER_DEPOSIT', 'REFUND'].includes(form.category);
 
   function setDirection(direction) {
-    const nextCategories = categoryOptionsForDirection(direction, categoryMap);
+    const preferredCategory = direction === 'INFLOW' ? 'UNALLOCATED_INCOME' : 'UNALLOCATED_EXPENSE';
+    const nextCategories = categoryOptionsForDirection(direction, categoryMap, preferredCategory);
     setForm((current) => ({
       ...current,
       direction,
-      category: nextCategories[0] || (direction === 'INFLOW' ? INFLOW_CATEGORIES[0] : OUTFLOW_CATEGORIES[0]),
+      category: nextCategories[0] || preferredCategory,
     }));
     setSelectedCustomer(null);
     setCustomerSearch('');
@@ -1844,8 +1845,11 @@ function BulkTransactionModal({ accounts, transactionCategories, categoryMap, on
                         value={row.direction}
                         onChange={(event) => updateRow(index, {
                           direction: event.target.value,
-                          category: categoryOptionsForDirection(event.target.value, categoryMap)[0]
-                            || (event.target.value === 'INFLOW' ? INFLOW_CATEGORIES[0] : OUTFLOW_CATEGORIES[0]),
+                          category: categoryOptionsForDirection(
+                            event.target.value,
+                            categoryMap,
+                            event.target.value === 'INFLOW' ? 'UNALLOCATED_INCOME' : 'UNALLOCATED_EXPENSE',
+                          )[0] || (event.target.value === 'INFLOW' ? 'UNALLOCATED_INCOME' : 'UNALLOCATED_EXPENSE'),
                         })}
                         className="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
                       >
@@ -3121,7 +3125,7 @@ function createBulkRow(defaultAccountId, categoryMap = {}) {
     id: crypto.randomUUID?.() || Math.random().toString(36).slice(2),
     bankAccountId: defaultAccountId || '',
     direction: 'INFLOW',
-    category: categoryOptionsForDirection('INFLOW', categoryMap)[0] || INFLOW_CATEGORIES[0],
+    category: categoryOptionsForDirection('INFLOW', categoryMap, 'UNALLOCATED_INCOME')[0] || 'UNALLOCATED_INCOME',
     transactionDate: todayStr(),
     amount: '',
     description: '',
