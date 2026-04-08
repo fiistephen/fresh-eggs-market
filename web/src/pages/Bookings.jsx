@@ -137,7 +137,7 @@ export default function Bookings() {
             <thead>
               <tr className="border-b border-gray-100">
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-[0.14em] text-gray-500">Customer</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-[0.14em] text-gray-500">Batch / item</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-[0.14em] text-gray-500">Batch</th>
                 <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-[0.14em] text-gray-500">Qty</th>
                 <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-[0.14em] text-gray-500">Booking value</th>
                 <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-[0.14em] text-gray-500">Applied</th>
@@ -235,7 +235,6 @@ function CreateBookingModal({ onClose, onCreated }) {
   const [openBatches, setOpenBatches] = useState([]);
   const [loadingBatches, setLoadingBatches] = useState(false);
   const [selectedBatch, setSelectedBatch] = useState(null);
-  const [selectedEggCode, setSelectedEggCode] = useState(null);
   const [quantity, setQuantity] = useState('');
   const [notes, setNotes] = useState('');
 
@@ -313,8 +312,7 @@ function CreateBookingModal({ onClose, onCreated }) {
     setStep(2);
   }
 
-  const activeBookingPrice = selectedEggCode?.wholesalePrice ?? selectedBatch?.wholesalePrice ?? 0;
-  const orderValue = selectedBatch && quantity ? Number(quantity) * Number(activeBookingPrice) : 0;
+  const orderValue = selectedBatch && quantity ? Number(quantity) * Number(selectedBatch.wholesalePrice) : 0;
   const minimumPayment = orderValue * 0.8;
   const maxQty = selectedCustomer?.isFirstTime ? 20 : 100;
   const batchRemaining = selectedBatch?.remainingAvailable || 0;
@@ -322,7 +320,7 @@ function CreateBookingModal({ onClose, onCreated }) {
 
   const totalAllocated = Object.values(allocationDrafts).reduce((sum, value) => sum + Number(value || 0), 0);
   const balance = Math.max(0, orderValue - totalAllocated);
-  const canContinueToFunds = selectedBatch && selectedEggCode && quantity && Number(quantity) > 0;
+  const canContinueToFunds = selectedBatch && quantity && Number(quantity) > 0;
   const canSubmit = totalAllocated >= minimumPayment && totalAllocated <= orderValue && !submitting;
 
   function updateAllocation(paymentId, value) {
@@ -362,7 +360,6 @@ function CreateBookingModal({ onClose, onCreated }) {
       await api.post('/bookings', {
         customerId: selectedCustomer.id,
         batchId: selectedBatch.id,
-        batchEggCodeId: selectedEggCode?.id,
         quantity: Number(quantity),
         paymentAllocations: Object.entries(allocationDrafts)
           .map(([bankTransactionId, amount]) => ({
@@ -424,7 +421,6 @@ function CreateBookingModal({ onClose, onCreated }) {
                       key={customer.id}
                       onClick={() => {
                         setSelectedCustomer(customer);
-                        setSelectedEggCode(null);
                         setStep(2);
                       }}
                       className="block w-full border-b border-gray-100 px-4 py-3 text-left transition-colors hover:bg-gray-50 last:border-b-0"
@@ -468,7 +464,6 @@ function CreateBookingModal({ onClose, onCreated }) {
                 onChange={() => {
                   setStep(1);
                   setSelectedBatch(null);
-                  setSelectedEggCode(null);
                   setQuantity('');
                 }}
               />
@@ -490,7 +485,6 @@ function CreateBookingModal({ onClose, onCreated }) {
                       type="button"
                       onClick={() => {
                         setSelectedBatch(batch);
-                        setSelectedEggCode(batch.eggCodes?.length === 1 ? batch.eggCodes[0] : null);
                       }}
                       className={`block w-full rounded-xl border px-4 py-3 text-left transition-colors ${
                         selectedBatch?.id === batch.id
@@ -503,13 +497,11 @@ function CreateBookingModal({ onClose, onCreated }) {
                           <p className="font-semibold text-gray-900">{batch.name}</p>
                           <p className="mt-1 text-sm text-gray-500">Expected {formatDate(batch.expectedDate)}</p>
                           <p className="mt-1 text-xs text-gray-400">
-                            {batch.eggCodes?.length || 0} FE item type{(batch.eggCodes?.length || 0) === 1 ? '' : 's'}
+                            FE sources: {(batch.eggCodes || []).map((eggCode) => eggCode.code).join(', ') || '—'}
                           </p>
                         </div>
                         <div className="text-right text-sm">
-                          <p className="font-medium text-gray-900">
-                            {batch.eggCodes?.length > 1 ? 'Choose item for price' : `${formatCurrency(batch.wholesalePrice)} / crate`}
-                          </p>
+                          <p className="font-medium text-gray-900">{formatCurrency(batch.wholesalePrice)} / crate</p>
                           <p className="text-green-600">{batch.remainingAvailable} crates free</p>
                         </div>
                       </div>
@@ -520,31 +512,9 @@ function CreateBookingModal({ onClose, onCreated }) {
 
               {selectedBatch && (
                 <>
-                  {(selectedBatch.eggCodes?.length || 0) > 0 && (
-                    <div className="space-y-2">
-                      <h4 className="text-sm font-semibold text-gray-900">Choose egg item</h4>
-                      <p className="text-sm text-gray-500">Pick the FE item the customer is booking so the booking value is correct.</p>
-                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                        {selectedBatch.eggCodes.map((eggCode) => (
-                          <button
-                            key={eggCode.id}
-                            type="button"
-                            onClick={() => setSelectedEggCode(eggCode)}
-                            className={`rounded-xl border px-4 py-3 text-left transition-colors ${
-                              selectedEggCode?.id === eggCode.id
-                                ? 'border-brand-300 bg-brand-50'
-                                : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                            }`}
-                          >
-                            <p className="font-semibold text-gray-900">{eggCode.code}</p>
-                            <p className="mt-1 text-sm text-gray-600">
-                              Wholesale {formatCurrency(eggCode.wholesalePrice)} · Retail {formatCurrency(eggCode.retailPrice)}
-                            </p>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                  <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+                    Use one booking price for this batch. The FE codes in the batch may have different cost prices, but the customer is booking the same egg size at one selling price.
+                  </div>
 
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <Field label={`Quantity (max ${effectiveMax})`}>
@@ -571,8 +541,7 @@ function CreateBookingModal({ onClose, onCreated }) {
 
                   {quantity && Number(quantity) > 0 && (
                     <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-                        <BookingStat label="Egg item" value={selectedEggCode?.code || 'Choose item'} />
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                         <BookingStat label="Booking value" value={formatCurrency(orderValue)} />
                         <BookingStat label="Minimum to book" value={formatCurrency(minimumPayment)} />
                         <BookingStat label="Remaining after minimum" value={formatCurrency(Math.max(0, orderValue - minimumPayment))} />
@@ -588,7 +557,6 @@ function CreateBookingModal({ onClose, onCreated }) {
                   onClick={() => {
                     setStep(1);
                     setSelectedBatch(null);
-                    setSelectedEggCode(null);
                     setQuantity('');
                   }}
                   className="text-sm font-medium text-gray-600 hover:text-gray-800"
@@ -612,9 +580,8 @@ function CreateBookingModal({ onClose, onCreated }) {
               <SelectedCustomerCard customer={selectedCustomer} onChange={() => setStep(1)} />
 
               <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-5">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
                   <BookingStat label="Batch" value={selectedBatch?.name || '—'} />
-                  <BookingStat label="Egg item" value={selectedEggCode?.code || '—'} />
                   <BookingStat label="Quantity" value={`${quantity || 0} crates`} />
                   <BookingStat label="Booking value" value={formatCurrency(orderValue)} />
                   <BookingStat label="Minimum to book" value={formatCurrency(minimumPayment)} />

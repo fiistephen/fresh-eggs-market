@@ -213,7 +213,7 @@ export default async function portalRoutes(fastify) {
   fastify.post('/portal/book', {
     preHandler: [authenticate, authorize('CUSTOMER')],
     handler: async (request, reply) => {
-      const { batchId, batchEggCodeId, quantity, amountPaid } = request.body;
+      const { batchId, quantity, amountPaid } = request.body;
 
       // Validation
       if (!batchId) return reply.code(400).send({ error: 'batchId is required' });
@@ -266,20 +266,7 @@ export default async function portalRoutes(fastify) {
       }
 
       // Calculate order value
-      const bookingEggCode = batchEggCodeId
-        ? batch.eggCodes.find((eggCode) => eggCode.id === batchEggCodeId)
-        : batch.eggCodes.length === 1
-          ? batch.eggCodes[0]
-          : null;
-
-      if (batch.eggCodes.length > 1 && !bookingEggCode) {
-        return reply.code(400).send({ error: 'Choose the egg type you want to book from this batch' });
-      }
-      if (batchEggCodeId && !bookingEggCode) {
-        return reply.code(400).send({ error: 'Selected egg type does not belong to this batch' });
-      }
-
-      const orderValue = quantity * Number(bookingEggCode?.wholesalePrice ?? batch.wholesalePrice);
+      const orderValue = quantity * Number(batch.wholesalePrice);
 
       // Min 80% payment
       const minPayment = orderValue * 0.8;
@@ -292,7 +279,6 @@ export default async function portalRoutes(fastify) {
         data: {
           customerId: customer.id,
           batchId,
-          batchEggCodeId: bookingEggCode?.id || null,
           quantity,
           amountPaid,
           orderValue,

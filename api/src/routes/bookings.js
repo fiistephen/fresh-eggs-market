@@ -360,7 +360,7 @@ export default async function bookingRoutes(fastify) {
   fastify.post('/bookings', {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'CUSTOMER')],
     handler: async (request, reply) => {
-      const { customerId, batchId, batchEggCodeId, quantity, paymentAllocations, amountPaid, channel, notes } = request.body;
+      const { customerId, batchId, quantity, paymentAllocations, amountPaid, channel, notes } = request.body;
 
       if (!customerId || !batchId || !quantity) {
         return reply.code(400).send({ error: 'Missing required fields: customerId, batchId, quantity' });
@@ -376,21 +376,7 @@ export default async function bookingRoutes(fastify) {
       }
 
       const { batch, customer } = basics;
-      const bookingEggCode = batchEggCodeId
-        ? batch.eggCodes.find((eggCode) => eggCode.id === batchEggCodeId)
-        : batch.eggCodes.length === 1
-          ? batch.eggCodes[0]
-          : null;
-
-      if (batch.eggCodes.length > 1 && !bookingEggCode) {
-        return reply.code(400).send({ error: 'Choose the FE item the customer is booking from this batch' });
-      }
-      if (batchEggCodeId && !bookingEggCode) {
-        return reply.code(400).send({ error: 'Selected FE item does not belong to this batch' });
-      }
-
-      const bookingPrice = Number(bookingEggCode?.wholesalePrice ?? batch.wholesalePrice);
-      const orderValue = Number(quantity) * bookingPrice;
+      const orderValue = Number(quantity) * Number(batch.wholesalePrice);
       const minimumPayment = orderValue * 0.8;
 
       let finalAmountPaid = amountPaid == null ? null : Number(amountPaid);
@@ -432,7 +418,6 @@ export default async function bookingRoutes(fastify) {
           data: {
             customerId,
             batchId,
-            batchEggCodeId: bookingEggCode?.id || null,
             quantity: Number(quantity),
             amountPaid: finalAmountPaid,
             orderValue,
@@ -483,7 +468,7 @@ export default async function bookingRoutes(fastify) {
         return reply.code(400).send({ error: 'Can only edit confirmed bookings' });
       }
 
-      const { quantity, amountPaid, notes, paymentAllocations, batchEggCodeId } = request.body;
+      const { quantity, amountPaid, notes, paymentAllocations } = request.body;
       const nextQuantity = quantity !== undefined ? Number(quantity) : existing.quantity;
 
       const basics = await validateBookingBasics({
@@ -496,19 +481,7 @@ export default async function bookingRoutes(fastify) {
         return reply.code(400).send(basics);
       }
 
-      const nextBatchEggCode = batchEggCodeId
-        ? basics.batch.eggCodes.find((eggCode) => eggCode.id === batchEggCodeId)
-        : existing.batchEggCodeId
-          ? basics.batch.eggCodes.find((eggCode) => eggCode.id === existing.batchEggCodeId)
-          : basics.batch.eggCodes.length === 1
-            ? basics.batch.eggCodes[0]
-            : null;
-
-      if (basics.batch.eggCodes.length > 1 && !nextBatchEggCode) {
-        return reply.code(400).send({ error: 'Choose the FE item the customer is booking from this batch' });
-      }
-
-      const orderValue = nextQuantity * Number(nextBatchEggCode?.wholesalePrice ?? existing.batch.wholesalePrice);
+      const orderValue = nextQuantity * Number(existing.batch.wholesalePrice);
       const minimumPayment = orderValue * 0.8;
 
       let nextAmountPaid = Number(existing.amountPaid);
@@ -561,7 +534,6 @@ export default async function bookingRoutes(fastify) {
           where: { id: existing.id },
           data: {
             quantity: nextQuantity,
-            batchEggCodeId: nextBatchEggCode?.id || null,
             orderValue,
             amountPaid: nextAmountPaid,
             ...(notes !== undefined ? { notes } : {}),

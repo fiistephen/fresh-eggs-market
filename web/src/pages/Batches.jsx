@@ -52,8 +52,6 @@ const EMPTY_BATCH_ITEM = {
   itemId: '',
   newPrice: '',
   costPrice: '',
-  wholesalePrice: '',
-  retailPrice: '',
 };
 
 function isBatchOverdue(batch) {
@@ -378,6 +376,8 @@ function CreateBatchModal({ onClose, onCreated }) {
     expectedDate: '',
     expectedQuantity: 1800,
     availableForBooking: 1800,
+    wholesalePrice: '',
+    retailPrice: '',
   });
   const [items, setItems] = useState([EMPTY_BATCH_ITEM]);
   const [feItems, setFeItems] = useState([]);
@@ -425,8 +425,6 @@ function CreateBatchModal({ onClose, onCreated }) {
         next[index] = {
           ...next[index],
           costPrice: selectedPrice || '',
-          wholesalePrice: selected?.defaultWholesalePrice ?? '',
-          retailPrice: selected?.defaultRetailPrice ?? '',
         };
       }
 
@@ -464,8 +462,6 @@ function CreateBatchModal({ onClose, onCreated }) {
               itemId: selected.id,
               code: normalizeFeCode(selected.code),
               costPrice: Number(row.costPrice),
-              wholesalePrice: Number(row.wholesalePrice),
-              retailPrice: Number(row.retailPrice),
             }
           : null;
       }
@@ -474,8 +470,6 @@ function CreateBatchModal({ onClose, onCreated }) {
       return code ? {
         code,
         costPrice: Number(row.costPrice),
-        wholesalePrice: Number(row.wholesalePrice),
-        retailPrice: Number(row.retailPrice),
       } : null;
     }).filter(Boolean);
 
@@ -494,6 +488,8 @@ function CreateBatchModal({ onClose, onCreated }) {
         ...form,
         expectedQuantity: Number(form.expectedQuantity),
         availableForBooking: Number(form.availableForBooking),
+        wholesalePrice: Number(form.wholesalePrice),
+        retailPrice: Number(form.retailPrice),
         plannedItems: preparedItems,
       });
       onCreated();
@@ -549,6 +545,37 @@ function CreateBatchModal({ onClose, onCreated }) {
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
               />
             </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Wholesale price for this batch (₦)</label>
+              <input
+                type="number"
+                required
+                min="1"
+                placeholder="5400"
+                value={form.wholesalePrice}
+                onChange={e => update('wholesalePrice', e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Retail price for this batch (₦)</label>
+              <input
+                type="number"
+                required
+                min="1"
+                placeholder="5500"
+                value={form.retailPrice}
+                onChange={e => update('retailPrice', e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+              />
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            Use one selling price for the whole batch. The FE rows below are for different cost prices only.
           </div>
 
           <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
@@ -653,7 +680,7 @@ function CreateBatchModal({ onClose, onCreated }) {
                       </div>
                     </div>
 
-                    <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-1">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Cost price (₦)</label>
                         <input
@@ -663,30 +690,6 @@ function CreateBatchModal({ onClose, onCreated }) {
                           placeholder="4600"
                           value={row.costPrice}
                           onChange={(e) => updateBatchItem(index, 'costPrice', e.target.value)}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Wholesale price (₦)</label>
-                        <input
-                          type="number"
-                          required
-                          min="1"
-                          placeholder="5000"
-                          value={row.wholesalePrice}
-                          onChange={(e) => updateBatchItem(index, 'wholesalePrice', e.target.value)}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Retail price (₦)</label>
-                        <input
-                          type="number"
-                          required
-                          min="1"
-                          placeholder="5400"
-                          value={row.retailPrice}
-                          onChange={(e) => updateBatchItem(index, 'retailPrice', e.target.value)}
                           className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
                         />
                       </div>

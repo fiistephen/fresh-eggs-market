@@ -108,25 +108,13 @@ function OpenBatchesView({ batches, loading, onBook, isLoggedIn }) {
                 <p className="text-sm text-gray-500 mt-0.5">Expected: {fmtDate(batch.expectedDate)}</p>
               </div>
               <div className="text-right">
-                <div className="text-2xl font-bold text-green-700">
-                  {batch.eggCodes.length > 1
-                    ? `${fmtMoney(Math.min(...batch.eggCodes.map((item) => Number(item.wholesalePrice || 0))))}+`
-                    : fmtMoney(batch.wholesalePrice)}
-                </div>
-                <div className="text-xs text-gray-400">{batch.eggCodes.length > 1 ? 'from per crate' : 'per crate'}</div>
+                <div className="text-2xl font-bold text-green-700">{fmtMoney(batch.wholesalePrice)}</div>
+                <div className="text-xs text-gray-400">per crate</div>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-2 mb-4 sm:grid-cols-2">
-              {batch.eggCodes.map((eggCode) => (
-                <div key={eggCode.id} className="rounded-lg bg-gray-50 px-3 py-2 text-sm">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="font-mono font-semibold text-gray-900">{eggCode.code}</span>
-                    <span className="text-green-700 font-medium">{fmtMoney(eggCode.wholesalePrice)}</span>
-                  </div>
-                  <p className="mt-1 text-xs text-gray-500">Retail {fmtMoney(eggCode.retailPrice)}</p>
-                </div>
-              ))}
+            <div className="flex items-center gap-4 mb-4 text-sm">
+              <span className="text-gray-500">FE source codes: <b className="font-mono">{batch.eggCodes.map((eggCode) => eggCode.code).join(', ')}</b></span>
             </div>
 
             {/* Availability bar */}
@@ -164,7 +152,6 @@ function OpenBatchesView({ batches, loading, onBook, isLoggedIn }) {
 
 // ─── BOOKING MODAL ───────────────────────────────────────────────
 function BookingModal({ batch, profile, onClose, onBooked }) {
-  const [selectedEggCode, setSelectedEggCode] = useState(batch.eggCodes?.length === 1 ? batch.eggCodes[0] : null);
   const [quantity, setQuantity] = useState('');
   const [amountPaid, setAmountPaid] = useState('');
   const [loading, setLoading] = useState(false);
@@ -176,7 +163,7 @@ function BookingModal({ batch, profile, onClose, onBooked }) {
     100,
     profile?.isFirstTime ? 20 : 100
   );
-  const price = selectedEggCode?.wholesalePrice ?? batch.wholesalePrice;
+  const price = batch.wholesalePrice;
   const qty = parseInt(quantity, 10) || 0;
   const orderValue = qty * price;
   const minPayment = orderValue * 0.8;
@@ -192,7 +179,6 @@ function BookingModal({ batch, profile, onClose, onBooked }) {
     try {
       const res = await api.post('/portal/book', {
         batchId: batch.id,
-        batchEggCodeId: selectedEggCode?.id,
         quantity: qty,
         amountPaid: parseFloat(amountPaid),
       });
@@ -242,7 +228,6 @@ function BookingModal({ batch, profile, onClose, onBooked }) {
         </div>
 
         <div className="bg-gray-50 rounded-xl p-3 mb-4 text-sm">
-          <div className="flex justify-between"><span className="text-gray-500">Egg item</span><span className="font-bold">{selectedEggCode?.code || 'Choose one below'}</span></div>
           <div className="flex justify-between"><span className="text-gray-500">Price per crate</span><span className="font-bold text-green-700">{fmtMoney(price)}</span></div>
           <div className="flex justify-between mt-1"><span className="text-gray-500">Available</span><span>{fmt(batch.remainingAvailable)} crates</span></div>
           <div className="flex justify-between mt-1"><span className="text-gray-500">Max per booking</span><span>{maxQty} crates</span></div>
@@ -252,29 +237,9 @@ function BookingModal({ batch, profile, onClose, onBooked }) {
         {error && <div className="mb-3 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{error}</div>}
 
         <form onSubmit={handleBook} className="space-y-4">
-          {(batch.eggCodes?.length || 0) > 0 && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Choose egg item</label>
-              <div className="space-y-2">
-                {batch.eggCodes.map((eggCode) => (
-                  <button
-                    key={eggCode.id}
-                    type="button"
-                    onClick={() => setSelectedEggCode(eggCode)}
-                    className={`w-full rounded-xl border px-4 py-3 text-left transition ${
-                      selectedEggCode?.id === eggCode.id
-                        ? 'border-green-300 bg-green-50'
-                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="font-mono font-semibold text-gray-900">{eggCode.code}</span>
-                      <span className="font-medium text-green-700">{fmtMoney(eggCode.wholesalePrice)}</span>
-                    </div>
-                    <p className="mt-1 text-xs text-gray-500">Retail {fmtMoney(eggCode.retailPrice)}</p>
-                  </button>
-                ))}
-              </div>
+          {batch.eggCodes?.length > 0 && (
+            <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+              This batch may have different FE source codes, but they are being sold to you at one batch price.
             </div>
           )}
 
@@ -298,7 +263,7 @@ function BookingModal({ batch, profile, onClose, onBooked }) {
 
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={onClose} className="flex-1 py-3 border rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
-            <button type="submit" disabled={loading || qty < 1 || !selectedEggCode} className="flex-1 py-3 bg-green-600 text-white rounded-xl text-sm font-semibold hover:bg-green-700 disabled:opacity-50">
+            <button type="submit" disabled={loading || qty < 1} className="flex-1 py-3 bg-green-600 text-white rounded-xl text-sm font-semibold hover:bg-green-700 disabled:opacity-50">
               {loading ? 'Booking...' : 'Confirm Booking'}
             </button>
           </div>

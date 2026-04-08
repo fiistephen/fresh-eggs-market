@@ -52,14 +52,6 @@ function saleBatchLabel(sale) {
   return sale.batchSummary || sale.batch?.name || '—';
 }
 
-function priceRangeLabel(values) {
-  const clean = (values || []).map((value) => Number(value || 0)).filter((value) => value > 0);
-  if (!clean.length) return '—';
-  const min = Math.min(...clean);
-  const max = Math.max(...clean);
-  return min === max ? formatCurrency(min) : `${formatCurrency(min)} to ${formatCurrency(max)}`;
-}
-
 export default function Sales() {
   const { user } = useAuth();
   const [sales, setSales] = useState([]);
@@ -731,7 +723,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
                               <div>
                                 <p className="font-semibold text-gray-900">{batch.name}</p>
                                 <p className="text-sm text-gray-500 mt-1">
-                                  Wholesale {priceRangeLabel(batch.eggCodes.map((eggCode) => eggCode.wholesalePrice))} · Retail {priceRangeLabel(batch.eggCodes.map((eggCode) => eggCode.retailPrice))}
+                                  Wholesale {formatCurrency(batch.wholesalePrice)} · Retail {formatCurrency(batch.retailPrice)}
                                 </p>
                                 <p className="text-xs text-gray-400 mt-1">
                                   {batch.availableForSale?.toLocaleString?.() || 0} crates available for direct sale

@@ -1177,3 +1177,25 @@ Minimum update format:
   - Prisma schema validation passed
   - Prisma client generation passed
   - frontend build passed
+
+## 32. 2026-04-08 Audio Clarification On FE Pricing
+
+- New business clarification came from a WhatsApp voice note transcribed by the user.
+- Key rule:
+  - different FE source codes can have different cost prices
+  - that does **not** automatically mean they should have different selling prices to the customer
+  - for example `FE48` and `FE52` can be bought at different costs but both still sell at the same wholesale and retail price because they are the same customer-facing egg size
+- Product meaning:
+  - FE codes are mainly sourcing and cost-tracking rows
+  - batch-level selling price stays shared unless the business explicitly says the customer-facing egg size is different, such as `regular eggs` versus `small eggs`
+- What was changed:
+  - create-batch now uses:
+    - one wholesale price for the batch
+    - one retail price for the batch
+    - up to 3 FE rows with separate cost prices
+  - booking flow was simplified back to batch-level customer pricing
+  - portal booking was simplified back to batch-level customer pricing
+  - receive flow now confirms one wholesale and one retail price for the batch while keeping row-level cost prices
+- What future Codex sessions should remember:
+  - do not force FE-row customer price selection unless the customer-facing egg size is actually different
+  - if the business later wants `regular` vs `small` as distinct customer-facing products, model that as a separate size/category concept, not just raw FE code differences
