@@ -56,6 +56,17 @@ function enrichReconciliation(rec) {
   };
 }
 
+function buildImportCounts(lines = []) {
+  return {
+    total: lines.length,
+    ready: lines.filter((line) => line.reviewStatus === 'READY_TO_POST').length,
+    pending: lines.filter((line) => line.reviewStatus === 'PENDING_REVIEW').length,
+    duplicate: lines.filter((line) => line.reviewStatus === 'DUPLICATE').length,
+    skipped: lines.filter((line) => line.reviewStatus === 'SKIPPED').length,
+    posted: lines.filter((line) => line.reviewStatus === 'POSTED').length,
+  };
+}
+
 function endOfDay(dateInput) {
   const date = new Date(dateInput);
   date.setUTCHours(23, 59, 59, 999);
@@ -522,12 +533,67 @@ export default async function bankingRoutes(fastify) {
         }),
         prisma.bankStatementLine.findMany({
           where: { fingerprint: { in: fingerprints } },
-          select: { fingerprint: true, id: true, reviewStatus: true },
+          select: { fingerprint: true, id: true, reviewStatus: true, importId: true },
         }),
       ]);
 
       const existingTransactionSet = new Set(existingTransactions.map((txn) => txn.sourceFingerprint));
       const existingLineSet = new Set(existingLines.map((line) => line.fingerprint));
+
+      if (existingLines.length > 0) {
+        const existingImportIds = [...new Set(existingLines.map((line) => line.importId))];
+        const matchedFingerprintCount = new Set(existingLines.map((line) => line.fingerprint)).size;
+
+        if (matchedFingerprintCount === fingerprints.length && existingImportIds.length === 1) {
+          const existingImport = await prisma.bankStatementImport.findUnique({
+            where: { id: existingImportIds[0] },
+            include: {
+              bankAccount: { select: { id: true, name: true, accountType: true } },
+              importedBy: { select: { firstName: true, lastName: true } },
+              lines: {
+                orderBy: { lineNumber: 'asc' },
+              },
+            },
+          });
+
+          if (existingImport) {
+            const hasPostedLines = existingImport.lines.some((line) => line.reviewStatus === 'POSTED');
+            const canReuseQueueItem = !hasPostedLines && ['REVIEWING', 'DRAFT', 'CANCELLED'].includes(existingImport.status);
+
+            if (canReuseQueueItem) {
+              const importRecord = existingImport.status === 'CANCELLED'
+                ? await prisma.bankStatementImport.update({
+                    where: { id: existingImport.id },
+                    data: { status: 'REVIEWING' },
+                    include: {
+                      bankAccount: { select: { id: true, name: true, accountType: true } },
+                      importedBy: { select: { firstName: true, lastName: true } },
+                      lines: {
+                        orderBy: { lineNumber: 'asc' },
+                      },
+                    },
+                  })
+                : existingImport;
+
+              return reply.send({
+                import: enrichImportRecord(importRecord),
+                counts: buildImportCounts(importRecord.lines),
+                preview: importRecord.lines.map(enrichStatementLine),
+                reusedExistingImport: true,
+              });
+            }
+
+            return reply.code(409).send({
+              error: 'This statement has already been imported. Open the existing import from the queue instead of uploading it again.',
+              importId: existingImport.id,
+            });
+          }
+        }
+
+        return reply.code(409).send({
+          error: 'This statement overlaps with transactions that are already in the import history. Open the existing import instead of uploading it again.',
+        });
+      }
 
       const importRecord = await prisma.bankStatementImport.create({
         data: {
@@ -574,16 +640,9 @@ export default async function bankingRoutes(fastify) {
         },
       });
 
-      const counts = {
-        total: importRecord.lines.length,
-        ready: importRecord.lines.filter((line) => line.reviewStatus === 'READY_TO_POST').length,
-        pending: importRecord.lines.filter((line) => line.reviewStatus === 'PENDING_REVIEW').length,
-        duplicate: importRecord.lines.filter((line) => line.reviewStatus === 'DUPLICATE').length,
-      };
-
       return reply.code(201).send({
         import: enrichImportRecord(importRecord),
-        counts,
+        counts: buildImportCounts(importRecord.lines),
         preview: importRecord.lines.map(enrichStatementLine),
       });
     },
