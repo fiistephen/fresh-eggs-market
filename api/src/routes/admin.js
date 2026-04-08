@@ -66,6 +66,7 @@ export default async function adminRoutes(fastify) {
         writeOffCratesAllowance,
         bookingMinimumPaymentPercent,
         firstTimeBookingLimitCrates,
+        firstCustomerOrderLimitCount,
         maxBookingCratesPerOrder,
         largePosPaymentThreshold,
       } = request.body;
@@ -94,6 +95,10 @@ export default async function adminRoutes(fastify) {
         return reply.code(400).send({ error: 'First-time customer booking limit must be greater than zero.' });
       }
 
+      if (firstCustomerOrderLimitCount == null || !Number.isInteger(Number(firstCustomerOrderLimitCount)) || Number(firstCustomerOrderLimitCount) <= 0) {
+        return reply.code(400).send({ error: 'Number of early customer orders must be a whole number greater than zero.' });
+      }
+
       if (maxBookingCratesPerOrder == null || Number(maxBookingCratesPerOrder) <= 0) {
         return reply.code(400).send({ error: 'Maximum booking per order must be greater than zero.' });
       }
@@ -113,6 +118,7 @@ export default async function adminRoutes(fastify) {
         writeOffCratesAllowance: writeOffCratesAllowance === '' ? null : writeOffCratesAllowance,
         bookingMinimumPaymentPercent: Number(bookingMinimumPaymentPercent),
         firstTimeBookingLimitCrates: Number(firstTimeBookingLimitCrates),
+        firstCustomerOrderLimitCount: Number(firstCustomerOrderLimitCount),
         maxBookingCratesPerOrder: Number(maxBookingCratesPerOrder),
         largePosPaymentThreshold: Number(largePosPaymentThreshold),
       }, request.user.sub);

@@ -243,6 +243,7 @@ function CreateBookingModal({ onClose, onCreated }) {
   const [bookingPolicy, setBookingPolicy] = useState({
     bookingMinimumPaymentPercent: 80,
     firstTimeBookingLimitCrates: 20,
+    firstCustomerOrderLimitCount: 3,
     maxBookingCratesPerOrder: 100,
   });
   const [allocationDrafts, setAllocationDrafts] = useState({});
@@ -307,6 +308,13 @@ function CreateBookingModal({ onClose, onCreated }) {
       const data = await api.get(`/bookings/customer-funds/${customerId}`);
       setFunds(data.payments || []);
       setAllocationDrafts({});
+      if (data.customer) {
+        setSelectedCustomer((current) => (
+          current?.id === customerId
+            ? { ...current, ...data.customer }
+            : current
+        ));
+      }
     } catch {
       setFunds([]);
     } finally {
@@ -323,9 +331,12 @@ function CreateBookingModal({ onClose, onCreated }) {
 
   const orderValue = selectedBatch && quantity ? Number(quantity) * Number(selectedBatch.wholesalePrice) : 0;
   const minimumPayment = orderValue * (Number(bookingPolicy.bookingMinimumPaymentPercent || 80) / 100);
-  const maxQty = selectedCustomer?.isFirstTime
-    ? Number(bookingPolicy.firstTimeBookingLimitCrates || 20)
-    : Number(bookingPolicy.maxBookingCratesPerOrder || 100);
+  const customerOrderLimit = Number(
+    selectedCustomer?.orderLimitProfile?.currentPerOrderLimit
+      || bookingPolicy.maxBookingCratesPerOrder
+      || 100,
+  );
+  const maxQty = customerOrderLimit;
   const batchRemaining = selectedBatch?.remainingAvailable || 0;
   const effectiveMax = Math.min(maxQty, batchRemaining);
 
@@ -439,8 +450,10 @@ function CreateBookingModal({ onClose, onCreated }) {
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-gray-900">{customer.name}</span>
                         <span className="text-sm text-gray-400">{customer.phone}</span>
-                        {customer.isFirstTime && (
-                          <span className="rounded bg-yellow-100 px-1.5 py-0.5 text-xs text-yellow-700">New customer</span>
+                        {customer.orderLimitProfile?.isUsingEarlyOrderLimit && (
+                          <span className="rounded bg-yellow-100 px-1.5 py-0.5 text-xs text-yellow-700">
+                            Early-order limit active
+                          </span>
                         )}
                       </div>
                     </button>
@@ -739,6 +752,7 @@ function BookingStat({ label, value, tone = 'gray' }) {
 }
 
 function SelectedCustomerCard({ customer, policy, onChange }) {
+  const orderLimitProfile = customer?.orderLimitProfile;
   return (
     <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
       <div>
@@ -746,8 +760,10 @@ function SelectedCustomerCard({ customer, policy, onChange }) {
         <p className="text-sm font-semibold text-gray-900">{customer?.name}</p>
         <p className="text-xs text-gray-500">{customer?.phone}</p>
       </div>
-      {customer?.isFirstTime && (
-        <span className="rounded bg-yellow-100 px-2 py-1 text-xs font-medium text-yellow-700">New customer: max {Number(policy?.firstTimeBookingLimitCrates || 20)} crates</span>
+      {orderLimitProfile?.isUsingEarlyOrderLimit && (
+        <span className="rounded bg-yellow-100 px-2 py-1 text-xs font-medium text-yellow-700">
+          First {Number(orderLimitProfile.earlyOrderLimitCount || policy?.firstCustomerOrderLimitCount || 3)} orders: max {Number(orderLimitProfile.currentPerOrderLimit || policy?.firstTimeBookingLimitCrates || 20)} crates
+        </span>
       )}
       <button onClick={onChange} type="button" className="ml-auto text-sm font-medium text-gray-500 hover:text-gray-700">
         Change

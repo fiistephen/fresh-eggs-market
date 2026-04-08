@@ -2,6 +2,7 @@ import prisma from '../plugins/prisma.js';
 import { authenticate } from '../plugins/auth.js';
 import { authorize } from '../middleware/authorize.js';
 import { getCustomerEggTypeConfig, getCustomerEggTypeLabel, getOperationsPolicy } from '../utils/appSettings.js';
+import { getCustomerOrderLimitProfile } from '../utils/customerOrderPolicy.js';
 import { getActivePortalBookingHoldQuantity } from '../utils/portalCheckout.js';
 
 const ELIGIBLE_BOOKING_PAYMENT_CATEGORIES = [
@@ -299,11 +300,17 @@ async function validateBookingBasics({ customerId, batchId, quantity, policy, ex
     return { error: `Maximum booking is ${Number(policy.maxBookingCratesPerOrder || 100).toLocaleString()} crates per order` };
   }
 
-  if (customer.isFirstTime && quantity > Number(policy.firstTimeBookingLimitCrates || 20)) {
-    return { error: `First-time customers can book a maximum of ${Number(policy.firstTimeBookingLimitCrates || 20).toLocaleString()} crates` };
+  const orderLimitProfile = await getCustomerOrderLimitProfile(customerId, policy);
+  if (quantity > Number(orderLimitProfile.currentPerOrderLimit || 100)) {
+    return {
+      error: orderLimitProfile.isUsingEarlyOrderLimit
+        ? `This customer's first ${orderLimitProfile.earlyOrderLimitCount} orders can be up to ${Number(orderLimitProfile.currentPerOrderLimit || 0).toLocaleString()} crates each`
+        : `Maximum booking is ${Number(orderLimitProfile.currentPerOrderLimit || 0).toLocaleString()} crates per order`,
+      orderLimitProfile,
+    };
   }
 
-  return { batch, customer };
+  return { batch, customer, orderLimitProfile };
 }
 
 export default async function bookingRoutes(fastify) {
@@ -355,11 +362,16 @@ export default async function bookingRoutes(fastify) {
 
       if (!customer) return reply.code(404).send({ error: 'Customer not found' });
 
+      const policy = await getOperationsPolicy();
+      const orderLimitProfile = await getCustomerOrderLimitProfile(customer.id, policy);
       const payments = await getAvailableCustomerPayments(customer.id);
       const totalAvailable = payments.reduce((sum, payment) => sum + payment.availableAmount, 0);
 
       return reply.send({
-        customer,
+        customer: {
+          ...customer,
+          orderLimitProfile,
+        },
         totalAvailable,
         payments: payments.map((payment) => ({
           ...payment,
@@ -451,13 +463,6 @@ export default async function bookingRoutes(fastify) {
               amount: allocation.amount,
               allocatedById: request.user.sub,
             })),
-          });
-        }
-
-        if (customer.isFirstTime) {
-          await tx.customer.update({
-            where: { id: customer.id },
-            data: { isFirstTime: false },
           });
         }
 

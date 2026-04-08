@@ -1431,3 +1431,23 @@ Minimum update format:
   - staging API health is `ok`
   - `/api/portal/batches` and `/api/portal/available-now` return the new payload shape
   - authenticated `/api/portal/orders` works for demo customer `0809000001`
+
+## 2026-04-08 — Portal price rules and early-order limits
+
+- Portal pricing is now fixed by flow:
+  - `Buy eggs now` always uses retail price
+  - `Book upcoming batch` always uses wholesale price
+- Admin policy now includes:
+  - early-order crate limit
+  - number of early orders that use that lower limit
+  - standard order limit after the early-order window
+- The app now enforces order limits using tracked customer order count instead of the old one-time `isFirstTime` flag.
+- Tracked customer orders now include:
+  - confirmed bookings
+  - completed buy-now orders
+  - active portal checkout holds that have not yet been finalized
+- The same order-limit helper is now reused in:
+  - portal checkout validation
+  - backend booking creation
+  - banking customer-booking allocation
+- Internal booking screens now show the current per-order limit from the live policy instead of relying on the old new/returning customer flag.

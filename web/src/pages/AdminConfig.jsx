@@ -53,6 +53,7 @@ export default function AdminConfig() {
     writeOffCratesAllowance: '',
     bookingMinimumPaymentPercent: '',
     firstTimeBookingLimitCrates: '',
+    firstCustomerOrderLimitCount: '',
     maxBookingCratesPerOrder: '',
     largePosPaymentThreshold: '',
   });
@@ -92,6 +93,7 @@ export default function AdminConfig() {
         writeOffCratesAllowance: response.policy?.writeOffCratesAllowance == null ? '' : String(response.policy.writeOffCratesAllowance),
         bookingMinimumPaymentPercent: String(response.policy?.bookingMinimumPaymentPercent ?? ''),
         firstTimeBookingLimitCrates: String(response.policy?.firstTimeBookingLimitCrates ?? ''),
+        firstCustomerOrderLimitCount: String(response.policy?.firstCustomerOrderLimitCount ?? ''),
         maxBookingCratesPerOrder: String(response.policy?.maxBookingCratesPerOrder ?? ''),
         largePosPaymentThreshold: String(response.policy?.largePosPaymentThreshold ?? ''),
       });
@@ -194,6 +196,7 @@ export default function AdminConfig() {
         writeOffCratesAllowance: policy.writeOffCratesAllowance === '' ? null : Number(policy.writeOffCratesAllowance),
         bookingMinimumPaymentPercent: Number(policy.bookingMinimumPaymentPercent),
         firstTimeBookingLimitCrates: Number(policy.firstTimeBookingLimitCrates),
+        firstCustomerOrderLimitCount: Number(policy.firstCustomerOrderLimitCount),
         maxBookingCratesPerOrder: Number(policy.maxBookingCratesPerOrder),
         largePosPaymentThreshold: Number(policy.largePosPaymentThreshold),
       });
@@ -204,6 +207,7 @@ export default function AdminConfig() {
         writeOffCratesAllowance: response.policy?.writeOffCratesAllowance == null ? '' : String(response.policy.writeOffCratesAllowance),
         bookingMinimumPaymentPercent: String(response.policy.bookingMinimumPaymentPercent),
         firstTimeBookingLimitCrates: String(response.policy.firstTimeBookingLimitCrates),
+        firstCustomerOrderLimitCount: String(response.policy.firstCustomerOrderLimitCount),
         maxBookingCratesPerOrder: String(response.policy.maxBookingCratesPerOrder),
         largePosPaymentThreshold: String(response.policy.largePosPaymentThreshold),
       });
@@ -462,7 +466,7 @@ export default function AdminConfig() {
           </label>
 
           <label className="block">
-            <span className="block text-sm font-medium text-gray-700 mb-1">First-time customer limit (crates)</span>
+            <span className="block text-sm font-medium text-gray-700 mb-1">Early-order crate limit</span>
             <input
               type="number"
               min="1"
@@ -471,11 +475,24 @@ export default function AdminConfig() {
               onChange={(e) => setPolicy((current) => ({ ...current, firstTimeBookingLimitCrates: e.target.value }))}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
             />
-            <span className="block text-xs text-gray-500 mt-1">Used for new customers in portal and booking workflows.</span>
+            <span className="block text-xs text-gray-500 mt-1">Each of a customer's first few orders must stay at or below this number of crates.</span>
           </label>
 
           <label className="block">
-            <span className="block text-sm font-medium text-gray-700 mb-1">Maximum booking per order (crates)</span>
+            <span className="block text-sm font-medium text-gray-700 mb-1">Number of early orders</span>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value={policy.firstCustomerOrderLimitCount}
+              onChange={(e) => setPolicy((current) => ({ ...current, firstCustomerOrderLimitCount: e.target.value }))}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            />
+            <span className="block text-xs text-gray-500 mt-1">Example: enter 3 if the lower crate cap should apply to a customer's first 3 orders.</span>
+          </label>
+
+          <label className="block">
+            <span className="block text-sm font-medium text-gray-700 mb-1">Standard order limit (crates)</span>
             <input
               type="number"
               min="1"
@@ -484,7 +501,7 @@ export default function AdminConfig() {
               onChange={(e) => setPolicy((current) => ({ ...current, maxBookingCratesPerOrder: e.target.value }))}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
             />
-            <span className="block text-xs text-gray-500 mt-1">The app blocks any single booking above this size.</span>
+            <span className="block text-xs text-gray-500 mt-1">After the early-order window is used up, every new booking or buy-now order uses this cap.</span>
           </label>
 
           <label className="block">
@@ -517,7 +534,7 @@ export default function AdminConfig() {
             <p className="mt-1 text-xs text-gray-500">This shows when a policy version started. Older work continues to use the policy that was active when that work began.</p>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[920px]">
+            <table className="w-full min-w-[1040px]">
               <thead className="bg-white">
                 <tr className="border-b border-gray-100">
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Effective from</th>
@@ -526,7 +543,8 @@ export default function AdminConfig() {
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Cracked crates</th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Written-off crates</th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Min payment</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">1st-time cap</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Early-order cap</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Early orders</th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Order cap</th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Large POS</th>
                 </tr>
@@ -546,13 +564,14 @@ export default function AdminConfig() {
                     <td className="px-4 py-3 text-sm text-gray-800">{entry.writeOffCratesAllowance == null ? '—' : Number(entry.writeOffCratesAllowance).toLocaleString()}</td>
                     <td className="px-4 py-3 text-sm text-gray-800">{Number(entry.bookingMinimumPaymentPercent || 0).toLocaleString()}%</td>
                     <td className="px-4 py-3 text-sm text-gray-800">{Number(entry.firstTimeBookingLimitCrates || 0).toLocaleString()} crates</td>
+                    <td className="px-4 py-3 text-sm text-gray-800">{Number(entry.firstCustomerOrderLimitCount || 0).toLocaleString()} orders</td>
                     <td className="px-4 py-3 text-sm text-gray-800">{Number(entry.maxBookingCratesPerOrder || 0).toLocaleString()} crates</td>
                     <td className="px-4 py-3 text-sm text-gray-800">₦{Number(entry.largePosPaymentThreshold || 0).toLocaleString()}</td>
                   </tr>
                 ))}
                 {policyHistory.length === 0 ? (
                   <tr>
-                    <td className="px-4 py-4 text-sm text-gray-500" colSpan={9}>No policy history yet.</td>
+                    <td className="px-4 py-4 text-sm text-gray-500" colSpan={10}>No policy history yet.</td>
                   </tr>
                 ) : null}
               </tbody>

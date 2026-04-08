@@ -2,6 +2,7 @@ import prisma from '../plugins/prisma.js';
 import {
   DEFAULT_BOOKING_MIN_PAYMENT_PERCENT,
   DEFAULT_CRACK_ALLOWANCE_PERCENT,
+  DEFAULT_FIRST_CUSTOMER_ORDER_LIMIT_COUNT,
   DEFAULT_FIRST_TIME_BOOKING_LIMIT_CRATES,
   DEFAULT_LARGE_POS_PAYMENT_THRESHOLD,
   DEFAULT_MAX_BOOKING_CRATES_PER_ORDER,
@@ -25,6 +26,7 @@ export const DEFAULT_OPERATIONS_POLICY = {
   writeOffCratesAllowance: null,
   bookingMinimumPaymentPercent: DEFAULT_BOOKING_MIN_PAYMENT_PERCENT,
   firstTimeBookingLimitCrates: DEFAULT_FIRST_TIME_BOOKING_LIMIT_CRATES,
+  firstCustomerOrderLimitCount: DEFAULT_FIRST_CUSTOMER_ORDER_LIMIT_COUNT,
   maxBookingCratesPerOrder: DEFAULT_MAX_BOOKING_CRATES_PER_ORDER,
   largePosPaymentThreshold: DEFAULT_LARGE_POS_PAYMENT_THRESHOLD,
 };
@@ -69,6 +71,7 @@ function normalizePolicy(value, fallback = DEFAULT_OPERATIONS_POLICY) {
   const crackAllowancePercent = Number(raw.crackAllowancePercent);
   const bookingMinimumPaymentPercent = Number(raw.bookingMinimumPaymentPercent);
   const firstTimeBookingLimitCrates = Number(raw.firstTimeBookingLimitCrates);
+  const firstCustomerOrderLimitCount = Number(raw.firstCustomerOrderLimitCount);
   const maxBookingCratesPerOrder = Number(raw.maxBookingCratesPerOrder);
   const largePosPaymentThreshold = Number(raw.largePosPaymentThreshold);
 
@@ -87,6 +90,9 @@ function normalizePolicy(value, fallback = DEFAULT_OPERATIONS_POLICY) {
     firstTimeBookingLimitCrates: Number.isFinite(firstTimeBookingLimitCrates) && firstTimeBookingLimitCrates > 0
       ? Math.round(firstTimeBookingLimitCrates)
       : fallback.firstTimeBookingLimitCrates,
+    firstCustomerOrderLimitCount: Number.isFinite(firstCustomerOrderLimitCount) && firstCustomerOrderLimitCount > 0
+      ? Math.round(firstCustomerOrderLimitCount)
+      : fallback.firstCustomerOrderLimitCount,
     maxBookingCratesPerOrder: Number.isFinite(maxBookingCratesPerOrder) && maxBookingCratesPerOrder > 0
       ? Math.round(maxBookingCratesPerOrder)
       : fallback.maxBookingCratesPerOrder,
@@ -124,6 +130,7 @@ function normalizePolicyHistory(value) {
         writeOffCratesAllowance: normalizedEntry.writeOffCratesAllowance,
         bookingMinimumPaymentPercent: normalizedEntry.bookingMinimumPaymentPercent,
         firstTimeBookingLimitCrates: normalizedEntry.firstTimeBookingLimitCrates,
+        firstCustomerOrderLimitCount: normalizedEntry.firstCustomerOrderLimitCount,
         maxBookingCratesPerOrder: normalizedEntry.maxBookingCratesPerOrder,
         largePosPaymentThreshold: normalizedEntry.largePosPaymentThreshold,
       };

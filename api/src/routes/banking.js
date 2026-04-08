@@ -17,6 +17,7 @@ import {
   getTransactionCategoryConfig,
   saveTransactionCategoryConfig,
 } from '../utils/appSettings.js';
+import { getCustomerTrackedOrderCount, getPerOrderCrateLimit } from '../utils/customerOrderPolicy.js';
 import { parseProvidusStatement } from '../utils/providusStatement.js';
 
 function toNumber(value) {
@@ -1257,8 +1258,9 @@ export default async function bankingRoutes(fastify) {
       });
       const batchMap = new Map(batches.map((batch) => [batch.id, batch]));
       const batchUsage = new Map();
+      const existingOrderCount = await getCustomerTrackedOrderCount(transaction.customerId);
 
-      for (const entry of bookingsInput) {
+      for (const [index, entry] of bookingsInput.entries()) {
         const batch = batchMap.get(entry.batchId);
         if (!batch) {
           return reply.code(400).send({ error: 'One of the selected batches is no longer open.' });
@@ -1279,6 +1281,15 @@ export default async function bankingRoutes(fastify) {
         }
         if (allocatedAmount + 0.009 < minimumPayment) {
           return reply.code(400).send({ error: `${batch.name} has not reached the ${Number(policy.bookingMinimumPaymentPercent || 80)}% minimum payment yet.` });
+        }
+
+        const perOrderLimit = getPerOrderCrateLimit(policy, existingOrderCount + index);
+        if (quantity > perOrderLimit) {
+          return reply.code(400).send({
+            error: existingOrderCount + index < Number(policy.firstCustomerOrderLimitCount || 3)
+              ? `${batch.name} is above the early-customer limit of ${Number(perOrderLimit).toLocaleString()} crates for this order.`
+              : `${batch.name} is above the order limit of ${Number(perOrderLimit).toLocaleString()} crates.`,
+          });
         }
 
         batchUsage.set(batch.id, (batchUsage.get(batch.id) || 0) + quantity);
@@ -1340,14 +1351,6 @@ export default async function bankingRoutes(fastify) {
 
           created.push(booking);
         }
-
-        if (transaction.customer?.isFirstTime) {
-          await tx.customer.update({
-            where: { id: transaction.customerId },
-            data: { isFirstTime: false },
-          });
-        }
-
         return created;
       });
 

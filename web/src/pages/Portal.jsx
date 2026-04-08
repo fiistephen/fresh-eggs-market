@@ -202,6 +202,8 @@ function Metric({ label, value }) {
 }
 
 function BatchCard({ batch, actionLabel, helperText, priceLabel, onAction, disabled, mode }) {
+  const primaryPrice = mode === 'buy-now' ? Number(batch.retailPrice) : Number(batch.wholesalePrice);
+  const primaryPriceLabel = mode === 'buy-now' ? 'Retail' : 'Wholesale';
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
       <div className="flex items-start justify-between gap-4">
@@ -212,9 +214,11 @@ function BatchCard({ batch, actionLabel, helperText, priceLabel, onAction, disab
         </div>
         <div className="text-right">
           <p className="text-xs font-medium uppercase tracking-[0.2em] text-gray-500">{priceLabel}</p>
-          <p className="mt-2 text-2xl font-bold text-gray-900">{fmtMoney(batch.wholesalePrice)}</p>
-          <p className="text-xs text-gray-500">Wholesale</p>
-          <p className="mt-1 text-sm font-semibold text-amber-700">{fmtMoney(batch.retailPrice)} retail</p>
+          <p className="mt-2 text-2xl font-bold text-gray-900">{fmtMoney(primaryPrice)}</p>
+          <p className="text-xs text-gray-500">{primaryPriceLabel}</p>
+          {mode === 'book-upcoming' && (
+            <p className="mt-1 text-sm font-semibold text-amber-700">{fmtMoney(batch.retailPrice)} retail now</p>
+          )}
         </div>
       </div>
 
@@ -302,10 +306,12 @@ function BookingCheckoutModal({ batch, profile, policy, onClose, onFinished }) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(null);
 
-  const maxBooking = Number(policy?.maxBookingCratesPerOrder || 100);
-  const firstTimeLimit = Number(policy?.firstTimeBookingLimitCrates || 20);
   const minPaymentPercent = Number(policy?.bookingMinimumPaymentPercent || 80);
-  const maxQty = Math.min(batch.remainingAvailable, maxBooking, profile?.isFirstTime ? firstTimeLimit : maxBooking);
+  const orderLimitProfile = profile?.orderLimitProfile || null;
+  const maxQty = Math.min(
+    batch.remainingAvailable,
+    Number(orderLimitProfile?.currentPerOrderLimit || policy?.maxBookingCratesPerOrder || 100),
+  );
   const quantityValue = parseInt(quantity, 10) || 0;
   const orderValue = quantityValue * Number(batch.wholesalePrice);
   const minPayment = orderValue * (minPaymentPercent / 100);
@@ -378,9 +384,9 @@ function BookingCheckoutModal({ batch, profile, policy, onClose, onFinished }) {
           <div className="flex items-center justify-between py-1"><span className="text-gray-500">Egg type</span><span className="font-semibold text-gray-900">{batch.eggTypeLabel}</span></div>
           <div className="flex items-center justify-between py-1"><span className="text-gray-500">Expected date</span><span className="font-semibold text-gray-900">{fmtDate(batch.expectedDate)}</span></div>
           <div className="flex items-center justify-between py-1"><span className="text-gray-500">Available to book</span><span className="font-semibold text-gray-900">{fmt(batch.remainingAvailable)} crates</span></div>
-          {profile?.isFirstTime && (
+          {orderLimitProfile?.isUsingEarlyOrderLimit && (
             <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              First-time customers can book up to {firstTimeLimit} crates from one batch.
+              Your first {Number(orderLimitProfile.earlyOrderLimitCount || 0)} orders can be up to {Number(orderLimitProfile.currentPerOrderLimit || 0)} crates each. You have {Number(orderLimitProfile.earlyOrdersRemaining || 0)} order{Number(orderLimitProfile.earlyOrdersRemaining || 0) === 1 ? '' : 's'} left at this limit.
             </div>
           )}
         </div>
@@ -448,16 +454,20 @@ function BookingCheckoutModal({ batch, profile, policy, onClose, onFinished }) {
   );
 }
 
-function BuyNowCheckoutModal({ batch, onClose, onFinished }) {
+function BuyNowCheckoutModal({ batch, profile, policy, onClose, onFinished }) {
   const [quantity, setQuantity] = useState('1');
-  const [priceType, setPriceType] = useState('RETAIL');
   const [paymentMethod, setPaymentMethod] = useState('CARD');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(null);
 
   const quantityValue = parseInt(quantity, 10) || 0;
-  const unitPrice = priceType === 'WHOLESALE' ? Number(batch.wholesalePrice) : Number(batch.retailPrice);
+  const unitPrice = Number(batch.retailPrice);
+  const orderLimitProfile = profile?.orderLimitProfile || null;
+  const maxQty = Math.min(
+    batch.availableForSale,
+    Number(orderLimitProfile?.currentPerOrderLimit || policy?.maxBookingCratesPerOrder || 100),
+  );
   const orderValue = quantityValue * unitPrice;
 
   async function handleSubmit(event) {
@@ -469,7 +479,6 @@ function BuyNowCheckoutModal({ batch, onClose, onFinished }) {
         checkoutType: 'BUY_NOW',
         batchId: batch.id,
         quantity: quantityValue,
-        priceType,
         paymentMethod,
       });
 
@@ -529,24 +538,19 @@ function BuyNowCheckoutModal({ batch, onClose, onFinished }) {
           <div className="flex items-center justify-between py-1"><span className="text-gray-500">Received</span><span className="font-semibold text-gray-900">{fmtDate(batch.receivedDate || batch.expectedDate)}</span></div>
         </div>
 
+        {orderLimitProfile?.isUsingEarlyOrderLimit && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            Your first {Number(orderLimitProfile.earlyOrderLimitCount || 0)} orders can be up to {Number(orderLimitProfile.currentPerOrderLimit || 0)} crates each. You have {Number(orderLimitProfile.earlyOrdersRemaining || 0)} order{Number(orderLimitProfile.earlyOrdersRemaining || 0) === 1 ? '' : 's'} left at this limit.
+          </div>
+        )}
+
         {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 
-        <Field label="Price type" help="Use wholesale for larger crate orders and retail for standard spot buying.">
-          <select
-            value={priceType}
-            onChange={(event) => setPriceType(event.target.value)}
-            className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500"
-          >
-            <option value="RETAIL">Retail</option>
-            <option value="WHOLESALE">Wholesale</option>
-          </select>
-        </Field>
-
-        <Field label="How many crates do you want to buy?" help={`You can buy up to ${fmt(batch.availableForSale)} crates right now.`}>
+        <Field label="How many crates do you want to buy?" help={`You can buy up to ${fmt(maxQty)} crates right now.`}>
           <input
             type="number"
             min="1"
-            max={batch.availableForSale}
+            max={maxQty}
             required
             value={quantity}
             onChange={(event) => setQuantity(event.target.value)}
@@ -556,6 +560,7 @@ function BuyNowCheckoutModal({ batch, onClose, onFinished }) {
 
         <div className="rounded-2xl bg-green-50 p-4 text-sm">
           <div className="flex items-center justify-between py-1"><span className="text-gray-600">Price per crate</span><span className="font-semibold text-gray-900">{fmtMoney(unitPrice)}</span></div>
+          <div className="flex items-center justify-between py-1"><span className="text-gray-600">Price used</span><span className="font-semibold text-gray-900">Retail price</span></div>
           <div className="flex items-center justify-between py-1"><span className="text-gray-600">Total to pay</span><span className="font-semibold text-gray-900">{fmtMoney(orderValue)}</span></div>
         </div>
 
@@ -1188,6 +1193,8 @@ export default function Portal() {
       {buyNowBatch && (
         <BuyNowCheckoutModal
           batch={buyNowBatch}
+          profile={profile}
+          policy={portalPolicy}
           onClose={() => setBuyNowBatch(null)}
           onFinished={loadPortal}
         />

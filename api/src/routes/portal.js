@@ -21,6 +21,9 @@ import {
   getActivePortalBuyNowHoldQuantity,
   getCustomerDepositAccount,
 } from '../utils/portalCheckout.js';
+import {
+  getCustomerOrderLimitProfile,
+} from '../utils/customerOrderPolicy.js';
 
 const SALT_ROUNDS = 12;
 const TRANSFER_PAYMENT_DETAILS = {
@@ -117,6 +120,10 @@ function getPortalCheckoutSummary(checkout, eggTypes = []) {
       retailPrice: Number(checkout.batch.retailPrice),
     } : null,
   };
+}
+
+function getCheckoutPriceType(checkoutType) {
+  return checkoutType === 'BUY_NOW' ? 'RETAIL' : 'WHOLESALE';
 }
 
 async function getCustomerFromUser(userId) {
@@ -341,11 +348,6 @@ async function finalizeUpcomingBookingCheckout(checkout, enteredById) {
         bookingId: booking.id,
         verifiedAt: new Date(),
       },
-    });
-
-    await tx.customer.update({
-      where: { id: checkout.customerId },
-      data: { isFirstTime: false },
     });
 
     return booking;
@@ -745,6 +747,8 @@ export default async function portalRoutes(fastify) {
       const user = await prisma.user.findUnique({ where: { id: request.user.sub } });
       if (!user) return reply.code(404).send({ error: 'User not found' });
 
+      const policy = await getOperationsPolicy();
+
       const customer = await prisma.customer.findFirst({
         where: {
           OR: [
@@ -757,6 +761,10 @@ export default async function portalRoutes(fastify) {
         },
       });
 
+      const orderLimitProfile = customer
+        ? await getCustomerOrderLimitProfile(customer.id, policy)
+        : null;
+
       return reply.send({
         user: {
           id: user.id,
@@ -767,10 +775,11 @@ export default async function portalRoutes(fastify) {
         },
         customerId: customer?.id || null,
         isFirstTime: customer?.isFirstTime ?? true,
+        orderLimitProfile,
         stats: customer ? {
           totalBookings: customer._count.bookings,
           totalPurchases: customer._count.sales,
-          totalOrders: customer._count.portalOrderRequests + customer._count.portalCheckouts,
+          totalOrders: orderLimitProfile?.trackedOrderCount ?? (customer._count.portalOrderRequests + customer._count.portalCheckouts),
         } : {
           totalBookings: 0,
           totalPurchases: 0,
@@ -799,7 +808,6 @@ export default async function portalRoutes(fastify) {
         quantity,
         paymentMethod,
         amountToPay,
-        priceType = 'RETAIL',
         notes,
       } = request.body;
 
@@ -843,32 +851,28 @@ export default async function portalRoutes(fastify) {
       let unitPrice = 0;
       let paymentDue = 0;
       let paymentWindowEndsAt = null;
+      const orderLimitProfile = await getCustomerOrderLimitProfile(customer.id, policy);
+      const currentPerOrderLimit = Number(orderLimitProfile.currentPerOrderLimit || policy.maxBookingCratesPerOrder || 100);
+
+      if (quantity > currentPerOrderLimit) {
+        return reply.code(400).send({
+          error: orderLimitProfile.isUsingEarlyOrderLimit
+            ? `Your first ${orderLimitProfile.earlyOrderLimitCount} orders can be up to ${currentPerOrderLimit} crates each.`
+            : `The maximum order size right now is ${currentPerOrderLimit} crates.`,
+        });
+      }
 
       if (checkoutType === 'BOOK_UPCOMING') {
         if (batch.status !== 'OPEN') {
           return reply.code(400).send({ error: 'This batch is not open for booking anymore.' });
         }
 
-        const [confirmedBookedAgg, heldForCheckout, customerBookedAgg, customerHeldAgg] = await Promise.all([
+        const [confirmedBookedAgg, heldForCheckout] = await Promise.all([
           prisma.booking.aggregate({
             where: { batchId, status: { not: 'CANCELLED' } },
             _sum: { quantity: true },
           }),
           getActivePortalBookingHoldQuantity(batchId),
-          prisma.booking.aggregate({
-            where: { customerId: customer.id, batchId, status: { not: 'CANCELLED' } },
-            _sum: { quantity: true },
-          }),
-          prisma.portalCheckout.aggregate({
-            where: {
-              customerId: customer.id,
-              batchId,
-              checkoutType: 'BOOK_UPCOMING',
-              bookingId: null,
-              status: { in: ['AWAITING_PAYMENT', 'AWAITING_TRANSFER'] },
-            },
-            _sum: { quantity: true },
-          }),
         ]);
 
         const remainingAvailable = Math.max(
@@ -877,17 +881,6 @@ export default async function portalRoutes(fastify) {
         );
         if (quantity > remainingAvailable) {
           return reply.code(400).send({ error: `Only ${remainingAvailable} crates are still available to book.` });
-        }
-
-        const maxBooking = Number(policy.maxBookingCratesPerOrder || 100);
-        const firstTimeLimit = Number(policy.firstTimeBookingLimitCrates || 20);
-        const customerReserved = (customerBookedAgg._sum.quantity || 0) + (customerHeldAgg._sum.quantity || 0);
-        const customerRemaining = Math.max(0, maxBooking - customerReserved);
-        if (quantity > customerRemaining) {
-          return reply.code(400).send({ error: `You can only hold ${customerRemaining} more crates from this batch.` });
-        }
-        if (customer.isFirstTime && quantity > firstTimeLimit) {
-          return reply.code(400).send({ error: `First-time customers can book up to ${firstTimeLimit} crates.` });
         }
 
         unitPrice = Number(batch.wholesalePrice);
@@ -910,9 +903,6 @@ export default async function portalRoutes(fastify) {
         if (batch.status !== 'RECEIVED') {
           return reply.code(400).send({ error: 'This batch is not ready for immediate buying yet.' });
         }
-        if (!['WHOLESALE', 'RETAIL'].includes(priceType)) {
-          return reply.code(400).send({ error: 'Price type must be wholesale or retail.' });
-        }
         const availability = await buildReceivedBatchAvailability(batchId);
         if (!availability) {
           return reply.code(404).send({ error: 'Batch not found.' });
@@ -920,9 +910,7 @@ export default async function portalRoutes(fastify) {
         if (quantity > availability.availableForSale) {
           return reply.code(400).send({ error: `Only ${availability.availableForSale} crates are still available to buy.` });
         }
-        unitPrice = priceType === 'WHOLESALE'
-          ? Number(batch.wholesalePrice)
-          : Number(batch.retailPrice);
+        unitPrice = Number(batch.retailPrice);
         orderValue = quantity * unitPrice;
         paymentDue = orderValue;
         paymentWindowEndsAt = paymentMethod === 'CARD'
@@ -938,7 +926,7 @@ export default async function portalRoutes(fastify) {
           paymentMethod,
           status: paymentMethod === 'CARD' ? 'AWAITING_PAYMENT' : 'AWAITING_TRANSFER',
           quantity,
-          priceType: checkoutType === 'BUY_NOW' ? priceType : 'WHOLESALE',
+          priceType: getCheckoutPriceType(checkoutType),
           unitPrice,
           orderValue,
           amountToPay: paymentDue,
