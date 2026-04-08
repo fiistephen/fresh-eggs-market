@@ -1395,3 +1395,39 @@ Minimum update format:
   - banking customer-booking allocation
   - POS alerts
 - Historical batch and inventory reporting now resolve policy using the batch start date so older batches are not re-scored by newer policy changes.
+
+## 2026-04-08 — Portal payment-first holds and transfer approval
+
+- Portal ordering now follows a payment-first hold model instead of the old request-first flow.
+- New backend model:
+  - `PortalCheckout`
+  - used for both `BOOK_UPCOMING` and `BUY_NOW`
+  - holds crates immediately before payment is fully confirmed
+- New portal behavior:
+  - `Buy eggs now` shows `Available to buy`
+  - `Book upcoming batch` still shows booking availability
+  - both flows hold crates immediately
+  - card flow uses Paystack initialize/verify flow from the backend
+  - transfer flow keeps the hold while admin confirms the transfer
+- Operational rule now implemented:
+  - card buy-now -> auto approved for pickup
+  - transfer buy-now -> waits for admin approval
+  - card booking -> booking is created immediately after verified payment
+  - transfer booking -> hold stays in place until admin approval creates the booking
+- Customer portal now has a unified order history endpoint:
+  - `/api/portal/orders`
+  - combines actual bookings, buy-now orders, and pending portal holds
+- Banking now includes a `Portal transfers` queue so staff can approve or reject transfer-based portal holds.
+- Availability logic now subtracts active portal holds in:
+  - portal open-batch availability
+  - portal available-now availability
+  - backend bookings availability checks
+  - sales stock snapshot for direct-sale availability
+- Staging deploy notes:
+  - required the usual stale Docker `virtfs` overlay cleanup for the staging API container
+  - Prisma schema push needed `--accept-data-loss` because of the new `portal_order_requests.payment_reference` unique constraint warning
+- Staging checks completed:
+  - public `/portal` and `/banking` return `200`
+  - staging API health is `ok`
+  - `/api/portal/batches` and `/api/portal/available-now` return the new payload shape
+  - authenticated `/api/portal/orders` works for demo customer `0809000001`
