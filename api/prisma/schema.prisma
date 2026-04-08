@@ -114,17 +114,20 @@ model Batch {
 
 // Egg codes within a batch — e.g. FE4600 (1000 crates) + FE4800 (800 crates)
 model BatchEggCode {
-  id          String  @id @default(cuid())
-  batchId     String  @map("batch_id")
-  itemId      String? @map("item_id")
-  code        String  // e.g. "FE4600"
-  costPrice   Decimal @map("cost_price") @db.Decimal(12, 2) // ₦ per crate for this code
-  quantity    Int     // Paid crates of this code
-  freeQty     Int     @default(0) @map("free_qty") // Free crates of this code
+  id             String   @id @default(cuid())
+  batchId        String   @map("batch_id")
+  itemId         String?  @map("item_id")
+  code           String   // e.g. "FE4600"
+  costPrice      Decimal  @map("cost_price") @db.Decimal(12, 2) // ₦ per crate for this code
+  wholesalePrice Decimal? @map("wholesale_price") @db.Decimal(12, 2)
+  retailPrice    Decimal? @map("retail_price") @db.Decimal(12, 2)
+  quantity       Int      // Paid crates of this code
+  freeQty        Int      @default(0) @map("free_qty") // Free crates of this code
 
   batch Batch @relation(fields: [batchId], references: [id], onDelete: Cascade)
   item  Item? @relation(fields: [itemId], references: [id])
 
+  bookings      Booking[]
   saleLineItems SaleLineItem[]
 
   @@unique([batchId, code])
@@ -165,20 +168,22 @@ enum BookingStatus {
 }
 
 model Booking {
-  id            String        @id @default(cuid())
-  customerId    String        @map("customer_id")
-  batchId       String        @map("batch_id")
-  quantity      Int           // Crates booked
-  amountPaid    Decimal       @map("amount_paid") @db.Decimal(12, 2)
-  orderValue    Decimal       @map("order_value") @db.Decimal(12, 2) // Full value at booking price
-  status        BookingStatus @default(CONFIRMED)
-  channel       String        @default("backend") // "website" or "backend"
-  notes         String?
-  createdAt     DateTime      @default(now()) @map("created_at")
-  updatedAt     DateTime      @updatedAt @map("updated_at")
+  id             String        @id @default(cuid())
+  customerId     String        @map("customer_id")
+  batchId        String        @map("batch_id")
+  batchEggCodeId String?       @map("batch_egg_code_id")
+  quantity       Int           // Crates booked
+  amountPaid     Decimal       @map("amount_paid") @db.Decimal(12, 2)
+  orderValue     Decimal       @map("order_value") @db.Decimal(12, 2) // Full value at booking price
+  status         BookingStatus @default(CONFIRMED)
+  channel        String        @default("backend") // "website" or "backend"
+  notes          String?
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
 
   customer Customer @relation(fields: [customerId], references: [id])
   batch    Batch    @relation(fields: [batchId], references: [id])
+  batchEggCode BatchEggCode? @relation(fields: [batchEggCodeId], references: [id])
   sale     Sale?    // Linked when booking is picked up and converted to sale
   allocations BookingPaymentAllocation[]
 

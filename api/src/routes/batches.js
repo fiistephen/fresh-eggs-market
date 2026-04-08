@@ -134,6 +134,23 @@ async function buildBatchOverview(batch, policy, options = {}) {
   };
 }
 
+function mapBatchEggCodeForJson(eggCode, fallbackBatch = null) {
+  return {
+    ...eggCode,
+    costPrice: Number(eggCode.costPrice),
+    wholesalePrice: eggCode.wholesalePrice != null
+      ? Number(eggCode.wholesalePrice)
+      : fallbackBatch?.wholesalePrice != null
+        ? Number(fallbackBatch.wholesalePrice)
+        : null,
+    retailPrice: eggCode.retailPrice != null
+      ? Number(eggCode.retailPrice)
+      : fallbackBatch?.retailPrice != null
+        ? Number(fallbackBatch.retailPrice)
+        : null,
+  };
+}
+
 export default async function batchRoutes(fastify) {
 
   // ─── LIST BATCHES ─────────────────────────────────────────────
@@ -180,10 +197,7 @@ export default async function batchRoutes(fastify) {
           wholesalePrice: Number(batch.wholesalePrice),
           retailPrice: Number(batch.retailPrice),
           costPrice: Number(batch.costPrice),
-          eggCodes: batch.eggCodes.map(ec => ({
-            ...ec,
-            costPrice: Number(ec.costPrice),
-          })),
+          eggCodes: batch.eggCodes.map((ec) => mapBatchEggCodeForJson(ec, batch)),
           bookings: batch.bookings,
         };
       }));
@@ -227,10 +241,7 @@ export default async function batchRoutes(fastify) {
         wholesalePrice: Number(batch.wholesalePrice),
         retailPrice: Number(batch.retailPrice),
         costPrice: Number(batch.costPrice),
-        eggCodes: batch.eggCodes.map(ec => ({
-          ...ec,
-          costPrice: Number(ec.costPrice),
-        })),
+        eggCodes: batch.eggCodes.map((ec) => mapBatchEggCodeForJson(ec, batch)),
         bookings: batch.bookings.map(bk => ({
           ...bk,
           amountPaid: Number(bk.amountPaid),
@@ -401,6 +412,8 @@ export default async function batchRoutes(fastify) {
                 itemId: row.itemId,
                 code: row.code,
                 costPrice: row.costPrice,
+                wholesalePrice: row.wholesalePrice,
+                retailPrice: row.retailPrice,
                 quantity: 0,
                 freeQty: 0,
               })),
@@ -424,7 +437,10 @@ export default async function batchRoutes(fastify) {
   fastify.patch('/batches/:id', {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER')],
     handler: async (request, reply) => {
-      const existing = await prisma.batch.findUnique({ where: { id: request.params.id } });
+      const existing = await prisma.batch.findUnique({
+        where: { id: request.params.id },
+        include: { eggCodes: true },
+      });
       if (!existing) return reply.code(404).send({ error: 'Batch not found' });
       if (existing.status !== 'OPEN') {
         return reply.code(400).send({ error: 'Can only edit batches that are OPEN' });
@@ -499,8 +515,8 @@ export default async function batchRoutes(fastify) {
       // Validate egg codes
       const seenCodes = new Set();
       for (const ec of eggCodes) {
-        if (!ec.code || !ec.costPrice || !ec.quantity) {
-          return reply.code(400).send({ error: 'Each egg code needs code, costPrice, and quantity' });
+        if (!ec.code || !ec.costPrice || !ec.quantity || !ec.wholesalePrice || !ec.retailPrice) {
+          return reply.code(400).send({ error: 'Each egg code needs code, cost price, wholesale price, retail price, and quantity' });
         }
         const normalizedCode = normalizeItemCode(ec.code);
         if (!/^FE\d+$/.test(normalizedCode)) {
@@ -529,12 +545,27 @@ export default async function batchRoutes(fastify) {
         if (!itemByCode.has(normalizedCode)) {
           const item = await ensureItemForEggCode({
             code: normalizedCode,
-            wholesalePrice: existing.wholesalePrice,
-            retailPrice: existing.retailPrice,
+            wholesalePrice: Number(eggCode.wholesalePrice),
+            retailPrice: Number(eggCode.retailPrice),
           });
+          if (
+            Number(item.defaultWholesalePrice ?? 0) !== Number(eggCode.wholesalePrice)
+            || Number(item.defaultRetailPrice ?? 0) !== Number(eggCode.retailPrice)
+          ) {
+            itemByCode.set(normalizedCode, await prisma.item.update({
+              where: { id: item.id },
+              data: {
+                defaultWholesalePrice: Number(eggCode.wholesalePrice),
+                defaultRetailPrice: Number(eggCode.retailPrice),
+              },
+            }));
+            continue;
+          }
           itemByCode.set(normalizedCode, item);
         }
       }
+
+      const primaryEggCode = eggCodes[0];
 
       const batch = await prisma.batch.update({
         where: { id: request.params.id },
@@ -543,6 +574,9 @@ export default async function batchRoutes(fastify) {
           receivedDate: new Date(),
           actualQuantity,
           freeCrates: freeCrates ?? totalFree,
+          wholesalePrice: Number(primaryEggCode.wholesalePrice),
+          retailPrice: Number(primaryEggCode.retailPrice),
+          costPrice: Number(primaryEggCode.costPrice),
           eggCodes: {
             deleteMany: {}, // Clear any existing (shouldn't be any)
             createMany: {
@@ -550,6 +584,8 @@ export default async function batchRoutes(fastify) {
                 itemId: itemByCode.get(normalizeItemCode(ec.code))?.id || null,
                 code: normalizeItemCode(ec.code),
                 costPrice: ec.costPrice,
+                wholesalePrice: ec.wholesalePrice,
+                retailPrice: ec.retailPrice,
                 quantity: ec.quantity,
                 freeQty: ec.freeQty || 0,
               })),
@@ -565,10 +601,7 @@ export default async function batchRoutes(fastify) {
           wholesalePrice: Number(batch.wholesalePrice),
           retailPrice: Number(batch.retailPrice),
           costPrice: Number(batch.costPrice),
-          eggCodes: batch.eggCodes.map(ec => ({
-            ...ec,
-            costPrice: Number(ec.costPrice),
-          })),
+          eggCodes: batch.eggCodes.map((ec) => mapBatchEggCodeForJson(ec, batch)),
         },
       });
     },

@@ -78,6 +78,8 @@ export async function syncItemsFromBatchEggCodes() {
     select: {
       id: true,
       code: true,
+      wholesalePrice: true,
+      retailPrice: true,
       batch: {
         select: {
           wholesalePrice: true,
@@ -112,8 +114,8 @@ export async function syncItemsFromBatchEggCodes() {
         name: code,
         category: 'FE_EGGS',
         unitLabel: 'crate',
-        defaultWholesalePrice: firstMatch?.batch?.wholesalePrice ?? null,
-        defaultRetailPrice: firstMatch?.batch?.retailPrice ?? null,
+        defaultWholesalePrice: firstMatch?.wholesalePrice ?? firstMatch?.batch?.wholesalePrice ?? null,
+        defaultRetailPrice: firstMatch?.retailPrice ?? firstMatch?.batch?.retailPrice ?? null,
         isActive: true,
       },
       select: { id: true, code: true },

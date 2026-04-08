@@ -52,6 +52,14 @@ function saleBatchLabel(sale) {
   return sale.batchSummary || sale.batch?.name || '—';
 }
 
+function priceRangeLabel(values) {
+  const clean = (values || []).map((value) => Number(value || 0)).filter((value) => value > 0);
+  if (!clean.length) return '—';
+  const min = Math.min(...clean);
+  const max = Math.max(...clean);
+  return min === max ? formatCurrency(min) : `${formatCurrency(min)} to ${formatCurrency(max)}`;
+}
+
 export default function Sales() {
   const { user } = useAuth();
   const [sales, setSales] = useState([]);
@@ -384,8 +392,8 @@ function RecordSaleModal({ onClose, onRecorded }) {
         ...eggCode,
         batchId: batch.id,
         batchName: batch.name,
-        wholesalePrice: batch.wholesalePrice,
-        retailPrice: batch.retailPrice,
+        wholesalePrice: eggCode.wholesalePrice ?? batch.wholesalePrice,
+        retailPrice: eggCode.retailPrice ?? batch.retailPrice,
       })),
       options,
     );
@@ -409,7 +417,17 @@ function RecordSaleModal({ onClose, onRecorded }) {
     setSelectedBatch(booking.batch);
     setSaleScopeLabel(booking.batch?.name || 'Booked batch');
     setPaymentMethod('PRE_ORDER');
-    initializeLineItems(booking.batch, { presetQuantity: booking.quantity });
+    const preferredRows = booking.batchEggCodeId
+      ? (booking.batch?.eggCodes || []).filter((eggCode) => eggCode.id === booking.batchEggCodeId)
+      : booking.batch?.eggCodes || [];
+    initializeLineItemsFromRows(
+      preferredRows.map((eggCode) => ({
+        ...eggCode,
+        batchId: booking.batch?.id,
+        batchName: booking.batch?.name,
+      })),
+      { presetQuantity: booking.quantity },
+    );
     setError('');
     setStep(3);
   }
@@ -625,7 +643,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
                               <div>
                                 <p className="font-semibold text-gray-900">{booking.batch?.name || 'Batch'}</p>
                                 <p className="text-sm text-gray-500 mt-1">
-                                  {booking.quantity} crates booked on {formatDate(booking.createdAt)}
+                                  {booking.quantity} crates{booking.batchEggCode?.code ? ` of ${booking.batchEggCode.code}` : ''} booked on {formatDate(booking.createdAt)}
                                 </p>
                               </div>
                               <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -713,7 +731,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
                               <div>
                                 <p className="font-semibold text-gray-900">{batch.name}</p>
                                 <p className="text-sm text-gray-500 mt-1">
-                                  Wholesale {formatCurrency(batch.wholesalePrice)} · Retail {formatCurrency(batch.retailPrice)}
+                                  Wholesale {priceRangeLabel(batch.eggCodes.map((eggCode) => eggCode.wholesalePrice))} · Retail {priceRangeLabel(batch.eggCodes.map((eggCode) => eggCode.retailPrice))}
                                 </p>
                                 <p className="text-xs text-gray-400 mt-1">
                                   {batch.availableForSale?.toLocaleString?.() || 0} crates available for direct sale

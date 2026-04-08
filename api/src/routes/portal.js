@@ -11,6 +11,24 @@ import { authorize } from '../middleware/authorize.js';
 
 const SALT_ROUNDS = 12;
 
+function mapBatchEggCode(eggCode, batch = null) {
+  if (!eggCode) return null;
+  return {
+    ...eggCode,
+    costPrice: eggCode.costPrice != null ? Number(eggCode.costPrice) : null,
+    wholesalePrice: eggCode.wholesalePrice != null
+      ? Number(eggCode.wholesalePrice)
+      : batch?.wholesalePrice != null
+        ? Number(batch.wholesalePrice)
+        : null,
+    retailPrice: eggCode.retailPrice != null
+      ? Number(eggCode.retailPrice)
+      : batch?.retailPrice != null
+        ? Number(batch.retailPrice)
+        : null,
+  };
+}
+
 export default async function portalRoutes(fastify) {
   // ────────────────────────────────────────────────────────────
   // PUBLIC: GET /portal/batches — open batches for customer viewing
@@ -21,7 +39,7 @@ export default async function portalRoutes(fastify) {
       const batches = await prisma.batch.findMany({
         where: { status: 'OPEN' },
         include: {
-          eggCodes: { select: { code: true, quantity: true, freeQty: true } },
+          eggCodes: { select: { id: true, code: true, quantity: true, freeQty: true, costPrice: true, wholesalePrice: true, retailPrice: true } },
           _count: { select: { bookings: { where: { status: 'CONFIRMED' } } } },
         },
         orderBy: { expectedDate: 'asc' },
@@ -47,7 +65,7 @@ export default async function portalRoutes(fastify) {
           availableForBooking: batch.availableForBooking,
           totalBooked,
           remainingAvailable,
-          eggCodes: batch.eggCodes.map(ec => ec.code),
+          eggCodes: batch.eggCodes.map((ec) => mapBatchEggCode(ec, batch)),
           bookingsCount: batch._count.bookings,
         });
       }
@@ -164,6 +182,7 @@ export default async function portalRoutes(fastify) {
         where: { customerId: customer.id },
         include: {
           batch: { select: { id: true, name: true, expectedDate: true, status: true, wholesalePrice: true } },
+          batchEggCode: { select: { id: true, code: true, wholesalePrice: true } },
         },
         orderBy: { createdAt: 'desc' },
       });
@@ -174,6 +193,7 @@ export default async function portalRoutes(fastify) {
           id: b.id,
           batch: b.batch.name,
           batchStatus: b.batch.status,
+          itemCode: b.batchEggCode?.code || null,
           expectedDate: b.batch.expectedDate,
           quantity: b.quantity,
           orderValue: Number(b.orderValue),
@@ -193,7 +213,7 @@ export default async function portalRoutes(fastify) {
   fastify.post('/portal/book', {
     preHandler: [authenticate, authorize('CUSTOMER')],
     handler: async (request, reply) => {
-      const { batchId, quantity, amountPaid } = request.body;
+      const { batchId, batchEggCodeId, quantity, amountPaid } = request.body;
 
       // Validation
       if (!batchId) return reply.code(400).send({ error: 'batchId is required' });
@@ -208,7 +228,10 @@ export default async function portalRoutes(fastify) {
       if (!customer) return reply.code(400).send({ error: 'No customer record found. Please contact support.' });
 
       // Get batch
-      const batch = await prisma.batch.findUnique({ where: { id: batchId } });
+      const batch = await prisma.batch.findUnique({
+        where: { id: batchId },
+        include: { eggCodes: true },
+      });
       if (!batch) return reply.code(404).send({ error: 'Batch not found' });
       if (batch.status !== 'OPEN') return reply.code(400).send({ error: 'Batch is not open for booking' });
 
@@ -243,7 +266,20 @@ export default async function portalRoutes(fastify) {
       }
 
       // Calculate order value
-      const orderValue = quantity * Number(batch.wholesalePrice);
+      const bookingEggCode = batchEggCodeId
+        ? batch.eggCodes.find((eggCode) => eggCode.id === batchEggCodeId)
+        : batch.eggCodes.length === 1
+          ? batch.eggCodes[0]
+          : null;
+
+      if (batch.eggCodes.length > 1 && !bookingEggCode) {
+        return reply.code(400).send({ error: 'Choose the egg type you want to book from this batch' });
+      }
+      if (batchEggCodeId && !bookingEggCode) {
+        return reply.code(400).send({ error: 'Selected egg type does not belong to this batch' });
+      }
+
+      const orderValue = quantity * Number(bookingEggCode?.wholesalePrice ?? batch.wholesalePrice);
 
       // Min 80% payment
       const minPayment = orderValue * 0.8;
@@ -256,6 +292,7 @@ export default async function portalRoutes(fastify) {
         data: {
           customerId: customer.id,
           batchId,
+          batchEggCodeId: bookingEggCode?.id || null,
           quantity,
           amountPaid,
           orderValue,

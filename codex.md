@@ -1146,3 +1146,34 @@ Minimum update format:
     - sales
     - portal
     - parts of batch detail/edit flows
+
+## 31. 2026-04-08 Item-Level Pricing Cleanup
+
+- Continued the pricing cleanup beyond create-batch so FE-row pricing now drives more of the app.
+- Main files changed:
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/prisma/schema.prisma`
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/src/routes/batches.js`
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/src/routes/bookings.js`
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/src/routes/portal.js`
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/src/routes/sales.js`
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/api/src/utils/items.js`
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/pages/BatchDetail.jsx`
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/pages/Bookings.jsx`
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/pages/Portal.jsx`
+  - `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/web/src/pages/Sales.jsx`
+- What changed:
+  - `BatchEggCode` now carries row-level wholesale and retail prices in addition to cost price
+  - `Booking` now stores an optional `batchEggCodeId`
+  - open-batch booking now chooses a specific FE item when a batch has more than one planned FE type
+  - portal booking now chooses a specific FE item too
+  - sales now prefer FE-row pricing instead of falling back to one batch-wide price
+  - batch receive now records wholesale and retail per FE row
+  - batch detail/edit wording was updated to stop presenting pricing as a single batch-wide truth
+- Transitional compatibility:
+  - legacy batch-level price fields still exist on `Batch` for compatibility and fallback
+  - some reporting and older analytics still summarize at the batch shell level
+- Local verification completed:
+  - `node --check` passed for `batches.js`, `bookings.js`, `sales.js`, and `portal.js`
+  - Prisma schema validation passed
+  - Prisma client generation passed
+  - frontend build passed

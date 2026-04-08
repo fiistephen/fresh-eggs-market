@@ -274,7 +274,7 @@ export default function BatchDetail() {
             ? `${formatNumber(batch.expectedQuantity)} crates`
             : `${(overview.varianceToPolicy || 0) >= 0 ? '+' : '-'}${formatCurrency(Math.abs(overview.varianceToPolicy || 0))}`}
           subtext={batch.status === 'OPEN'
-            ? `Wholesale ${formatCurrency(batch.wholesalePrice)} · Retail ${formatCurrency(batch.retailPrice)}`
+            ? `${batch.eggCodes?.length || 0} planned FE item type${(batch.eggCodes?.length || 0) === 1 ? '' : 's'}`
             : `${formatCurrency(overview.profitPerCrate)} per crate`}
           tone={batch.status === 'OPEN' ? 'gray' : (overview.varianceToPolicy || 0) >= 0 ? 'green' : 'red'}
         />
@@ -354,6 +354,16 @@ function DetailsTab({ batch, analysis }) {
   const cancelledBookings = bookings.filter((booking) => booking.status === 'CANCELLED');
   const bookingRevenue = bookings.reduce((sum, booking) => sum + Number(booking.amountPaid || 0), 0);
   const feMix = batch.eggCodes || [];
+  const costPrices = feMix.map((item) => Number(item.costPrice || 0)).filter((value) => value > 0);
+  const wholesalePrices = feMix.map((item) => Number(item.wholesalePrice || 0)).filter((value) => value > 0);
+  const retailPrices = feMix.map((item) => Number(item.retailPrice || 0)).filter((value) => value > 0);
+
+  function priceRangeLabel(values) {
+    if (!values.length) return '—';
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    return min === max ? formatCurrency(min) : `${formatCurrency(min)} to ${formatCurrency(max)}`;
+  }
 
   return (
     <div className="space-y-6">
@@ -391,19 +401,19 @@ function DetailsTab({ batch, analysis }) {
         </div>
 
         <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
-          <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-4">Pricing Per Crate</h3>
+          <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-4">Pricing Across FE Items</h3>
           <div className="space-y-4">
             <div>
-              <p className="text-xs text-gray-400">Cost price</p>
-              <p className="mt-1 text-xl font-bold text-gray-900">{formatCurrency(batch.costPrice)}</p>
+              <p className="text-xs text-gray-400">Cost price range</p>
+              <p className="mt-1 text-xl font-bold text-gray-900">{priceRangeLabel(costPrices)}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-400">Wholesale price</p>
-              <p className="mt-1 text-xl font-bold text-blue-600">{formatCurrency(batch.wholesalePrice)}</p>
+              <p className="text-xs text-gray-400">Wholesale price range</p>
+              <p className="mt-1 text-xl font-bold text-blue-600">{priceRangeLabel(wholesalePrices)}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-400">Retail price</p>
-              <p className="mt-1 text-xl font-bold text-green-600">{formatCurrency(batch.retailPrice)}</p>
+              <p className="text-xs text-gray-400">Retail price range</p>
+              <p className="mt-1 text-xl font-bold text-green-600">{priceRangeLabel(retailPrices)}</p>
             </div>
           </div>
         </div>
@@ -848,10 +858,19 @@ function AnalysisTab({ analysis }) {
 // ─── RECEIVE BATCH MODAL ──────────────────────────────────────
 
 function ReceiveBatchModal({ batch, onClose, onReceived }) {
-  const defaultCode = `FE${Math.round(batch.costPrice)}`;
-  const [eggCodes, setEggCodes] = useState([
-    { code: defaultCode, costPrice: batch.costPrice, quantity: batch.expectedQuantity, freeQty: 3 },
-  ]);
+  const initialEggCodes = batch.eggCodes?.length
+    ? batch.eggCodes.map((eggCode, index) => ({
+        code: eggCode.code,
+        costPrice: eggCode.costPrice || '',
+        wholesalePrice: eggCode.wholesalePrice || '',
+        retailPrice: eggCode.retailPrice || '',
+        quantity: index === 0 ? batch.expectedQuantity : '',
+        freeQty: index === 0 ? 3 : 0,
+      }))
+    : [
+        { code: 'FE', costPrice: '', wholesalePrice: '', retailPrice: '', quantity: batch.expectedQuantity, freeQty: 3 },
+      ];
+  const [eggCodes, setEggCodes] = useState(initialEggCodes);
   const [catalogItems, setCatalogItems] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -884,7 +903,7 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
 
   function addEggCode() {
     const fallbackCode = catalogItems.find((item) => item.code)?.code || 'FE';
-    setEggCodes([...eggCodes, { code: fallbackCode, costPrice: '', quantity: '', freeQty: 0 }]);
+    setEggCodes([...eggCodes, { code: fallbackCode, costPrice: '', wholesalePrice: '', retailPrice: '', quantity: '', freeQty: 0 }]);
   }
 
   function removeEggCode(index) {
@@ -903,6 +922,8 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
         updated[index] = {
           ...updated[index],
           costPrice: updated[index].costPrice || matchedItem.defaultWholesalePrice || batch.costPrice,
+          wholesalePrice: updated[index].wholesalePrice || matchedItem.defaultWholesalePrice || '',
+          retailPrice: updated[index].retailPrice || matchedItem.defaultRetailPrice || '',
         };
       }
     }
@@ -934,6 +955,16 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
         setSubmitting(false);
         return;
       }
+      if (!ec.wholesalePrice || Number(ec.wholesalePrice) <= 0) {
+        setError(`Wholesale price for ${normalizedCode} must be positive`);
+        setSubmitting(false);
+        return;
+      }
+      if (!ec.retailPrice || Number(ec.retailPrice) <= 0) {
+        setError(`Retail price for ${normalizedCode} must be positive`);
+        setSubmitting(false);
+        return;
+      }
       if (!ec.quantity || Number(ec.quantity) <= 0) {
         setError(`Quantity for ${normalizedCode} must be positive`);
         setSubmitting(false);
@@ -948,6 +979,8 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
         eggCodes: eggCodes.map(ec => ({
           code: normalizeEggCode(ec.code),
           costPrice: Number(ec.costPrice),
+          wholesalePrice: Number(ec.wholesalePrice),
+          retailPrice: Number(ec.retailPrice),
           quantity: Number(ec.quantity),
           freeQty: Number(ec.freeQty) || 0,
         })),
@@ -1046,7 +1079,7 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
                     />
                   </div>
-                  <div className="sm:col-span-3">
+                  <div className="sm:col-span-2">
                     {i === 0 && <label className="block text-xs text-gray-500 mb-1">Cost/Crate</label>}
                     <input
                       type="number"
@@ -1055,6 +1088,30 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
                       placeholder="4600"
                       value={ec.costPrice}
                       onChange={e => updateEggCode(i, 'costPrice', e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    {i === 0 && <label className="block text-xs text-gray-500 mb-1">Wholesale</label>}
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      placeholder="5000"
+                      value={ec.wholesalePrice}
+                      onChange={e => updateEggCode(i, 'wholesalePrice', e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    {i === 0 && <label className="block text-xs text-gray-500 mb-1">Retail</label>}
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      placeholder="5400"
+                      value={ec.retailPrice}
+                      onChange={e => updateEggCode(i, 'retailPrice', e.target.value)}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
                     />
                   </div>
@@ -1081,7 +1138,7 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
                     />
                   </div>
-                  <div className="sm:col-span-2 flex items-center justify-start sm:justify-end">
+                  <div className="sm:col-span-1 flex items-center justify-start sm:justify-end">
                     {eggCodes.length > 1 && (
                       <button
                         type="button"
@@ -1367,9 +1424,6 @@ function EditBatchModal({ batch, onClose, onUpdated }) {
     expectedDate: batch.expectedDate ? new Date(batch.expectedDate).toISOString().split('T')[0] : '',
     expectedQuantity: batch.expectedQuantity,
     availableForBooking: batch.availableForBooking,
-    wholesalePrice: batch.wholesalePrice,
-    retailPrice: batch.retailPrice,
-    costPrice: batch.costPrice,
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -1387,9 +1441,6 @@ function EditBatchModal({ batch, onClose, onUpdated }) {
         expectedDate: form.expectedDate,
         expectedQuantity: Number(form.expectedQuantity),
         availableForBooking: Number(form.availableForBooking),
-        wholesalePrice: Number(form.wholesalePrice),
-        retailPrice: Number(form.retailPrice),
-        costPrice: Number(form.costPrice),
       });
       onUpdated();
     } catch (err) {
@@ -1445,37 +1496,8 @@ function EditBatchModal({ batch, onClose, onUpdated }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Cost Price</label>
-              <input
-                type="number"
-                required min="1"
-                value={form.costPrice}
-                onChange={e => update('costPrice', e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Wholesale</label>
-              <input
-                type="number"
-                required min="1"
-                value={form.wholesalePrice}
-                onChange={e => update('wholesalePrice', e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Retail</label>
-              <input
-                type="number"
-                required min="1"
-                value={form.retailPrice}
-                onChange={e => update('retailPrice', e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-              />
-            </div>
+          <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+            FE item prices are managed on the planned item rows and receipt rows for this batch, not here on the batch shell.
           </div>
 
           <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-2">

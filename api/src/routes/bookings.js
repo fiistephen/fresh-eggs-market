@@ -12,6 +12,24 @@ function toNumber(value) {
   return value == null ? null : Number(value);
 }
 
+function mapBatchEggCode(eggCode, batch = null) {
+  if (!eggCode) return null;
+  return {
+    ...eggCode,
+    costPrice: eggCode.costPrice != null ? Number(eggCode.costPrice) : null,
+    wholesalePrice: eggCode.wholesalePrice != null
+      ? Number(eggCode.wholesalePrice)
+      : batch?.wholesalePrice != null
+        ? Number(batch.wholesalePrice)
+        : null,
+    retailPrice: eggCode.retailPrice != null
+      ? Number(eggCode.retailPrice)
+      : batch?.retailPrice != null
+        ? Number(batch.retailPrice)
+        : null,
+  };
+}
+
 function enrichBooking(booking) {
   const amountPaid = Number(booking.amountPaid);
   const orderValue = Number(booking.orderValue);
@@ -39,8 +57,12 @@ function enrichBooking(booking) {
         ...(booking.batch.wholesalePrice !== undefined && { wholesalePrice: Number(booking.batch.wholesalePrice) }),
         ...(booking.batch.retailPrice !== undefined && { retailPrice: Number(booking.batch.retailPrice) }),
         ...(booking.batch.costPrice !== undefined && { costPrice: Number(booking.batch.costPrice) }),
+        ...(booking.batch.eggCodes && {
+          eggCodes: booking.batch.eggCodes.map((eggCode) => mapBatchEggCode(eggCode, booking.batch)),
+        }),
       },
     }),
+    batchEggCode: booking.batchEggCode ? mapBatchEggCode(booking.batchEggCode, booking.batch) : null,
   };
 }
 
@@ -56,6 +78,26 @@ function buildBookingInclude() {
         wholesalePrice: true,
         retailPrice: true,
         costPrice: true,
+        eggCodes: {
+          select: {
+            id: true,
+            code: true,
+            costPrice: true,
+            wholesalePrice: true,
+            retailPrice: true,
+            quantity: true,
+            freeQty: true,
+          },
+        },
+      },
+    },
+    batchEggCode: {
+      select: {
+        id: true,
+        code: true,
+        costPrice: true,
+        wholesalePrice: true,
+        retailPrice: true,
       },
     },
     sale: true,
@@ -213,7 +255,22 @@ async function validateBookingBasics({ customerId, batchId, quantity, excludeBoo
   }
 
   const [batch, customer] = await Promise.all([
-    prisma.batch.findUnique({ where: { id: batchId } }),
+    prisma.batch.findUnique({
+      where: { id: batchId },
+      include: {
+        eggCodes: {
+          select: {
+            id: true,
+            code: true,
+            costPrice: true,
+            wholesalePrice: true,
+            retailPrice: true,
+            quantity: true,
+            freeQty: true,
+          },
+        },
+      },
+    }),
     prisma.customer.findUnique({ where: { id: customerId } }),
   ]);
 
@@ -303,7 +360,7 @@ export default async function bookingRoutes(fastify) {
   fastify.post('/bookings', {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'CUSTOMER')],
     handler: async (request, reply) => {
-      const { customerId, batchId, quantity, paymentAllocations, amountPaid, channel, notes } = request.body;
+      const { customerId, batchId, batchEggCodeId, quantity, paymentAllocations, amountPaid, channel, notes } = request.body;
 
       if (!customerId || !batchId || !quantity) {
         return reply.code(400).send({ error: 'Missing required fields: customerId, batchId, quantity' });
@@ -319,7 +376,21 @@ export default async function bookingRoutes(fastify) {
       }
 
       const { batch, customer } = basics;
-      const orderValue = Number(quantity) * Number(batch.wholesalePrice);
+      const bookingEggCode = batchEggCodeId
+        ? batch.eggCodes.find((eggCode) => eggCode.id === batchEggCodeId)
+        : batch.eggCodes.length === 1
+          ? batch.eggCodes[0]
+          : null;
+
+      if (batch.eggCodes.length > 1 && !bookingEggCode) {
+        return reply.code(400).send({ error: 'Choose the FE item the customer is booking from this batch' });
+      }
+      if (batchEggCodeId && !bookingEggCode) {
+        return reply.code(400).send({ error: 'Selected FE item does not belong to this batch' });
+      }
+
+      const bookingPrice = Number(bookingEggCode?.wholesalePrice ?? batch.wholesalePrice);
+      const orderValue = Number(quantity) * bookingPrice;
       const minimumPayment = orderValue * 0.8;
 
       let finalAmountPaid = amountPaid == null ? null : Number(amountPaid);
@@ -361,6 +432,7 @@ export default async function bookingRoutes(fastify) {
           data: {
             customerId,
             batchId,
+            batchEggCodeId: bookingEggCode?.id || null,
             quantity: Number(quantity),
             amountPaid: finalAmountPaid,
             orderValue,
@@ -403,7 +475,7 @@ export default async function bookingRoutes(fastify) {
     handler: async (request, reply) => {
       const existing = await prisma.booking.findUnique({
         where: { id: request.params.id },
-        include: { batch: true, allocations: true },
+        include: { batch: { include: { eggCodes: true } }, allocations: true },
       });
 
       if (!existing) return reply.code(404).send({ error: 'Booking not found' });
@@ -411,7 +483,7 @@ export default async function bookingRoutes(fastify) {
         return reply.code(400).send({ error: 'Can only edit confirmed bookings' });
       }
 
-      const { quantity, amountPaid, notes, paymentAllocations } = request.body;
+      const { quantity, amountPaid, notes, paymentAllocations, batchEggCodeId } = request.body;
       const nextQuantity = quantity !== undefined ? Number(quantity) : existing.quantity;
 
       const basics = await validateBookingBasics({
@@ -424,7 +496,19 @@ export default async function bookingRoutes(fastify) {
         return reply.code(400).send(basics);
       }
 
-      const orderValue = nextQuantity * Number(existing.batch.wholesalePrice);
+      const nextBatchEggCode = batchEggCodeId
+        ? basics.batch.eggCodes.find((eggCode) => eggCode.id === batchEggCodeId)
+        : existing.batchEggCodeId
+          ? basics.batch.eggCodes.find((eggCode) => eggCode.id === existing.batchEggCodeId)
+          : basics.batch.eggCodes.length === 1
+            ? basics.batch.eggCodes[0]
+            : null;
+
+      if (basics.batch.eggCodes.length > 1 && !nextBatchEggCode) {
+        return reply.code(400).send({ error: 'Choose the FE item the customer is booking from this batch' });
+      }
+
+      const orderValue = nextQuantity * Number(nextBatchEggCode?.wholesalePrice ?? existing.batch.wholesalePrice);
       const minimumPayment = orderValue * 0.8;
 
       let nextAmountPaid = Number(existing.amountPaid);
@@ -477,6 +561,7 @@ export default async function bookingRoutes(fastify) {
           where: { id: existing.id },
           data: {
             quantity: nextQuantity,
+            batchEggCodeId: nextBatchEggCode?.id || null,
             orderValue,
             amountPaid: nextAmountPaid,
             ...(notes !== undefined ? { notes } : {}),
@@ -557,6 +642,19 @@ export default async function bookingRoutes(fastify) {
     handler: async (request, reply) => {
       const openBatches = await prisma.batch.findMany({
         where: { status: 'OPEN' },
+        include: {
+          eggCodes: {
+            select: {
+              id: true,
+              code: true,
+              costPrice: true,
+              wholesalePrice: true,
+              retailPrice: true,
+              quantity: true,
+              freeQty: true,
+            },
+          },
+        },
         orderBy: { expectedDate: 'asc' },
       });
 
@@ -570,6 +668,7 @@ export default async function bookingRoutes(fastify) {
           expectedDate: batch.expectedDate,
           wholesalePrice: Number(batch.wholesalePrice),
           retailPrice: Number(batch.retailPrice),
+          eggCodes: batch.eggCodes.map((eggCode) => mapBatchEggCode(eggCode, batch)),
           availableForBooking: batch.availableForBooking,
           totalBooked: booked,
           remainingAvailable: remaining,

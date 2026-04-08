@@ -40,6 +40,8 @@ function mapBatchForSale(batch) {
       id: eggCode.id,
       code: eggCode.code,
       costPrice: Number(eggCode.costPrice),
+      wholesalePrice: eggCode.wholesalePrice != null ? Number(eggCode.wholesalePrice) : Number(batch.wholesalePrice),
+      retailPrice: eggCode.retailPrice != null ? Number(eggCode.retailPrice) : Number(batch.retailPrice),
       quantity: eggCode.quantity,
       freeQty: eggCode.freeQty,
     })),
@@ -96,8 +98,8 @@ async function getBatchStockSnapshot(batchId) {
       receivedQuantity,
       soldQuantity,
       remainingQuantity: Math.max(0, receivedQuantity - soldQuantity),
-      wholesalePrice: Number(batch.wholesalePrice),
-      retailPrice: Number(batch.retailPrice),
+      wholesalePrice: eggCode.wholesalePrice != null ? Number(eggCode.wholesalePrice) : Number(batch.wholesalePrice),
+      retailPrice: eggCode.retailPrice != null ? Number(eggCode.retailPrice) : Number(batch.retailPrice),
     };
   });
 
@@ -147,6 +149,15 @@ function mapBookingForWorkspace(booking) {
     createdAt: booking.createdAt,
     notes: booking.notes,
     batch: booking.batch ? mapBatchForSale(booking.batch) : null,
+    batchEggCodeId: booking.batchEggCodeId || null,
+    batchEggCode: booking.batchEggCode
+      ? {
+          id: booking.batchEggCode.id,
+          code: booking.batchEggCode.code,
+          wholesalePrice: booking.batchEggCode.wholesalePrice != null ? Number(booking.batchEggCode.wholesalePrice) : null,
+          retailPrice: booking.batchEggCode.retailPrice != null ? Number(booking.batchEggCode.retailPrice) : null,
+        }
+      : null,
   };
 }
 
@@ -198,6 +209,7 @@ function buildSaleInclude() {
     booking: {
       select: {
         id: true,
+        batchEggCodeId: true,
         quantity: true,
         amountPaid: true,
         orderValue: true,
@@ -347,6 +359,14 @@ export default async function salesRoutes(fastify) {
             batch: {
               include: {
                 eggCodes: true,
+              },
+            },
+            batchEggCode: {
+              select: {
+                id: true,
+                code: true,
+                wholesalePrice: true,
+                retailPrice: true,
               },
             },
           },
