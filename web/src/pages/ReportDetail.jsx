@@ -727,7 +727,7 @@ function ReceiptDetailCard({ receipt }) {
               <p>Gross profit: ${formatCurrency(receipt.grossProfit)}</p>
             </div>
             <div class="card">
-              <h2>Recorded by</h2>
+              <h2>Employee</h2>
               <p>${receipt.recordedBy?.name || '—'}</p>
               <p>${SOURCE_LABELS[receipt.sourceType] || receipt.sourceType}</p>
             </div>
@@ -824,6 +824,7 @@ function ReceiptDetailCard({ receipt }) {
             <div class="rule"></div>
             <div><strong>Receipt No:</strong> ${receipt.receiptNumber}</div>
             <div><strong>Date:</strong> ${formatDateTime(receipt.saleDate)}</div>
+            <div><strong>Employee:</strong> ${receipt.recordedBy?.name || '—'}</div>
             <div><strong>Customer:</strong> ${receipt.customer?.name || 'Walk-in customer'}</div>
             ${receipt.customer?.phone ? `<div><strong>Phone:</strong> ${receipt.customer.phone}</div>` : ''}
             <div><strong>Payment:</strong> ${PAYMENT_LABELS[receipt.paymentMethod] || receipt.paymentMethod}</div>
@@ -914,6 +915,10 @@ function ReceiptDetailCard({ receipt }) {
               <span className="font-medium text-gray-900">{formatDateTime(receipt.saleDate)}</span>
             </div>
             <div className="flex items-start justify-between gap-4">
+              <span className="text-gray-500">Employee</span>
+              <span className="text-right font-medium text-gray-900">{receipt.recordedBy?.name || '—'}</span>
+            </div>
+            <div className="flex items-start justify-between gap-4">
               <span className="text-gray-500">Customer</span>
               <span className="text-right font-medium text-gray-900">{receipt.customer?.name || 'Walk-in customer'}</span>
             </div>
@@ -994,7 +999,7 @@ function ReceiptDetailCard({ receipt }) {
           <p className="text-xs uppercase tracking-wide text-gray-400">Receipt summary</p>
           <p className="mt-2 text-base font-semibold text-gray-900">{formatCurrency(receipt.totalAmount)}</p>
           <p className="mt-1 text-sm text-gray-500">{receipt.totalQuantity} crates sold</p>
-          <p className="mt-1 text-sm text-gray-500">Recorded by {receipt.recordedBy?.name || '—'}</p>
+          <p className="mt-1 text-sm text-gray-500">Employee {receipt.recordedBy?.name || '—'}</p>
         </div>
       </div>
 
