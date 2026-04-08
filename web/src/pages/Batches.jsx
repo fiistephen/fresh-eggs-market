@@ -51,6 +51,9 @@ const EMPTY_BATCH_ITEM = {
   mode: 'existing',
   itemId: '',
   newPrice: '',
+  costPrice: '',
+  wholesalePrice: '',
+  retailPrice: '',
 };
 
 function isBatchOverdue(batch) {
@@ -375,9 +378,6 @@ function CreateBatchModal({ onClose, onCreated }) {
     expectedDate: '',
     expectedQuantity: 1800,
     availableForBooking: 1800,
-    wholesalePrice: '',
-    retailPrice: '',
-    costPrice: '',
   });
   const [items, setItems] = useState([EMPTY_BATCH_ITEM]);
   const [feItems, setFeItems] = useState([]);
@@ -415,20 +415,26 @@ function CreateBatchModal({ onClose, onCreated }) {
 
       if (field === 'mode') {
         next[index] = value === 'existing'
-          ? { mode: 'existing', itemId: '', newPrice: '' }
-          : { mode: 'new', itemId: '', newPrice: '' };
+          ? { ...EMPTY_BATCH_ITEM, mode: 'existing' }
+          : { ...EMPTY_BATCH_ITEM, mode: 'new' };
       }
 
-      const row = next[index];
-      const rowPrice = row.mode === 'existing'
-        ? fePriceFromCode(feItems.find((item) => item.id === row.itemId)?.code)
-        : String(row.newPrice || '').replace(/\D/g, '');
+      if (field === 'itemId') {
+        const selected = feItems.find((item) => item.id === value);
+        const selectedPrice = fePriceFromCode(selected?.code);
+        next[index] = {
+          ...next[index],
+          costPrice: selectedPrice || '',
+          wholesalePrice: selected?.defaultWholesalePrice ?? '',
+          retailPrice: selected?.defaultRetailPrice ?? '',
+        };
+      }
 
-      if (index === 0 && rowPrice) {
-        setForm((currentForm) => ({
-          ...currentForm,
-          costPrice: rowPrice,
-        }));
+      if (field === 'newPrice') {
+        next[index] = {
+          ...next[index],
+          costPrice: String(value || '').replace(/\D/g, ''),
+        };
       }
 
       return next;
@@ -457,12 +463,20 @@ function CreateBatchModal({ onClose, onCreated }) {
           ? {
               itemId: selected.id,
               code: normalizeFeCode(selected.code),
+              costPrice: Number(row.costPrice),
+              wholesalePrice: Number(row.wholesalePrice),
+              retailPrice: Number(row.retailPrice),
             }
           : null;
       }
 
       const code = feCodeFromPrice(row.newPrice);
-      return code ? { code } : null;
+      return code ? {
+        code,
+        costPrice: Number(row.costPrice),
+        wholesalePrice: Number(row.wholesalePrice),
+        retailPrice: Number(row.retailPrice),
+      } : null;
     }).filter(Boolean);
 
     const seenCodes = new Set();
@@ -480,9 +494,6 @@ function CreateBatchModal({ onClose, onCreated }) {
         ...form,
         expectedQuantity: Number(form.expectedQuantity),
         availableForBooking: Number(form.availableForBooking),
-        wholesalePrice: Number(form.wholesalePrice),
-        retailPrice: Number(form.retailPrice),
-        costPrice: Number(form.costPrice),
         plannedItems: preparedItems,
       });
       onCreated();
@@ -535,43 +546,6 @@ function CreateBatchModal({ onClose, onCreated }) {
                 required min="0"
                 value={form.availableForBooking}
                 onChange={e => update('availableForBooking', e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Default Cost Price (₦)</label>
-              <input
-                type="number"
-                required min="1"
-                placeholder="4600"
-                value={form.costPrice}
-                onChange={e => update('costPrice', e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-              />
-              <p className="mt-1 text-xs text-gray-400">This is used as the starting batch price before final receipt details are confirmed.</p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Wholesale (₦)</label>
-              <input
-                type="number"
-                required min="1"
-                placeholder="5000"
-                value={form.wholesalePrice}
-                onChange={e => update('wholesalePrice', e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Retail (₦)</label>
-              <input
-                type="number"
-                required min="1"
-                placeholder="5400"
-                value={form.retailPrice}
-                onChange={e => update('retailPrice', e.target.value)}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
               />
             </div>
@@ -676,6 +650,45 @@ function CreateBatchModal({ onClose, onCreated }) {
                       <div className="rounded-lg bg-gray-50 px-3 py-3">
                         <p className="text-xs uppercase tracking-wider text-gray-500">Item name</p>
                         <p className="mt-1 text-sm font-semibold text-gray-900">{generatedName || '—'}</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Cost price (₦)</label>
+                        <input
+                          type="number"
+                          required
+                          min="1"
+                          placeholder="4600"
+                          value={row.costPrice}
+                          onChange={(e) => updateBatchItem(index, 'costPrice', e.target.value)}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Wholesale price (₦)</label>
+                        <input
+                          type="number"
+                          required
+                          min="1"
+                          placeholder="5000"
+                          value={row.wholesalePrice}
+                          onChange={(e) => updateBatchItem(index, 'wholesalePrice', e.target.value)}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Retail price (₦)</label>
+                        <input
+                          type="number"
+                          required
+                          min="1"
+                          placeholder="5400"
+                          value={row.retailPrice}
+                          onChange={(e) => updateBatchItem(index, 'retailPrice', e.target.value)}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+                        />
                       </div>
                     </div>
                   </div>

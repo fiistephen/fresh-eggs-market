@@ -265,18 +265,12 @@ export default async function batchRoutes(fastify) {
         expectedDate,
         expectedQuantity,
         availableForBooking,
-        wholesalePrice,
-        retailPrice,
-        costPrice,
         plannedItems = [],
       } = request.body;
 
       // Validation
       if (!expectedDate) return reply.code(400).send({ error: 'Expected date is required' });
       if (!expectedQuantity || expectedQuantity <= 0) return reply.code(400).send({ error: 'Expected quantity must be positive' });
-      if (!wholesalePrice || wholesalePrice <= 0) return reply.code(400).send({ error: 'Wholesale price is required' });
-      if (!retailPrice || retailPrice <= 0) return reply.code(400).send({ error: 'Retail price is required' });
-      if (!costPrice || costPrice <= 0) return reply.code(400).send({ error: 'Cost price is required' });
 
       const bookingQty = availableForBooking ?? expectedQuantity;
       if (bookingQty > expectedQuantity) {
@@ -300,9 +294,17 @@ export default async function batchRoutes(fastify) {
           return reply.code(400).send({ error: 'Each batch item must use a valid FE code like FE4600' });
         }
 
-        const parsedPrice = Number(code.replace(/^FE/, ''));
-        if (!parsedPrice || parsedPrice <= 0) {
-          return reply.code(400).send({ error: `Could not read a valid price from ${code}` });
+        const itemCostPrice = Number(row.costPrice);
+        const itemWholesalePrice = Number(row.wholesalePrice);
+        const itemRetailPrice = Number(row.retailPrice);
+        if (!itemCostPrice || itemCostPrice <= 0) {
+          return reply.code(400).send({ error: `Enter a valid cost price for ${code}` });
+        }
+        if (!itemWholesalePrice || itemWholesalePrice <= 0) {
+          return reply.code(400).send({ error: `Enter a valid wholesale price for ${code}` });
+        }
+        if (!itemRetailPrice || itemRetailPrice <= 0) {
+          return reply.code(400).send({ error: `Enter a valid retail price for ${code}` });
         }
 
         if (seenCodes.has(code)) {
@@ -321,17 +323,34 @@ export default async function batchRoutes(fastify) {
         if (!item) {
           item = await ensureItemForEggCode({
             code,
-            wholesalePrice,
-            retailPrice,
+            wholesalePrice: itemWholesalePrice,
+            retailPrice: itemRetailPrice,
+          });
+        }
+
+        if (
+          Number(item.defaultWholesalePrice ?? 0) !== itemWholesalePrice
+          || Number(item.defaultRetailPrice ?? 0) !== itemRetailPrice
+        ) {
+          item = await prisma.item.update({
+            where: { id: item.id },
+            data: {
+              defaultWholesalePrice: itemWholesalePrice,
+              defaultRetailPrice: itemRetailPrice,
+            },
           });
         }
 
         normalizedPlannedItems.push({
           code,
           itemId: item?.id || null,
-          costPrice: parsedPrice,
+          costPrice: itemCostPrice,
+          wholesalePrice: itemWholesalePrice,
+          retailPrice: itemRetailPrice,
         });
       }
+
+      const primaryItem = normalizedPlannedItems[0];
 
       // Auto-generate batch name from date
       const date = new Date(expectedDate);
@@ -373,9 +392,9 @@ export default async function batchRoutes(fastify) {
           expectedDate: new Date(expectedDate),
           expectedQuantity,
           availableForBooking: bookingQty,
-          wholesalePrice,
-          retailPrice,
-          costPrice,
+          wholesalePrice: primaryItem.wholesalePrice,
+          retailPrice: primaryItem.retailPrice,
+          costPrice: primaryItem.costPrice,
           eggCodes: {
             createMany: {
               data: normalizedPlannedItems.map((row) => ({

@@ -1121,3 +1121,28 @@ Minimum update format:
 - Local verification completed:
   - `node --check` passed for `batches.js`
   - frontend build passed
+
+## 30. 2026-04-08 Batch Creation Pricing Correction
+
+- The earlier batch-planning upgrade was incomplete.
+- What was missed:
+  - the create-batch modal still showed old batch-level pricing fields
+  - the API still required batch-level `costPrice`, `wholesalePrice`, and `retailPrice`
+- What was corrected:
+  - create-batch no longer shows `Default Cost Price`
+  - each planned FE row now carries its own:
+    - cost price
+    - wholesale price
+    - retail price
+  - existing FE items prefill pricing from the item catalog defaults
+  - new FE items still follow `FE[price]`, with cost price starting from that FE price
+  - the create-batch API now accepts row-based pricing instead of requiring one batch-wide pricing set
+- Transitional compatibility:
+  - the rest of the app still has some legacy batch-wide pricing assumptions, so batch-level prices are still being derived internally from the first planned item for now
+- What future Codex sessions should remember:
+  - this is not the end of the pricing cleanup
+  - remaining legacy assumptions still exist in:
+    - bookings
+    - sales
+    - portal
+    - parts of batch detail/edit flows
