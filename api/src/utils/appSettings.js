@@ -3,7 +3,12 @@ import {
   DEFAULT_CRACK_ALLOWANCE_PERCENT,
   DEFAULT_TARGET_PROFIT_PER_CRATE,
 } from './operationsPolicy.js';
-import { defaultTransactionCategories, VALID_CATEGORIES, getCategoryDirection } from './banking.js';
+import {
+  defaultTransactionCategories,
+  VALID_CATEGORIES,
+  getCategoryDirection,
+  normalizeCategoryKey,
+} from './banking.js';
 
 export const OPERATIONS_POLICY_KEY = 'OPERATIONS_POLICY';
 export const TRANSACTION_CATEGORIES_KEY = 'TRANSACTION_CATEGORIES';
@@ -59,11 +64,11 @@ function normalizeTransactionCategories(value) {
   const rawList = Array.isArray(value) ? value : [];
   const rawByCategory = new Map(
     rawList
-      .filter((entry) => entry?.category && VALID_CATEGORIES.includes(entry.category))
-      .map((entry) => [entry.category, entry]),
+      .filter((entry) => normalizeCategoryKey(entry?.category))
+      .map((entry) => [normalizeCategoryKey(entry.category), entry]),
   );
 
-  return DEFAULT_TRANSACTION_CATEGORIES.map((entry) => {
+  const systemEntries = DEFAULT_TRANSACTION_CATEGORIES.map((entry) => {
     const raw = rawByCategory.get(entry.category) || {};
     return {
       category: entry.category,
@@ -73,6 +78,29 @@ function normalizeTransactionCategories(value) {
       isActive: raw.isActive !== undefined ? Boolean(raw.isActive) : true,
     };
   });
+
+  const systemCategorySet = new Set(systemEntries.map((entry) => entry.category));
+  const customEntries = rawList
+    .map((entry) => {
+      const category = normalizeCategoryKey(entry?.category || entry?.label);
+      if (!category || systemCategorySet.has(category)) return null;
+      const label = String(entry?.label || '')
+        .trim();
+      const direction = entry?.direction === 'OUTFLOW' ? 'OUTFLOW' : entry?.direction === 'INFLOW' ? 'INFLOW' : null;
+      if (!label || !direction) return null;
+
+      return {
+        category,
+        label,
+        description: String(entry?.description || '').trim(),
+        direction,
+        isActive: entry?.isActive !== undefined ? Boolean(entry.isActive) : true,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.label.localeCompare(b.label));
+
+  return [...systemEntries, ...customEntries];
 }
 
 function normalizeEggTypeKey(value) {

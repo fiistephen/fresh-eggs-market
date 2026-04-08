@@ -53,6 +53,12 @@ export default function AdminConfig() {
   const [policySaving, setPolicySaving] = useState(false);
   const [transactionCategories, setTransactionCategories] = useState([]);
   const [transactionCategorySaving, setTransactionCategorySaving] = useState(false);
+  const [addingTransactionCategory, setAddingTransactionCategory] = useState(false);
+  const [newTransactionCategory, setNewTransactionCategory] = useState({
+    label: '',
+    direction: 'INFLOW',
+    description: '',
+  });
   const [customerEggTypes, setCustomerEggTypes] = useState([]);
   const [eggTypeSaving, setEggTypeSaving] = useState(false);
 
@@ -110,6 +116,50 @@ export default function AdminConfig() {
     setTransactionCategories((current) => current.map((entry) => (
       entry.category === category ? { ...entry, [field]: value } : entry
     )));
+  }
+
+  async function addTransactionCategory() {
+    const label = newTransactionCategory.label.trim();
+    if (!label) {
+      setError('Enter a category name before adding it.');
+      return;
+    }
+
+    const category = label
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+
+    if (!category) {
+      setError('Category name must contain letters or numbers.');
+      return;
+    }
+
+    if (transactionCategories.some((entry) => entry.category === category)) {
+      setError('That category already exists.');
+      return;
+    }
+
+    resetNotice();
+    setAddingTransactionCategory(true);
+    try {
+      const response = await api.post('/banking/categories', {
+        label,
+        direction: newTransactionCategory.direction,
+        description: newTransactionCategory.description.trim(),
+      });
+      setTransactionCategories(response.transactionCategories || []);
+      setNewTransactionCategory({
+        label: '',
+        direction: 'INFLOW',
+        description: '',
+      });
+      setSuccess('Category added and saved globally.');
+    } catch (err) {
+      setError(err.error || 'Failed to add category');
+    } finally {
+      setAddingTransactionCategory(false);
+    }
   }
 
   function updateCustomerEggType(key, field, value) {
@@ -307,6 +357,7 @@ export default function AdminConfig() {
             </div>
           ))}
         </div>
+
       </section>
 
       <section className="bg-white rounded-xl border border-gray-200 p-5">
@@ -632,6 +683,47 @@ export default function AdminConfig() {
               </div>
             </div>
           ))}
+        </div>
+
+        <div className="mt-6 rounded-xl border border-dashed border-gray-300 p-4">
+          <h3 className="text-sm font-semibold text-gray-900">Add another category</h3>
+          <p className="text-sm text-gray-500 mt-1">
+            Add it here to save it globally straight away. After that, you can still edit the label or help text above and save those changes too.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
+            <input
+              type="text"
+              value={newTransactionCategory.label}
+              onChange={(e) => setNewTransactionCategory((current) => ({ ...current, label: e.target.value }))}
+              placeholder="Category name"
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            />
+            <select
+              value={newTransactionCategory.direction}
+              onChange={(e) => setNewTransactionCategory((current) => ({ ...current, direction: e.target.value }))}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            >
+              <option value="INFLOW">Money in</option>
+              <option value="OUTFLOW">Money out</option>
+            </select>
+            <input
+              type="text"
+              value={newTransactionCategory.description}
+              onChange={(e) => setNewTransactionCategory((current) => ({ ...current, description: e.target.value }))}
+              placeholder="Short help text"
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            />
+          </div>
+          <div className="mt-3 flex justify-end">
+            <button
+              type="button"
+              onClick={addTransactionCategory}
+              disabled={addingTransactionCategory}
+              className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              {addingTransactionCategory ? 'Adding...' : 'Add and save globally'}
+            </button>
+          </div>
         </div>
       </section>
     </div>

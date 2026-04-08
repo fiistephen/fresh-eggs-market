@@ -1241,3 +1241,44 @@ Minimum update format:
 - What future Codex sessions should remember:
   - do not force FE-row customer price selection unless the customer-facing egg size is actually different
   - if the business later wants `regular` vs `small` as distinct customer-facing products, model that as a separate size/category concept, not just raw FE code differences
+
+## 33. 2026-04-08 Banking Categories And Customer Booking Queue Upgrade
+
+- The banking model was upgraded so transaction categories are no longer locked to a Prisma enum.
+- Schema and config changes:
+  - `BankTransaction.category` is now `String`
+  - `BankStatementLine.suggestedCategory` is now `String?`
+  - `BankStatementLine.selectedCategory` is now `String?`
+  - transaction category config now supports custom globally saved categories in addition to the built-in system categories
+- New category behavior:
+  - staff can create a brand-new banking category directly from:
+    - Admin > Transaction Categories
+    - Banking > Add one entry
+    - Banking > Add many entries
+  - creating a category from those places saves it globally immediately
+  - existing category labels/help text/active state are still managed from Admin
+- Bank statement import queue:
+  - single statement lines can now be removed from the queue
+  - multiple removable lines can now be selected and removed in one action
+  - posted lines still cannot be removed
+- Customer booking queue:
+  - `CUSTOMER_BOOKING` inflows now land in a dedicated Banking > Customer bookings queue
+  - from there staff can:
+    - link an existing customer
+    - create a new customer on the spot
+    - split one deposited amount across one or more open batches
+    - enter crates per batch
+    - enter amount allocated per batch
+    - see booking value, paid percentage, and 80% minimum per batch row
+  - saving from this queue creates real `Booking` records plus `BookingPaymentAllocation` rows
+- Existing-booking visibility:
+  - when searching for an existing customer, the search list now shows booking counts
+  - after a customer is linked, the modal shows that customer's existing confirmed bookings so staff can avoid duplicate booking creation
+- UX notes:
+  - the modal text was simplified to tell staff exactly what to do with one bulk booking payment
+  - allocation rows now start blank so staff choose the correct batch intentionally
+- Local verification completed:
+  - Prisma schema validation passed
+  - Prisma client generation passed
+  - direct module import passed for `api/src/routes/banking.js`
+  - frontend build passed

@@ -94,6 +94,14 @@ function categoryDescription(category, categoryMap = {}) {
 }
 
 function categoryOptionsForDirection(direction, categoryMap = {}, currentCategory = '') {
+  const configured = Object.values(categoryMap)
+    .filter((entry) => entry.direction === direction)
+    .filter((entry) => entry.isActive !== false || entry.category === currentCategory)
+    .sort((a, b) => (a.label || a.category).localeCompare(b.label || b.category))
+    .map((entry) => entry.category);
+
+  if (configured.length > 0) return configured;
+
   const source = direction === 'OUTFLOW' ? OUTFLOW_CATEGORIES : INFLOW_CATEGORIES;
   return source.filter((category) => categoryMap[category]?.isActive !== false || category === currentCategory);
 }
@@ -158,11 +166,14 @@ export default function Banking() {
   const [selectedImportId, setSelectedImportId] = useState('');
   const [selectedImport, setSelectedImport] = useState(null);
   const [selectedImportLines, setSelectedImportLines] = useState([]);
+  const [customerBookingQueue, setCustomerBookingQueue] = useState([]);
+  const [customerBookingBatches, setCustomerBookingBatches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [transactionsLoading, setTransactionsLoading] = useState(false);
   const [importsLoading, setImportsLoading] = useState(false);
   const [selectedImportLoading, setSelectedImportLoading] = useState(false);
   const [reconciliationsLoading, setReconciliationsLoading] = useState(false);
+  const [customerBookingLoading, setCustomerBookingLoading] = useState(false);
   const [error, setError] = useState('');
 
   const [filters, setFilters] = useState({
@@ -223,6 +234,7 @@ export default function Banking() {
         loadMeta(),
         loadAccounts(),
         loadImports(),
+        loadCustomerBookings(),
         canViewReports ? loadReconciliations() : Promise.resolve(),
         loadTransactions(true),
       ]);
@@ -304,6 +316,19 @@ export default function Banking() {
     }
   }
 
+  async function loadCustomerBookings() {
+    setCustomerBookingLoading(true);
+    try {
+      const data = await api.get('/banking/customer-bookings');
+      setCustomerBookingQueue(data.queue || []);
+      setCustomerBookingBatches(data.openBatches || []);
+    } catch {
+      setError('Failed to load customer booking links');
+    } finally {
+      setCustomerBookingLoading(false);
+    }
+  }
+
   async function handleImportPosted() {
     if (!selectedImportId) return;
     setPostingImport(true);
@@ -327,6 +352,7 @@ export default function Banking() {
     { key: 'workspace', label: 'Workspace' },
     { key: 'transactions', label: 'Transactions' },
     { key: 'imports', label: 'Bank statements' },
+    { key: 'customer-bookings', label: 'Customer bookings' },
     { key: 'reconciliation', label: 'Reconciliation' },
     ...(canViewReports ? [
       { key: 'unbooked', label: 'Unbooked deposits' },
@@ -418,6 +444,18 @@ export default function Banking() {
         />
       )}
 
+      {activeView === 'customer-bookings' && (
+        <CustomerBookingQueueView
+          loading={customerBookingLoading}
+          queue={customerBookingQueue}
+          openBatches={customerBookingBatches}
+          onRefresh={() => {
+            loadCustomerBookings();
+            loadTransactions();
+          }}
+        />
+      )}
+
       {activeView === 'reconciliation' && (
         <ReconciliationView
           accounts={accounts}
@@ -433,7 +471,9 @@ export default function Banking() {
       {showRecordModal && (
         <RecordTransactionModal
           accounts={accounts}
+          transactionCategories={transactionCategories}
           categoryMap={categoryMap}
+          onCategoriesChanged={loadMeta}
           onClose={() => setShowRecordModal(false)}
           onRecorded={() => {
             setShowRecordModal(false);
@@ -445,7 +485,9 @@ export default function Banking() {
       {showBulkModal && (
         <BulkTransactionModal
           accounts={accounts}
+          transactionCategories={transactionCategories}
           categoryMap={categoryMap}
+          onCategoriesChanged={loadMeta}
           onClose={() => setShowBulkModal(false)}
           onRecorded={() => {
             setShowBulkModal(false);
@@ -821,6 +863,27 @@ function ImportsView({
   onPostImport,
   onLineUpdated,
 }) {
+  const [selectedLineIds, setSelectedLineIds] = useState([]);
+  const removableLines = selectedImportLines.filter((line) => line.reviewStatus !== 'POSTED');
+
+  useEffect(() => {
+    setSelectedLineIds([]);
+  }, [selectedImportId, selectedImportLines.length]);
+
+  async function removeSelectedLines() {
+    if (!selectedImportId || selectedLineIds.length === 0) return;
+    if (!window.confirm(`Remove ${selectedLineIds.length} selected line(s) from this import queue?`)) return;
+    await api.post(`/banking/imports/${selectedImportId}/lines/remove`, { lineIds: selectedLineIds });
+    setSelectedLineIds([]);
+    onLineUpdated();
+  }
+
+  function toggleLine(lineId, checked) {
+    setSelectedLineIds((current) => (
+      checked ? [...new Set([...current, lineId])] : current.filter((id) => id !== lineId)
+    ));
+  }
+
   return (
     <div className="grid grid-cols-1 gap-6 xl:grid-cols-[320px_1fr]">
       <div className="rounded-2xl border border-gray-200 bg-white p-4">
@@ -908,6 +971,28 @@ function ImportsView({
               <ImportCountCard label="Skipped" value={importCount(selectedImport, 'SKIPPED') || importCount(selectedImport, 'skipped')} tone="gray" />
             </div>
 
+            <div className="flex flex-col gap-3 border-b border-gray-100 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3 text-sm text-gray-600">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={removableLines.length > 0 && selectedLineIds.length === removableLines.length}
+                    onChange={(event) => setSelectedLineIds(event.target.checked ? removableLines.map((line) => line.id) : [])}
+                  />
+                  Select all removable lines
+                </label>
+                <span>{selectedLineIds.length} selected</span>
+              </div>
+              <button
+                type="button"
+                onClick={removeSelectedLines}
+                disabled={selectedLineIds.length === 0}
+                className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Remove selected from queue
+              </button>
+            </div>
+
             {selectedImportLines.length === 0 ? (
               <div className="px-6 py-24">
                 <EmptyState title="No lines found" body="This import does not have any parsed statement lines." />
@@ -917,6 +1002,7 @@ function ImportsView({
                 <table className="w-full min-w-[1100px]">
                   <thead>
                     <tr className="border-b border-gray-100">
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Select</th>
                       <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Line</th>
                       <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Date</th>
                       <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Description</th>
@@ -934,6 +1020,8 @@ function ImportsView({
                         key={line.id}
                         line={line}
                         categoryMap={categoryMap}
+                        selected={selectedLineIds.includes(line.id)}
+                        onToggleSelected={toggleLine}
                         onSaved={onLineUpdated}
                       />
                     ))}
@@ -1224,7 +1312,7 @@ function ExpensesView({ categoryMap }) {
   );
 }
 
-function RecordTransactionModal({ accounts, categoryMap, onClose, onRecorded }) {
+function RecordTransactionModal({ accounts, transactionCategories, categoryMap, onCategoriesChanged, onClose, onRecorded }) {
   const [form, setForm] = useState({
     bankAccountId: accounts[0]?.id || '',
     direction: 'INFLOW',
@@ -1238,6 +1326,7 @@ function RecordTransactionModal({ accounts, categoryMap, onClose, onRecorded }) 
   const [customerSearch, setCustomerSearch] = useState('');
   const [customers, setCustomers] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [showCategoryCreator, setShowCategoryCreator] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -1258,7 +1347,7 @@ function RecordTransactionModal({ accounts, categoryMap, onClose, onRecorded }) 
   }, [customerSearch, selectedCustomer]);
 
   const categoryOptions = categoryOptionsForDirection(form.direction, categoryMap, form.category);
-  const needsCustomer = ['CUSTOMER_DEPOSIT', 'CUSTOMER_BOOKING', 'REFUND'].includes(form.category);
+  const needsCustomer = ['CUSTOMER_DEPOSIT', 'REFUND'].includes(form.category);
 
   function setDirection(direction) {
     const nextCategories = categoryOptionsForDirection(direction, categoryMap);
@@ -1342,6 +1431,13 @@ function RecordTransactionModal({ accounts, categoryMap, onClose, onRecorded }) 
               ))}
             </select>
             <p className="mt-1 text-xs text-gray-500">{categoryDescription(form.category, categoryMap) || 'Choose the clearest category for this entry.'}</p>
+            <button
+              type="button"
+              onClick={() => setShowCategoryCreator((current) => !current)}
+              className="mt-2 text-xs font-medium text-brand-600 hover:text-brand-700"
+            >
+              {showCategoryCreator ? 'Close new category' : 'Add new category'}
+            </button>
           </Field>
           <Field label="Amount">
             <input
@@ -1355,6 +1451,24 @@ function RecordTransactionModal({ accounts, categoryMap, onClose, onRecorded }) 
             />
           </Field>
         </div>
+
+        {showCategoryCreator && (
+          <QuickCategoryCreator
+            direction={form.direction}
+            transactionCategories={transactionCategories}
+            onCreated={async (createdCategory) => {
+              await onCategoriesChanged();
+              setForm((current) => ({ ...current, category: createdCategory.category }));
+              setShowCategoryCreator(false);
+            }}
+          />
+        )}
+
+        {form.category === 'CUSTOMER_BOOKING' && (
+          <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+            Save the money here first. After saving, go to <span className="font-semibold">Customer bookings</span> to link the customer, choose the batch or batches, and allocate the payment.
+          </div>
+        )}
 
         {needsCustomer && (
           <div className="space-y-2">
@@ -1418,12 +1532,13 @@ function RecordTransactionModal({ accounts, categoryMap, onClose, onRecorded }) 
   );
 }
 
-function BulkTransactionModal({ accounts, categoryMap, onClose, onRecorded }) {
+function BulkTransactionModal({ accounts, transactionCategories, categoryMap, onCategoriesChanged, onClose, onRecorded }) {
   const [rows, setRows] = useState([
     createBulkRow(accounts[0]?.id, categoryMap),
     createBulkRow(accounts[0]?.id, categoryMap),
     createBulkRow(accounts[0]?.id, categoryMap),
   ]);
+  const [showCategoryCreator, setShowCategoryCreator] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -1468,6 +1583,27 @@ function BulkTransactionModal({ accounts, categoryMap, onClose, onRecorded }) {
         <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
           Use this when you want to enter many payments or expenses at once.
         </div>
+
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3">
+          <p className="text-sm text-gray-600">Need a new category for these rows?</p>
+          <button
+            type="button"
+            onClick={() => setShowCategoryCreator((current) => !current)}
+            className="text-sm font-medium text-brand-600 hover:text-brand-700"
+          >
+            {showCategoryCreator ? 'Close new category' : 'Add new category'}
+          </button>
+        </div>
+
+        {showCategoryCreator && (
+          <QuickCategoryCreator
+            transactionCategories={transactionCategories}
+            onCreated={async () => {
+              await onCategoriesChanged();
+              setShowCategoryCreator(false);
+            }}
+          />
+        )}
 
         <div className="overflow-x-auto">
           <table className="w-full min-w-[980px]">
@@ -1897,13 +2033,14 @@ function ReconciliationModal({ accounts, imports, onClose, onSaved }) {
   );
 }
 
-function ImportLineRow({ line, categoryMap, onSaved }) {
+function ImportLineRow({ line, categoryMap, selected, onToggleSelected, onSaved }) {
   const [draft, setDraft] = useState({
     selectedCategory: line.selectedCategory || line.suggestedCategory || '',
     reviewStatus: line.reviewStatus,
     notes: line.notes || '',
   });
   const [saving, setSaving] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const categories = categoryOptionsForDirection(line.direction, categoryMap, draft.selectedCategory);
   const amount = line.direction === 'OUTFLOW' ? line.debitAmount : line.creditAmount;
 
@@ -1917,8 +2054,27 @@ function ImportLineRow({ line, categoryMap, onSaved }) {
     }
   }
 
+  async function removeLine() {
+    if (!window.confirm('Remove this line from the import queue?')) return;
+    setRemoving(true);
+    try {
+      await api.delete(`/banking/imports/${line.importId}/lines/${line.id}`);
+      onSaved();
+    } finally {
+      setRemoving(false);
+    }
+  }
+
   return (
     <tr className="border-b border-gray-50 align-top">
+      <td className="px-4 py-3">
+        <input
+          type="checkbox"
+          checked={selected}
+          disabled={line.reviewStatus === 'POSTED'}
+          onChange={(event) => onToggleSelected(line.id, event.target.checked)}
+        />
+      </td>
       <td className="px-4 py-3 text-sm text-gray-500">{line.lineNumber}</td>
       <td className="px-4 py-3 text-sm text-gray-600">{fmtDate(line.transactionDate || line.actualTransactionDate || line.valueDate)}</td>
       <td className="px-4 py-3 text-sm text-gray-700">
@@ -1971,16 +2127,582 @@ function ImportLineRow({ line, categoryMap, onSaved }) {
         {line.reviewStatus === 'POSTED' ? (
           <span className="text-xs font-medium text-green-700">Posted</span>
         ) : (
-          <button
-            onClick={saveLine}
-            disabled={saving}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {saving ? 'Saving…' : 'Save'}
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={saveLine}
+              disabled={saving || removing}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+            <button
+              onClick={removeLine}
+              disabled={saving || removing}
+              className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {removing ? 'Removing…' : 'Remove'}
+            </button>
+          </div>
         )}
       </td>
     </tr>
+  );
+}
+
+function QuickCategoryCreator({ direction = 'INFLOW', onCreated }) {
+  const [form, setForm] = useState({
+    label: '',
+    direction,
+    description: '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    setForm((current) => ({ ...current, direction }));
+  }, [direction]);
+
+  async function handleCreate() {
+    setSaving(true);
+    setError('');
+    try {
+      const result = await api.post('/banking/categories', form);
+      await onCreated(result.category);
+      setForm({
+        label: '',
+        direction,
+        description: '',
+      });
+    } catch (err) {
+      setError(err.error || 'Failed to add category');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-brand-200 bg-brand-50/40 p-4">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <input
+          type="text"
+          value={form.label}
+          onChange={(event) => setForm((current) => ({ ...current, label: event.target.value }))}
+          placeholder="New category name"
+          className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+        />
+        <select
+          value={form.direction}
+          onChange={(event) => setForm((current) => ({ ...current, direction: event.target.value }))}
+          className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+        >
+          <option value="INFLOW">Money in</option>
+          <option value="OUTFLOW">Money out</option>
+        </select>
+        <input
+          type="text"
+          value={form.description}
+          onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
+          placeholder="Short help text"
+          className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+        />
+      </div>
+      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      <div className="mt-3 flex justify-end">
+        <button
+          type="button"
+          onClick={handleCreate}
+          disabled={saving}
+          className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:bg-gray-300"
+        >
+          {saving ? 'Adding…' : 'Add category globally'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CustomerBookingQueueView({ loading, queue, openBatches, onRefresh }) {
+  const [activeTransaction, setActiveTransaction] = useState(null);
+
+  if (loading) return <PanelLoading label="Loading customer booking queue…" />;
+  if (!queue || queue.length === 0) {
+    return <EmptyPanel title="No customer booking money waiting" body="Any transaction saved as Customer booking will show here until the customer and batch allocations are sorted out." />;
+  }
+
+  return (
+    <div className="space-y-4">
+      <SummaryBanner
+        tone="amber"
+        title={`${queue.length} customer booking transaction${queue.length === 1 ? '' : 's'} waiting for action`}
+        body="Use this queue to link the customer, split the money across one or more open batches, and create the actual bookings."
+      />
+
+      <div className="space-y-3">
+        {queue.map((transaction) => (
+          <div key={transaction.id} className="rounded-2xl border border-gray-200 bg-white p-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-lg font-semibold text-gray-900">{transaction.customer?.name || 'Customer not linked yet'}</p>
+                  <StatusChip label={transaction.customer ? 'Customer linked' : 'Needs customer'} tone={transaction.customer ? 'green' : 'gray'} />
+                </div>
+                <p className="mt-1 text-sm text-gray-500">
+                  {fmtDate(transaction.transactionDate, true)} · {accountLabel(transaction.bankAccount)} · {transaction.reference || transaction.description || 'No reference'}
+                </p>
+                <p className="mt-2 text-sm text-gray-600">{transaction.description || 'No description entered.'}</p>
+              </div>
+              <div className="grid grid-cols-3 gap-3 text-sm lg:min-w-[340px]">
+                <StatPill label="Money received" value={fmtMoney(transaction.amount)} />
+                <StatPill label="Already allocated" value={fmtMoney(transaction.allocatedAmount)} />
+                <StatPill label="Still to assign" value={fmtMoney(transaction.availableAmount)} danger={transaction.availableAmount > 0.009} />
+              </div>
+            </div>
+
+            {transaction.allocations?.length > 0 && (
+              <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4">
+                <p className="text-sm font-semibold text-gray-900">Bookings already created from this money</p>
+                <div className="mt-3 space-y-2">
+                  {transaction.allocations.map((allocation) => (
+                    <div key={allocation.id} className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between text-sm">
+                      <div>
+                        <span className="font-medium text-gray-900">{allocation.booking?.batch?.name || 'Batch'}</span>
+                        <span className="ml-2 text-gray-500">{allocation.booking?.batch?.eggTypeLabel || 'Regular Size Eggs'}</span>
+                      </div>
+                      <div className="text-gray-600">
+                        {allocation.booking?.quantity || 0} crates · {fmtMoney(allocation.amount)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setActiveTransaction(transaction)}
+                className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+              >
+                {transaction.customer ? 'Allocate to batch bookings' : 'Link customer and allocate'}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {activeTransaction && (
+        <CustomerBookingLinkModal
+          transaction={activeTransaction}
+          openBatches={openBatches}
+          onClose={() => setActiveTransaction(null)}
+          onSaved={() => {
+            setActiveTransaction(null);
+            onRefresh();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function createBookingAllocationRow(defaultBatchId = '') {
+  return {
+    id: globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2),
+    batchId: defaultBatchId,
+    quantity: '',
+    allocatedAmount: '',
+    notes: '',
+  };
+}
+
+function CustomerBookingLinkModal({ transaction, openBatches, onClose, onSaved }) {
+  const [selectedCustomer, setSelectedCustomer] = useState(transaction.customer || null);
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [customers, setCustomers] = useState([]);
+  const [customerMode, setCustomerMode] = useState(transaction.customer ? 'linked' : 'existing');
+  const [newCustomer, setNewCustomer] = useState({ name: '', phone: '', email: '', notes: '' });
+  const [allocationRows, setAllocationRows] = useState([createBookingAllocationRow()]);
+  const [existingBookings, setExistingBookings] = useState([]);
+  const [loadingExistingBookings, setLoadingExistingBookings] = useState(false);
+  const [savingCustomer, setSavingCustomer] = useState(false);
+  const [savingBookings, setSavingBookings] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!customerSearch.trim() || selectedCustomer || customerMode !== 'existing') {
+      setCustomers([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const result = await api.get(`/customers?search=${encodeURIComponent(customerSearch)}`);
+        setCustomers(result.customers || []);
+      } catch {
+        setCustomers([]);
+      }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [customerSearch, selectedCustomer, customerMode]);
+
+  useEffect(() => {
+    if (!selectedCustomer?.id) {
+      setExistingBookings([]);
+      setLoadingExistingBookings(false);
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingExistingBookings(true);
+    api.get(`/bookings?customerId=${selectedCustomer.id}&status=CONFIRMED`)
+      .then((result) => {
+        if (!cancelled) {
+          setExistingBookings(result.bookings || []);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setExistingBookings([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingExistingBookings(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCustomer?.id]);
+
+  const activeRows = allocationRows.filter((row) => row.batchId || row.quantity || row.allocatedAmount || row.notes);
+  const totalPlannedAllocation = activeRows.reduce((sum, row) => sum + Number(row.allocatedAmount || 0), 0);
+  const remainingMoney = Math.max(0, Number(transaction.availableAmount) - totalPlannedAllocation);
+
+  function updateRow(rowId, patch) {
+    setAllocationRows((current) => current.map((row) => (row.id === rowId ? { ...row, ...patch } : row)));
+  }
+
+  function addRow() {
+    setAllocationRows((current) => [...current, createBookingAllocationRow()]);
+  }
+
+  function removeRow(rowId) {
+    setAllocationRows((current) => current.filter((row) => row.id !== rowId));
+  }
+
+  async function linkExistingCustomer(customerId) {
+    setSavingCustomer(true);
+    setError('');
+    try {
+      const result = await api.patch(`/banking/customer-bookings/${transaction.id}/customer`, { customerId });
+      setSelectedCustomer(result.transaction.customer);
+      setCustomerMode('linked');
+      setCustomerSearch('');
+      setCustomers([]);
+    } catch (err) {
+      setError(err.error || 'Failed to link customer');
+    } finally {
+      setSavingCustomer(false);
+    }
+  }
+
+  async function createCustomer() {
+    setSavingCustomer(true);
+    setError('');
+    try {
+      const result = await api.post(`/banking/customer-bookings/${transaction.id}/customer`, newCustomer);
+      setSelectedCustomer(result.customer);
+      setCustomerMode('linked');
+      setNewCustomer({ name: '', phone: '', email: '', notes: '' });
+    } catch (err) {
+      setError(err.error || 'Failed to create customer');
+    } finally {
+      setSavingCustomer(false);
+    }
+  }
+
+  async function saveBookings() {
+    setSavingBookings(true);
+    setError('');
+    try {
+      await api.post(`/banking/customer-bookings/${transaction.id}/bookings`, {
+        bookings: activeRows.map((row) => ({
+          batchId: row.batchId,
+          quantity: Number(row.quantity),
+          allocatedAmount: Number(row.allocatedAmount),
+          notes: row.notes || undefined,
+        })),
+      });
+      onSaved();
+    } catch (err) {
+      setError(err.error || 'Failed to create bookings from this money');
+    } finally {
+      setSavingBookings(false);
+    }
+  }
+
+  return (
+    <ModalShell title="Customer booking allocation" onClose={onClose} maxWidth="max-w-6xl">
+      <div className="space-y-5">
+        {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
+          <StatPill label="Money received" value={fmtMoney(transaction.amount)} />
+          <StatPill label="Already allocated" value={fmtMoney(transaction.allocatedAmount)} />
+          <StatPill label="Planned now" value={fmtMoney(totalPlannedAllocation)} />
+          <StatPill label="Left after this" value={fmtMoney(remainingMoney)} danger={remainingMoney > 0.009} />
+        </div>
+
+        <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+          Use this to turn one customer booking payment into one or more real batch bookings. Choose the batch, enter the number of crates, and enter how much of this money belongs to that batch.
+        </div>
+
+        {!selectedCustomer ? (
+          <div className="rounded-2xl border border-gray-200 p-5 space-y-4">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setCustomerMode('existing')}
+                className={`rounded-lg px-3 py-2 text-sm font-medium ${customerMode === 'existing' ? 'bg-brand-500 text-white' : 'bg-gray-100 text-gray-600'}`}
+              >
+                Link existing customer
+              </button>
+              <button
+                type="button"
+                onClick={() => setCustomerMode('new')}
+                className={`rounded-lg px-3 py-2 text-sm font-medium ${customerMode === 'new' ? 'bg-brand-500 text-white' : 'bg-gray-100 text-gray-600'}`}
+              >
+                Create new customer
+              </button>
+            </div>
+
+            {customerMode === 'existing' ? (
+              <div className="space-y-3">
+                <input
+                  type="text"
+                  value={customerSearch}
+                  onChange={(event) => setCustomerSearch(event.target.value)}
+                  placeholder="Search customer by name or phone"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+                />
+                {customers.length > 0 && (
+                  <div className="max-h-48 overflow-y-auto rounded-xl border border-gray-200">
+                    {customers.map((customer) => (
+                      <button
+                        key={customer.id}
+                        type="button"
+                        onClick={() => linkExistingCustomer(customer.id)}
+                        className="block w-full border-b border-gray-100 px-4 py-3 text-left text-sm hover:bg-gray-50 last:border-b-0"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-medium text-gray-900">{customer.name}</span>
+                          {(customer._count?.bookings || 0) > 0 && (
+                            <span className="rounded-full bg-amber-100 px-2 py-1 text-[11px] font-medium text-amber-700">
+                              {customer._count.bookings} existing booking{customer._count.bookings === 1 ? '' : 's'}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-gray-500">{customer.phone}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <input
+                  type="text"
+                  value={newCustomer.name}
+                  onChange={(event) => setNewCustomer((current) => ({ ...current, name: event.target.value }))}
+                  placeholder="Full name"
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+                />
+                <input
+                  type="text"
+                  value={newCustomer.phone}
+                  onChange={(event) => setNewCustomer((current) => ({ ...current, phone: event.target.value }))}
+                  placeholder="Phone number"
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+                />
+                <input
+                  type="email"
+                  value={newCustomer.email}
+                  onChange={(event) => setNewCustomer((current) => ({ ...current, email: event.target.value }))}
+                  placeholder="Email (optional)"
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+                />
+                <input
+                  type="text"
+                  value={newCustomer.notes}
+                  onChange={(event) => setNewCustomer((current) => ({ ...current, notes: event.target.value }))}
+                  placeholder="Notes (optional)"
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+                />
+                <div className="md:col-span-2 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={createCustomer}
+                    disabled={savingCustomer}
+                    className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:bg-gray-300"
+                  >
+                    {savingCustomer ? 'Creating…' : 'Create and link customer'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-900">
+              Customer linked: <span className="font-semibold">{selectedCustomer.name}</span> {selectedCustomer.phone ? `· ${selectedCustomer.phone}` : ''}
+            </div>
+
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">Existing confirmed bookings for this customer</p>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Use this to avoid creating a duplicate booking for a customer who already has crates reserved.
+                  </p>
+                </div>
+                <StatusChip
+                  label={loadingExistingBookings ? 'Checking...' : `${existingBookings.length} existing booking${existingBookings.length === 1 ? '' : 's'}`}
+                  tone={existingBookings.length > 0 ? 'amber' : 'green'}
+                />
+              </div>
+
+              {loadingExistingBookings ? (
+                <p className="mt-3 text-sm text-gray-500">Loading existing bookings…</p>
+              ) : existingBookings.length === 0 ? (
+                <p className="mt-3 text-sm text-gray-500">This customer does not have any confirmed bookings yet.</p>
+              ) : (
+                <div className="mt-3 space-y-2">
+                  {existingBookings.slice(0, 5).map((booking) => (
+                    <div key={booking.id} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 text-sm">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="font-medium text-gray-900">{booking.batch?.name || 'Batch'}</p>
+                          <p className="text-gray-500">
+                            {booking.batch?.eggTypeLabel || 'Egg type'}{booking.batch?.expectedDate ? ` · expected ${fmtDate(booking.batch.expectedDate)}` : ''}
+                          </p>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 text-xs sm:min-w-[280px]">
+                          <StatPill label="Crates" value={booking.quantity} />
+                          <StatPill label="Paid" value={fmtMoney(booking.amountPaid)} />
+                          <StatPill label="Paid %" value={`${booking.orderValue > 0 ? ((booking.amountPaid / booking.orderValue) * 100).toFixed(1) : '0.0'}%`} />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {selectedCustomer && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-semibold text-gray-900">Batch allocations</h3>
+                <p className="text-sm text-gray-500">Split the money across one or more open batches. The app checks the 80% minimum for each batch booking.</p>
+              </div>
+              <button
+                type="button"
+                onClick={addRow}
+                className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Add batch
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {allocationRows.map((row) => {
+                const batch = openBatches.find((entry) => entry.id === row.batchId);
+                const quantity = Number(row.quantity || 0);
+                const allocatedAmount = Number(row.allocatedAmount || 0);
+                const bookingValue = batch ? quantity * Number(batch.wholesalePrice) : 0;
+                const minimumPayment = bookingValue * 0.8;
+                const paidPercent = bookingValue > 0 ? (allocatedAmount / bookingValue) * 100 : 0;
+
+                return (
+                  <div key={row.id} className="rounded-xl border border-gray-200 p-4">
+                    <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1.3fr_0.7fr_0.8fr_auto]">
+                      <select
+                        value={row.batchId}
+                        onChange={(event) => updateRow(row.id, { batchId: event.target.value })}
+                        className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+                      >
+                        <option value="">Choose open batch</option>
+                        {openBatches.map((batchOption) => (
+                          <option key={batchOption.id} value={batchOption.id}>
+                            {batchOption.name} · {batchOption.eggTypeLabel} · {batchOption.remainingAvailable} crates left
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="number"
+                        min="1"
+                        value={row.quantity}
+                        onChange={(event) => updateRow(row.id, { quantity: event.target.value })}
+                        placeholder="Crates"
+                        className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+                      />
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={row.allocatedAmount}
+                        onChange={(event) => updateRow(row.id, { allocatedAmount: event.target.value })}
+                        placeholder="Amount for this batch"
+                        className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeRow(row.id)}
+                        className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <input
+                      type="text"
+                      value={row.notes}
+                      onChange={(event) => updateRow(row.id, { notes: event.target.value })}
+                      placeholder="Optional note for this batch booking"
+                      className="mt-3 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+                    />
+                    <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-6">
+                      <StatPill label="Batch" value={batch?.name || 'Choose batch'} />
+                      <StatPill label="Crates booked" value={quantity || 0} />
+                      <StatPill label="Price / crate" value={batch ? fmtMoney(batch.wholesalePrice) : '—'} />
+                      <StatPill label="Booking value" value={fmtMoney(bookingValue)} />
+                      <StatPill label="Paid %" value={`${paidPercent.toFixed(1)}%`} danger={bookingValue > 0 && paidPercent < 80} />
+                      <StatPill label="80% minimum" value={fmtMoney(minimumPayment)} danger={bookingValue > 0 && allocatedAmount + 0.009 < minimumPayment} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex flex-col-reverse gap-2 border-t border-gray-100 pt-4 sm:flex-row sm:justify-end">
+              <button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100">
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={saveBookings}
+                disabled={savingBookings || activeRows.length === 0}
+                className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:bg-gray-300"
+              >
+                {savingBookings ? 'Saving…' : 'Create batch bookings'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </ModalShell>
   );
 }
 

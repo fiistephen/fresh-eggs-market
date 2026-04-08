@@ -282,33 +282,6 @@ enum TransactionDirection {
   OUTFLOW
 }
 
-enum TransactionCategory {
-  // Inflows
-  CUSTOMER_DEPOSIT    // Money in, no booking yet
-  CUSTOMER_BOOKING    // Money in + booking made
-  DIRECT_SALE_TRANSFER // Direct sale paid by bank transfer
-  SALES_TRANSFER_IN   // Weekly transfer from Customer Deposit → Sales account
-  PROFIT_TRANSFER_IN  // Monthly transfer from Sales → Profit account
-  POS_SETTLEMENT      // Medusa/bank settlement of card transactions
-  UNALLOCATED_INCOME  // Imported or reviewed inflow not fully classified yet
-  CASH_SALE           // Cash sale recorded into Cash on Hand
-  INTERNAL_TRANSFER_IN // Internal movement into account
-
-  // Outflows
-  REFUND
-  BANK_CHARGES
-  SALES_TRANSFER_OUT  // Weekly transfer out of Customer Deposit → Sales
-  PROFIT_TRANSFER_OUT // Monthly transfer out of Sales → Profit
-  FARMER_PAYMENT
-  SALARY
-  DIESEL_FUEL
-  INTERNET
-  MARKETING
-  OTHER_EXPENSE
-  UNALLOCATED_EXPENSE // Imported or reviewed outflow not fully classified yet
-  INTERNAL_TRANSFER_OUT // Internal movement out of account
-}
-
 enum TransactionSourceType {
   MANUAL
   STATEMENT_IMPORT
@@ -346,7 +319,7 @@ model BankTransaction {
   id              String               @id @default(cuid())
   bankAccountId   String               @map("bank_account_id")
   direction       TransactionDirection
-  category        TransactionCategory
+  category        String
   amount          Decimal              @db.Decimal(12, 2)
   description     String?
   reference       String?              // Bank reference / narration
@@ -414,8 +387,8 @@ model BankStatementLine {
   runningBalance     Decimal?                  @map("running_balance") @db.Decimal(14, 2)
   direction          TransactionDirection?
   reviewStatus       StatementLineReviewStatus @default(PENDING_REVIEW) @map("review_status")
-  suggestedCategory  TransactionCategory?      @map("suggested_category")
-  selectedCategory   TransactionCategory?      @map("selected_category")
+  suggestedCategory  String?                   @map("suggested_category")
+  selectedCategory   String?                   @map("selected_category")
   selectedCustomerId String?                   @map("selected_customer_id")
   notes              String?
   fingerprint        String                    @unique

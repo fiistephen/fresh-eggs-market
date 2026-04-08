@@ -8,8 +8,14 @@ import {
   INFLOW_CATEGORIES,
   OUTFLOW_CATEGORIES,
   getCategoryDirection,
+  normalizeCategoryKey,
 } from '../utils/banking.js';
-import { getTransactionCategoryConfig } from '../utils/appSettings.js';
+import {
+  getCustomerEggTypeConfig,
+  getCustomerEggTypeLabel,
+  getTransactionCategoryConfig,
+  saveTransactionCategoryConfig,
+} from '../utils/appSettings.js';
 import { parseProvidusStatement } from '../utils/providusStatement.js';
 
 function toNumber(value) {
@@ -56,6 +62,13 @@ function endOfDay(dateInput) {
   return date;
 }
 
+function buildCategoryConfigMap(categories = []) {
+  return categories.reduce((acc, entry) => {
+    acc[entry.category] = entry;
+    return acc;
+  }, {});
+}
+
 async function getAccountSummary(accountId) {
   const [inflows, outflows, txnCount, latestReconciliation] = await Promise.all([
     prisma.bankTransaction.aggregate({
@@ -85,20 +98,51 @@ async function getAccountSummary(accountId) {
   };
 }
 
-function validateDirectionAndCategory(direction, category) {
+function validateDirectionAndCategory(direction, category, categoryConfig = []) {
+  const categoryMap = buildCategoryConfigMap(categoryConfig);
   if (!direction || !VALID_DIRECTIONS.includes(direction)) {
     return 'Direction must be INFLOW or OUTFLOW';
   }
-  if (!category || !VALID_CATEGORIES.includes(category)) {
-    return `Invalid category. Valid: ${VALID_CATEGORIES.join(', ')}`;
+  const categoryEntry = categoryMap[category];
+  if (!category || !categoryEntry) {
+    return 'Invalid category.';
   }
-  if (direction === 'INFLOW' && !INFLOW_CATEGORIES.includes(category)) {
+  if (direction === 'INFLOW' && categoryEntry.direction !== 'INFLOW') {
     return `Category ${category} cannot be an inflow`;
   }
-  if (direction === 'OUTFLOW' && !OUTFLOW_CATEGORIES.includes(category)) {
+  if (direction === 'OUTFLOW' && categoryEntry.direction !== 'OUTFLOW') {
     return `Category ${category} cannot be an outflow`;
   }
   return null;
+}
+
+async function recalculateImportStatus(importId) {
+  const lines = await prisma.bankStatementLine.findMany({
+    where: { importId },
+    select: { reviewStatus: true },
+  });
+
+  const postedRowCount = lines.filter((line) => line.reviewStatus === 'POSTED').length;
+  let status = 'REVIEWING';
+  if (lines.length > 0 && postedRowCount === lines.length) status = 'POSTED';
+  else if (postedRowCount > 0) status = 'PARTIALLY_POSTED';
+
+  return prisma.bankStatementImport.update({
+    where: { id: importId },
+    data: {
+      postedRowCount,
+      status,
+    },
+  });
+}
+
+async function getTransactionAllocatedAmount(bankTransactionId) {
+  const allocationAgg = await prisma.bookingPaymentAllocation.aggregate({
+    where: { bankTransactionId },
+    _sum: { amount: true },
+  });
+
+  return Number(allocationAgg._sum.amount || 0);
 }
 
 async function validateCustomer(customerId) {
@@ -153,6 +197,46 @@ export default async function bankingRoutes(fastify) {
     handler: async () => {
       const transactionCategories = await getTransactionCategoryConfig();
       return { transactionCategories };
+    },
+  });
+
+  fastify.post('/banking/categories', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
+    handler: async (request, reply) => {
+      const categoryConfig = await getTransactionCategoryConfig();
+      const { label, direction, description = '' } = request.body;
+
+      if (!label?.trim()) {
+        return reply.code(400).send({ error: 'Category label is required.' });
+      }
+      if (!VALID_DIRECTIONS.includes(direction)) {
+        return reply.code(400).send({ error: 'Direction must be INFLOW or OUTFLOW.' });
+      }
+
+      const category = normalizeCategoryKey(label);
+      if (!category) {
+        return reply.code(400).send({ error: 'Category label must contain letters or numbers.' });
+      }
+
+      if (categoryConfig.some((entry) => entry.category === category)) {
+        return reply.code(409).send({ error: 'A category with this name already exists.' });
+      }
+
+      const transactionCategories = await saveTransactionCategoryConfig([
+        ...categoryConfig,
+        {
+          category,
+          label: label.trim(),
+          description: String(description || '').trim(),
+          direction,
+          isActive: true,
+        },
+      ], request.user.sub);
+
+      return reply.code(201).send({
+        category: transactionCategories.find((entry) => entry.category === category),
+        transactionCategories,
+      });
     },
   });
 
@@ -248,9 +332,10 @@ export default async function bankingRoutes(fastify) {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
     handler: async (request, reply) => {
       const { bankAccountId, direction, category, amount, description, reference, transactionDate, customerId, sourceType } = request.body;
+      const categoryConfig = await getTransactionCategoryConfig();
 
       if (!bankAccountId) return reply.code(400).send({ error: 'Bank account is required' });
-      const categoryError = validateDirectionAndCategory(direction, category);
+      const categoryError = validateDirectionAndCategory(direction, category, categoryConfig);
       if (categoryError) return reply.code(400).send({ error: categoryError });
       if (!amount || Number(amount) <= 0) return reply.code(400).send({ error: 'Amount must be positive' });
       if (!transactionDate) return reply.code(400).send({ error: 'Transaction date is required' });
@@ -282,6 +367,7 @@ export default async function bankingRoutes(fastify) {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
     handler: async (request, reply) => {
       const { rows } = request.body;
+      const categoryConfig = await getTransactionCategoryConfig();
       if (!Array.isArray(rows) || rows.length === 0) {
         return reply.code(400).send({ error: 'rows must be a non-empty array' });
       }
@@ -290,7 +376,7 @@ export default async function bankingRoutes(fastify) {
 
       for (let index = 0; index < rows.length; index += 1) {
         const row = rows[index];
-        const categoryError = validateDirectionAndCategory(row.direction, row.category);
+        const categoryError = validateDirectionAndCategory(row.direction, row.category, categoryConfig);
         if (!row.bankAccountId) validationErrors.push({ index, error: 'Bank account is required' });
         if (categoryError) validationErrors.push({ index, error: categoryError });
         if (!row.amount || Number(row.amount) <= 0) validationErrors.push({ index, error: 'Amount must be positive' });
@@ -599,12 +685,13 @@ export default async function bankingRoutes(fastify) {
 
       const { selectedCategory, selectedCustomerId, notes, reviewStatus } = request.body;
       const updates = {};
+      const categoryConfig = await getTransactionCategoryConfig();
 
       if (selectedCategory !== undefined) {
-        if (!VALID_CATEGORIES.includes(selectedCategory)) {
+        if (!categoryConfig.some((entry) => entry.category === selectedCategory)) {
           return reply.code(400).send({ error: 'Invalid category' });
         }
-        const requiredDirection = getCategoryDirection(selectedCategory);
+        const requiredDirection = categoryConfig.find((entry) => entry.category === selectedCategory)?.direction || getCategoryDirection(selectedCategory);
         if (existing.direction && requiredDirection && existing.direction !== requiredDirection) {
           return reply.code(400).send({ error: `Category ${selectedCategory} does not match line direction ${existing.direction}` });
         }
@@ -642,6 +729,58 @@ export default async function bankingRoutes(fastify) {
       });
 
       return reply.send({ line: enrichStatementLine(line) });
+    },
+  });
+
+  fastify.delete('/banking/imports/:id/lines/:lineId', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
+    handler: async (request, reply) => {
+      const existing = await prisma.bankStatementLine.findFirst({
+        where: { id: request.params.lineId, importId: request.params.id },
+      });
+      if (!existing) return reply.code(404).send({ error: 'Import line not found' });
+      if (existing.reviewStatus === 'POSTED') {
+        return reply.code(400).send({ error: 'Posted lines cannot be removed from the queue' });
+      }
+
+      await prisma.bankStatementLine.delete({
+        where: { id: existing.id },
+      });
+      await recalculateImportStatus(request.params.id);
+
+      return reply.send({ removedLineId: existing.id });
+    },
+  });
+
+  fastify.post('/banking/imports/:id/lines/remove', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
+    handler: async (request, reply) => {
+      const lineIds = Array.isArray(request.body?.lineIds) ? request.body.lineIds : [];
+      if (lineIds.length === 0) {
+        return reply.code(400).send({ error: 'Select at least one line to remove.' });
+      }
+
+      const lines = await prisma.bankStatementLine.findMany({
+        where: { importId: request.params.id, id: { in: lineIds } },
+        select: { id: true, reviewStatus: true },
+      });
+
+      if (lines.length === 0) {
+        return reply.code(404).send({ error: 'No matching import lines were found.' });
+      }
+      if (lines.some((line) => line.reviewStatus === 'POSTED')) {
+        return reply.code(400).send({ error: 'Posted lines cannot be removed from the queue.' });
+      }
+
+      await prisma.bankStatementLine.deleteMany({
+        where: { importId: request.params.id, id: { in: lines.map((line) => line.id) } },
+      });
+      await recalculateImportStatus(request.params.id);
+
+      return reply.send({
+        removedLineIds: lines.map((line) => line.id),
+        removedCount: lines.length,
+      });
     },
   });
 
@@ -738,6 +877,324 @@ export default async function bankingRoutes(fastify) {
         postedCount: posted.length,
         skipped,
         importStatus: nextStatus,
+      });
+    },
+  });
+
+  fastify.get('/banking/customer-bookings', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
+    handler: async (request, reply) => {
+      const customerEggTypes = await getCustomerEggTypeConfig();
+      const [transactions, openBatches] = await Promise.all([
+        prisma.bankTransaction.findMany({
+          where: {
+            category: 'CUSTOMER_BOOKING',
+            direction: 'INFLOW',
+          },
+          include: {
+            bankAccount: { select: { id: true, name: true, accountType: true, lastFour: true, isVirtual: true } },
+            customer: { select: { id: true, name: true, phone: true, email: true, isFirstTime: true } },
+            enteredBy: { select: { firstName: true, lastName: true } },
+            allocations: {
+              include: {
+                booking: {
+                  include: {
+                    batch: {
+                      select: {
+                        id: true,
+                        name: true,
+                        expectedDate: true,
+                        eggTypeKey: true,
+                        wholesalePrice: true,
+                      },
+                    },
+                  },
+                },
+              },
+              orderBy: { createdAt: 'asc' },
+            },
+          },
+          orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }],
+        }),
+        prisma.batch.findMany({
+          where: { status: 'OPEN' },
+          orderBy: { expectedDate: 'asc' },
+        }),
+      ]);
+
+      const queue = transactions.map((transaction) => {
+        const allocatedAmount = transaction.allocations.reduce((sum, allocation) => sum + Number(allocation.amount), 0);
+        const availableAmount = Math.max(0, Number(transaction.amount) - allocatedAmount);
+        return {
+          ...enrichTransaction(transaction),
+          allocatedAmount,
+          availableAmount,
+          allocations: transaction.allocations.map((allocation) => ({
+            id: allocation.id,
+            amount: Number(allocation.amount),
+            booking: allocation.booking ? {
+              id: allocation.booking.id,
+              quantity: allocation.booking.quantity,
+              orderValue: Number(allocation.booking.orderValue),
+              amountPaid: Number(allocation.booking.amountPaid),
+              batch: allocation.booking.batch ? {
+                ...allocation.booking.batch,
+                wholesalePrice: Number(allocation.booking.batch.wholesalePrice),
+                eggTypeLabel: getCustomerEggTypeLabel(customerEggTypes, allocation.booking.batch.eggTypeKey || 'REGULAR'),
+              } : null,
+            } : null,
+          })),
+        };
+      }).filter((transaction) => transaction.availableAmount > 0.009 || !transaction.customerId);
+
+      const openBatchRows = await Promise.all(openBatches.map(async (batch) => {
+        const bookedAgg = await prisma.booking.aggregate({
+          where: { batchId: batch.id, status: { not: 'CANCELLED' } },
+          _sum: { quantity: true },
+        });
+        const totalBooked = bookedAgg._sum.quantity || 0;
+        return {
+          id: batch.id,
+          name: batch.name,
+          expectedDate: batch.expectedDate,
+          eggTypeKey: batch.eggTypeKey,
+          eggTypeLabel: getCustomerEggTypeLabel(customerEggTypes, batch.eggTypeKey || 'REGULAR'),
+          wholesalePrice: Number(batch.wholesalePrice),
+          availableForBooking: batch.availableForBooking,
+          remainingAvailable: Math.max(0, batch.availableForBooking - totalBooked),
+        };
+      }));
+
+      return reply.send({
+        queue,
+        openBatches: openBatchRows.filter((batch) => batch.remainingAvailable > 0),
+      });
+    },
+  });
+
+  fastify.patch('/banking/customer-bookings/:transactionId/customer', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
+    handler: async (request, reply) => {
+      const transaction = await prisma.bankTransaction.findUnique({
+        where: { id: request.params.transactionId },
+      });
+
+      if (!transaction || transaction.category !== 'CUSTOMER_BOOKING') {
+        return reply.code(404).send({ error: 'Customer booking transaction not found.' });
+      }
+
+      const customer = await prisma.customer.findUnique({
+        where: { id: request.body?.customerId },
+      });
+      if (!customer) {
+        return reply.code(404).send({ error: 'Customer not found.' });
+      }
+
+      const updated = await prisma.bankTransaction.update({
+        where: { id: transaction.id },
+        data: { customerId: customer.id },
+        include: {
+          customer: { select: { id: true, name: true, phone: true, email: true, isFirstTime: true } },
+        },
+      });
+
+      return reply.send({ transaction: enrichTransaction(updated) });
+    },
+  });
+
+  fastify.post('/banking/customer-bookings/:transactionId/customer', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
+    handler: async (request, reply) => {
+      const transaction = await prisma.bankTransaction.findUnique({
+        where: { id: request.params.transactionId },
+      });
+
+      if (!transaction || transaction.category !== 'CUSTOMER_BOOKING') {
+        return reply.code(404).send({ error: 'Customer booking transaction not found.' });
+      }
+
+      const { name, phone, email, notes } = request.body;
+      if (!name?.trim() || !phone?.trim()) {
+        return reply.code(400).send({ error: 'Name and phone are required.' });
+      }
+
+      const existingByPhone = await prisma.customer.findFirst({
+        where: { phone: phone.trim() },
+      });
+      if (existingByPhone) {
+        return reply.code(409).send({ error: `Customer with phone ${phone.trim()} already exists.` });
+      }
+
+      const customer = await prisma.customer.create({
+        data: {
+          name: name.trim(),
+          phone: phone.trim(),
+          email: email?.trim() || null,
+          notes: notes?.trim() || null,
+        },
+      });
+
+      const updated = await prisma.bankTransaction.update({
+        where: { id: transaction.id },
+        data: { customerId: customer.id },
+      });
+
+      return reply.code(201).send({
+        customer,
+        transaction: enrichTransaction(updated),
+      });
+    },
+  });
+
+  fastify.post('/banking/customer-bookings/:transactionId/bookings', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
+    handler: async (request, reply) => {
+      const transaction = await prisma.bankTransaction.findUnique({
+        where: { id: request.params.transactionId },
+        include: {
+          customer: true,
+          allocations: true,
+        },
+      });
+
+      if (!transaction || transaction.category !== 'CUSTOMER_BOOKING') {
+        return reply.code(404).send({ error: 'Customer booking transaction not found.' });
+      }
+      if (!transaction.customerId) {
+        return reply.code(400).send({ error: 'Link a customer before creating bookings from this money.' });
+      }
+
+      const bookingsInput = Array.isArray(request.body?.bookings) ? request.body.bookings : [];
+      if (bookingsInput.length === 0) {
+        return reply.code(400).send({ error: 'Add at least one batch allocation.' });
+      }
+
+      const alreadyAllocated = transaction.allocations.reduce((sum, allocation) => sum + Number(allocation.amount), 0);
+      const availableAmount = Number(transaction.amount) - alreadyAllocated;
+      const requestedAmount = bookingsInput.reduce((sum, entry) => sum + Number(entry.allocatedAmount || 0), 0);
+
+      if (requestedAmount > availableAmount + 0.009) {
+        return reply.code(400).send({ error: 'Allocated amount is more than the money still available on this transaction.' });
+      }
+
+      const batchIds = [...new Set(bookingsInput.map((entry) => entry.batchId).filter(Boolean))];
+      const batches = await prisma.batch.findMany({
+        where: {
+          id: { in: batchIds },
+          status: 'OPEN',
+        },
+      });
+      const batchMap = new Map(batches.map((batch) => [batch.id, batch]));
+      const batchUsage = new Map();
+
+      for (const entry of bookingsInput) {
+        const batch = batchMap.get(entry.batchId);
+        if (!batch) {
+          return reply.code(400).send({ error: 'One of the selected batches is no longer open.' });
+        }
+        const quantity = Number(entry.quantity);
+        const allocatedAmount = Number(entry.allocatedAmount);
+        if (!Number.isInteger(quantity) || quantity <= 0) {
+          return reply.code(400).send({ error: `Enter a whole crate quantity for ${batch.name}.` });
+        }
+        if (!allocatedAmount || allocatedAmount <= 0) {
+          return reply.code(400).send({ error: `Enter the amount to allocate for ${batch.name}.` });
+        }
+
+        const orderValue = quantity * Number(batch.wholesalePrice);
+        const minimumPayment = orderValue * 0.8;
+        if (allocatedAmount > orderValue + 0.009) {
+          return reply.code(400).send({ error: `Allocated amount for ${batch.name} is more than the booking value.` });
+        }
+        if (allocatedAmount + 0.009 < minimumPayment) {
+          return reply.code(400).send({ error: `${batch.name} has not reached the 80% minimum payment yet.` });
+        }
+
+        batchUsage.set(batch.id, (batchUsage.get(batch.id) || 0) + quantity);
+      }
+
+      for (const [batchId, requestedQty] of batchUsage.entries()) {
+        const bookedAgg = await prisma.booking.aggregate({
+          where: { batchId, status: { not: 'CANCELLED' } },
+          _sum: { quantity: true },
+        });
+        const alreadyBooked = bookedAgg._sum.quantity || 0;
+        const batch = batchMap.get(batchId);
+        const remainingAvailable = batch.availableForBooking - alreadyBooked;
+        if (requestedQty > remainingAvailable) {
+          return reply.code(400).send({ error: `${batch.name} only has ${remainingAvailable} crates left for booking.` });
+        }
+      }
+
+      const createdBookings = await prisma.$transaction(async (tx) => {
+        const created = [];
+        for (const entry of bookingsInput) {
+          const batch = batchMap.get(entry.batchId);
+          const quantity = Number(entry.quantity);
+          const allocatedAmount = Number(entry.allocatedAmount);
+          const orderValue = quantity * Number(batch.wholesalePrice);
+
+          const booking = await tx.booking.create({
+            data: {
+              customerId: transaction.customerId,
+              batchId: batch.id,
+              quantity,
+              amountPaid: allocatedAmount,
+              orderValue,
+              status: 'CONFIRMED',
+              channel: 'backend',
+              notes: entry.notes?.trim() || `Created from banking customer booking transaction ${transaction.reference || transaction.id}`,
+            },
+            include: {
+              batch: {
+                select: {
+                  id: true,
+                  name: true,
+                  expectedDate: true,
+                  eggTypeKey: true,
+                  wholesalePrice: true,
+                },
+              },
+            },
+          });
+
+          await tx.bookingPaymentAllocation.create({
+            data: {
+              bookingId: booking.id,
+              bankTransactionId: transaction.id,
+              amount: allocatedAmount,
+              allocatedById: request.user.sub,
+            },
+          });
+
+          created.push(booking);
+        }
+
+        if (transaction.customer?.isFirstTime) {
+          await tx.customer.update({
+            where: { id: transaction.customerId },
+            data: { isFirstTime: false },
+          });
+        }
+
+        return created;
+      });
+
+      const nextAllocatedAmount = await getTransactionAllocatedAmount(transaction.id);
+
+      return reply.code(201).send({
+        bookings: createdBookings.map((booking) => ({
+          ...booking,
+          amountPaid: Number(booking.amountPaid),
+          orderValue: Number(booking.orderValue),
+          batch: booking.batch ? {
+            ...booking.batch,
+            wholesalePrice: Number(booking.batch.wholesalePrice),
+            eggTypeLabel: getCustomerEggTypeLabel(customerEggTypes, booking.batch.eggTypeKey || 'REGULAR'),
+          } : null,
+        })),
+        allocatedAmount: nextAllocatedAmount,
+        availableAmount: Math.max(0, Number(transaction.amount) - nextAllocatedAmount),
       });
     },
   });
