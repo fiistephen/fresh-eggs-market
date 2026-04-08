@@ -8,6 +8,7 @@ import {
   authenticate,
 } from '../plugins/auth.js';
 import { authorize } from '../middleware/authorize.js';
+import { getCustomerEggTypeConfig, getCustomerEggTypeLabel } from '../utils/appSettings.js';
 
 const SALT_ROUNDS = 12;
 
@@ -36,6 +37,7 @@ export default async function portalRoutes(fastify) {
   // ────────────────────────────────────────────────────────────
   fastify.get('/portal/batches', {
     handler: async (request, reply) => {
+      const eggTypes = await getCustomerEggTypeConfig();
       const batches = await prisma.batch.findMany({
         where: { status: 'OPEN' },
         include: {
@@ -58,6 +60,8 @@ export default async function portalRoutes(fastify) {
         result.push({
           id: batch.id,
           name: batch.name,
+          eggTypeKey: batch.eggTypeKey || 'REGULAR',
+          eggTypeLabel: getCustomerEggTypeLabel(eggTypes, batch.eggTypeKey || 'REGULAR'),
           expectedDate: batch.expectedDate,
           wholesalePrice: Number(batch.wholesalePrice),
           retailPrice: Number(batch.retailPrice),
@@ -181,17 +185,19 @@ export default async function portalRoutes(fastify) {
       const bookings = await prisma.booking.findMany({
         where: { customerId: customer.id },
         include: {
-          batch: { select: { id: true, name: true, expectedDate: true, status: true, wholesalePrice: true } },
+          batch: { select: { id: true, name: true, expectedDate: true, status: true, wholesalePrice: true, eggTypeKey: true } },
           batchEggCode: { select: { id: true, code: true, wholesalePrice: true } },
         },
         orderBy: { createdAt: 'desc' },
       });
+      const eggTypes = await getCustomerEggTypeConfig();
 
       return reply.send({
         customerId: customer.id,
         bookings: bookings.map(b => ({
           id: b.id,
           batch: b.batch.name,
+          eggTypeLabel: getCustomerEggTypeLabel(eggTypes, b.batch.eggTypeKey || 'REGULAR'),
           batchStatus: b.batch.status,
           itemCode: b.batchEggCode?.code || null,
           expectedDate: b.batch.expectedDate,
@@ -286,8 +292,9 @@ export default async function portalRoutes(fastify) {
           channel: 'website',
           notes: `Self-service booking by ${customer.name}`,
         },
-        include: { batch: { select: { name: true, expectedDate: true } } },
+        include: { batch: { select: { name: true, expectedDate: true, eggTypeKey: true } } },
       });
+      const eggTypes = await getCustomerEggTypeConfig();
 
       // Update isFirstTime if applicable
       if (customer.isFirstTime) {
@@ -301,6 +308,7 @@ export default async function portalRoutes(fastify) {
         booking: {
           id: booking.id,
           batch: booking.batch.name,
+          eggTypeLabel: getCustomerEggTypeLabel(eggTypes, booking.batch.eggTypeKey || 'REGULAR'),
           expectedDate: booking.batch.expectedDate,
           quantity: booking.quantity,
           orderValue: Number(booking.orderValue),

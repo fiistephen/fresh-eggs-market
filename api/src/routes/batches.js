@@ -6,7 +6,11 @@ import {
   roundTo2,
   safeDivide,
 } from '../utils/operationsPolicy.js';
-import { getOperationsPolicy } from '../utils/appSettings.js';
+import {
+  findCustomerEggTypeByKey,
+  getCustomerEggTypeConfig,
+  getOperationsPolicy,
+} from '../utils/appSettings.js';
 import { ensureItemForEggCode, normalizeItemCode } from '../utils/items.js';
 
 async function findSalesForBatch(batchId) {
@@ -35,6 +39,18 @@ async function findSalesForBatch(batchId) {
 
 function toNumber(value) {
   return value == null ? 0 : Number(value);
+}
+
+function mapEggTypeMeta(eggTypes, eggTypeKey) {
+  const selected = findCustomerEggTypeByKey(eggTypes, eggTypeKey);
+  const fallback = eggTypes.find((entry) => entry.key === 'REGULAR') || eggTypes[0] || null;
+  const resolved = selected || fallback;
+
+  return {
+    eggTypeKey: resolved?.key || 'REGULAR',
+    eggTypeLabel: resolved?.label || 'Regular Size Eggs',
+    eggTypeShortLabel: resolved?.shortLabel || 'Regular',
+  };
 }
 
 async function buildBatchOverview(batch, policy, options = {}) {
@@ -152,13 +168,26 @@ function mapBatchEggCodeForJson(eggCode, fallbackBatch = null) {
 }
 
 export default async function batchRoutes(fastify) {
+  fastify.get('/batches/meta', {
+    preHandler: [authenticate],
+    handler: async () => {
+      const eggTypes = await getCustomerEggTypeConfig();
+      return {
+        customerEggTypes: eggTypes,
+        activeCustomerEggTypes: eggTypes.filter((entry) => entry.isActive),
+      };
+    },
+  });
 
   // ─── LIST BATCHES ─────────────────────────────────────────────
   fastify.get('/batches', {
     preHandler: [authenticate],
     handler: async (request, reply) => {
       const { status, search } = request.query;
-      const policy = await getOperationsPolicy();
+      const [policy, eggTypes] = await Promise.all([
+        getOperationsPolicy(),
+        getCustomerEggTypeConfig(),
+      ]);
       const where = {};
       if (status) where.status = status;
       if (search) where.name = { contains: search, mode: 'insensitive' };
@@ -191,9 +220,11 @@ export default async function batchRoutes(fastify) {
 
       const enriched = await Promise.all(batches.map(async (batch) => {
         const overview = await buildBatchOverview(batch, policy);
+        const eggType = mapEggTypeMeta(eggTypes, batch.eggTypeKey);
         return {
           ...batch,
           overview,
+          ...eggType,
           wholesalePrice: Number(batch.wholesalePrice),
           retailPrice: Number(batch.retailPrice),
           costPrice: Number(batch.costPrice),
@@ -210,7 +241,10 @@ export default async function batchRoutes(fastify) {
   fastify.get('/batches/:id', {
     preHandler: [authenticate],
     handler: async (request, reply) => {
-      const policy = await getOperationsPolicy();
+      const [policy, eggTypes] = await Promise.all([
+        getOperationsPolicy(),
+        getCustomerEggTypeConfig(),
+      ]);
       const batch = await prisma.batch.findUnique({
         where: { id: request.params.id },
         include: {
@@ -238,6 +272,7 @@ export default async function batchRoutes(fastify) {
       const result = {
         ...batch,
         overview,
+        ...mapEggTypeMeta(eggTypes, batch.eggTypeKey),
         wholesalePrice: Number(batch.wholesalePrice),
         retailPrice: Number(batch.retailPrice),
         costPrice: Number(batch.costPrice),
@@ -276,14 +311,21 @@ export default async function batchRoutes(fastify) {
         expectedDate,
         expectedQuantity,
         availableForBooking,
+        eggTypeKey,
         wholesalePrice,
         retailPrice,
         plannedItems = [],
       } = request.body;
+      const eggTypes = await getCustomerEggTypeConfig();
+      const activeEggType = findCustomerEggTypeByKey(
+        eggTypes.filter((entry) => entry.isActive),
+        eggTypeKey || 'REGULAR',
+      );
 
       // Validation
       if (!expectedDate) return reply.code(400).send({ error: 'Expected date is required' });
       if (!expectedQuantity || expectedQuantity <= 0) return reply.code(400).send({ error: 'Expected quantity must be positive' });
+      if (!activeEggType) return reply.code(400).send({ error: 'Choose an active egg type for this batch' });
       if (!wholesalePrice || Number(wholesalePrice) <= 0) return reply.code(400).send({ error: 'Wholesale price is required' });
       if (!retailPrice || Number(retailPrice) <= 0) return reply.code(400).send({ error: 'Retail price is required' });
 
@@ -395,6 +437,7 @@ export default async function batchRoutes(fastify) {
           expectedDate: new Date(expectedDate),
           expectedQuantity,
           availableForBooking: bookingQty,
+          eggTypeKey: activeEggType.key,
           wholesalePrice: Number(wholesalePrice),
           retailPrice: Number(retailPrice),
           costPrice: normalizedPlannedItems[0].costPrice,
@@ -417,6 +460,7 @@ export default async function batchRoutes(fastify) {
       return reply.code(201).send({
         batch: {
           ...batch,
+          ...mapEggTypeMeta(eggTypes, batch.eggTypeKey),
           wholesalePrice: Number(batch.wholesalePrice),
           retailPrice: Number(batch.retailPrice),
           costPrice: Number(batch.costPrice),
@@ -438,11 +482,22 @@ export default async function batchRoutes(fastify) {
         return reply.code(400).send({ error: 'Can only edit batches that are OPEN' });
       }
 
-      const { expectedDate, expectedQuantity, availableForBooking, wholesalePrice, retailPrice, costPrice } = request.body;
+      const { expectedDate, expectedQuantity, availableForBooking, eggTypeKey, wholesalePrice, retailPrice, costPrice } = request.body;
+      const eggTypes = await getCustomerEggTypeConfig();
       const data = {};
       if (expectedDate !== undefined) data.expectedDate = new Date(expectedDate);
       if (expectedQuantity !== undefined) data.expectedQuantity = expectedQuantity;
       if (availableForBooking !== undefined) data.availableForBooking = availableForBooking;
+      if (eggTypeKey !== undefined) {
+        const allowedEggType = findCustomerEggTypeByKey(
+          eggTypes.filter((entry) => entry.isActive || entry.key === existing.eggTypeKey),
+          eggTypeKey,
+        );
+        if (!allowedEggType) {
+          return reply.code(400).send({ error: 'Choose an active egg type for this batch' });
+        }
+        data.eggTypeKey = allowedEggType.key;
+      }
       if (wholesalePrice !== undefined) data.wholesalePrice = wholesalePrice;
       if (retailPrice !== undefined) data.retailPrice = retailPrice;
       if (costPrice !== undefined) data.costPrice = costPrice;
@@ -455,6 +510,7 @@ export default async function batchRoutes(fastify) {
       return reply.send({
         batch: {
           ...batch,
+          ...mapEggTypeMeta(eggTypes, batch.eggTypeKey),
           wholesalePrice: Number(batch.wholesalePrice),
           retailPrice: Number(batch.retailPrice),
           costPrice: Number(batch.costPrice),

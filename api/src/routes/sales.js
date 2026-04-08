@@ -1,6 +1,7 @@
 import prisma from '../plugins/prisma.js';
 import { authenticate } from '../plugins/auth.js';
 import { authorize } from '../middleware/authorize.js';
+import { getCustomerEggTypeConfig, getCustomerEggTypeLabel } from '../utils/appSettings.js';
 
 const VALID_SALE_TYPES = ['WHOLESALE', 'RETAIL', 'CRACKED', 'WRITE_OFF'];
 const VALID_PAYMENT_METHODS = ['CASH', 'TRANSFER', 'POS_CARD', 'PRE_ORDER'];
@@ -28,10 +29,12 @@ function generateReceiptNumber() {
   return `FE-${date}-${rand}`;
 }
 
-function mapBatchForSale(batch) {
+function mapBatchForSale(batch, eggTypes = []) {
   return {
     id: batch.id,
     name: batch.name,
+    eggTypeKey: batch.eggTypeKey || 'REGULAR',
+    eggTypeLabel: getCustomerEggTypeLabel(eggTypes, batch.eggTypeKey || 'REGULAR'),
     receivedDate: batch.receivedDate,
     actualQuantity: batch.actualQuantity,
     wholesalePrice: Number(batch.wholesalePrice),
@@ -48,7 +51,7 @@ function mapBatchForSale(batch) {
   };
 }
 
-async function getBatchStockSnapshot(batchId) {
+async function getBatchStockSnapshot(batchId, eggTypes = []) {
   const batch = await prisma.batch.findUnique({
     where: { id: batchId },
     include: { eggCodes: true },
@@ -106,7 +109,7 @@ async function getBatchStockSnapshot(batchId) {
   const totalReceived = eggCodes.reduce((sum, eggCode) => sum + eggCode.receivedQuantity, 0);
 
   return {
-    batch: mapBatchForSale(batch),
+    batch: mapBatchForSale(batch, eggTypes),
     totalReceived,
     totalSold,
     totalWrittenOff,
@@ -132,7 +135,7 @@ function deriveSaleBatchSummary(sale) {
   return `${names.length} batches`;
 }
 
-function mapBookingForWorkspace(booking) {
+function mapBookingForWorkspace(booking, eggTypes = []) {
   const amountPaid = Number(booking.amountPaid);
   const orderValue = Number(booking.orderValue);
   const balance = Math.max(0, orderValue - amountPaid);
@@ -148,7 +151,7 @@ function mapBookingForWorkspace(booking) {
     isFullyPaid: balance <= 0.009,
     createdAt: booking.createdAt,
     notes: booking.notes,
-    batch: booking.batch ? mapBatchForSale(booking.batch) : null,
+    batch: booking.batch ? mapBatchForSale(booking.batch, eggTypes) : null,
     batchEggCodeId: booking.batchEggCodeId || null,
     batchEggCode: booking.batchEggCode
       ? {
@@ -161,7 +164,7 @@ function mapBookingForWorkspace(booking) {
   };
 }
 
-function enrichSale(sale) {
+function enrichSale(sale, eggTypes = []) {
   return {
     ...sale,
     totalAmount: Number(sale.totalAmount),
@@ -193,6 +196,8 @@ function enrichSale(sale) {
     ...(sale.batch && {
       batch: {
         ...sale.batch,
+        eggTypeKey: sale.batch.eggTypeKey || 'REGULAR',
+        eggTypeLabel: getCustomerEggTypeLabel(eggTypes, sale.batch.eggTypeKey || 'REGULAR'),
         ...(sale.batch.wholesalePrice !== undefined && { wholesalePrice: Number(sale.batch.wholesalePrice) }),
         ...(sale.batch.retailPrice !== undefined && { retailPrice: Number(sale.batch.retailPrice) }),
         ...(sale.batch.costPrice !== undefined && { costPrice: Number(sale.batch.costPrice) }),
@@ -205,7 +210,7 @@ function enrichSale(sale) {
 function buildSaleInclude() {
   return {
     customer: { select: { id: true, name: true, phone: true } },
-    batch: { select: { id: true, name: true } },
+    batch: { select: { id: true, name: true, eggTypeKey: true } },
     booking: {
       select: {
         id: true,
@@ -222,7 +227,7 @@ function buildSaleInclude() {
           select: {
             code: true,
             costPrice: true,
-            batch: { select: { id: true, name: true } },
+            batch: { select: { id: true, name: true, eggTypeKey: true } },
           },
         },
       },
@@ -318,8 +323,9 @@ export default async function salesRoutes(fastify) {
         }),
         prisma.sale.count({ where }),
       ]);
+      const eggTypes = await getCustomerEggTypeConfig();
 
-      return reply.send({ sales: sales.map(enrichSale), total });
+      return reply.send({ sales: sales.map((sale) => enrichSale(sale, eggTypes)), total });
     },
   });
 
@@ -333,7 +339,8 @@ export default async function salesRoutes(fastify) {
       });
 
       if (!sale) return reply.code(404).send({ error: 'Sale not found' });
-      return reply.send({ sale: enrichSale(sale) });
+      const eggTypes = await getCustomerEggTypeConfig();
+      return reply.send({ sale: enrichSale(sale, eggTypes) });
     },
   });
 
@@ -342,6 +349,7 @@ export default async function salesRoutes(fastify) {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'SHOP_FLOOR')],
     handler: async (request, reply) => {
       const { customerId } = request.params;
+      const eggTypes = await getCustomerEggTypeConfig();
 
       const customer = await prisma.customer.findUnique({
         where: { id: customerId },
@@ -382,7 +390,7 @@ export default async function salesRoutes(fastify) {
         }),
       ]);
 
-      const batchSnapshots = await Promise.all(batches.map((batch) => getBatchStockSnapshot(batch.id)));
+      const batchSnapshots = await Promise.all(batches.map((batch) => getBatchStockSnapshot(batch.id, eggTypes)));
       const saleReadyBatches = batchSnapshots
         .filter(Boolean)
         .filter((snapshot) => snapshot.availableForSale > 0);
@@ -399,7 +407,7 @@ export default async function salesRoutes(fastify) {
 
       return reply.send({
         customer,
-        bookings: bookings.map(mapBookingForWorkspace),
+        bookings: bookings.map((booking) => mapBookingForWorkspace(booking, eggTypes)),
         directSaleBatches: saleReadyBatches.map((snapshot) => ({
           ...snapshot.batch,
           salesCount: batches.find((batch) => batch.id === snapshot.batch.id)?._count.sales || 0,
@@ -666,7 +674,8 @@ export default async function salesRoutes(fastify) {
         });
       });
 
-      return reply.code(201).send({ sale: enrichSale(sale) });
+      const eggTypes = await getCustomerEggTypeConfig();
+      return reply.code(201).send({ sale: enrichSale(sale, eggTypes) });
     },
   });
 

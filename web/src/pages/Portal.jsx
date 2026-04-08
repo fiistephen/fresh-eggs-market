@@ -106,17 +106,13 @@ function OpenBatchesView({ batches, loading, onBook, isLoggedIn }) {
               <div>
                 <h3 className="text-xl font-bold text-gray-900">{batch.name}</h3>
                 <p className="text-sm text-gray-500 mt-0.5">Expected: {fmtDate(batch.expectedDate)}</p>
+                <p className="text-sm font-medium text-gray-700 mt-1">{batch.eggTypeLabel || 'Regular Size Eggs'}</p>
               </div>
               <div className="text-right">
                 <div className="text-2xl font-bold text-green-700">{fmtMoney(batch.wholesalePrice)}</div>
                 <div className="text-xs text-gray-400">per crate</div>
               </div>
             </div>
-
-            <div className="flex items-center gap-4 mb-4 text-sm">
-              <span className="text-gray-500">FE source codes: <b className="font-mono">{batch.eggCodes.map((eggCode) => eggCode.code).join(', ')}</b></span>
-            </div>
-
             {/* Availability bar */}
             <div className="mb-3">
               <div className="flex justify-between text-xs mb-1">
@@ -204,6 +200,7 @@ function BookingModal({ batch, profile, onClose, onBooked }) {
           </div>
           <div className="bg-green-50 rounded-xl p-4 space-y-2 text-sm">
             <div className="flex justify-between"><span className="text-gray-600">Batch</span><span className="font-bold">{b.batch}</span></div>
+            <div className="flex justify-between"><span className="text-gray-600">Egg Type</span><span>{b.eggTypeLabel || 'Regular Size Eggs'}</span></div>
             <div className="flex justify-between"><span className="text-gray-600">Expected Date</span><span>{fmtDate(b.expectedDate)}</span></div>
             <div className="flex justify-between"><span className="text-gray-600">Quantity</span><span className="font-bold">{b.quantity} crates</span></div>
             <div className="flex justify-between"><span className="text-gray-600">Order Value</span><span>{fmtMoney(b.orderValue)}</span></div>
@@ -239,7 +236,7 @@ function BookingModal({ batch, profile, onClose, onBooked }) {
         <form onSubmit={handleBook} className="space-y-4">
           {batch.eggCodes?.length > 0 && (
             <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-              This batch may have different FE source codes, but they are being sold to you at one batch price.
+              You are booking {batch.eggTypeLabel || 'this egg type'} at one batch price. FE source codes only help the business track costs in the background.
             </div>
           )}
 

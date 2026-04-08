@@ -632,6 +632,7 @@ function BatchSummaryReport({ data }) {
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="text-base font-semibold text-gray-900">{batch.batchName}</h3>
+                      <p className="mt-1 text-sm font-medium text-gray-700">{batch.eggTypeLabel || 'Regular Size Eggs'}</p>
                       <StatusPill label={batch.status} tone={batch.status === 'CLOSED' ? 'slate' : 'green'} />
                       <CrackAlertPill alert={batch.crackAlert} />
                     </div>
@@ -739,6 +740,7 @@ function InventoryControlReport({ data }) {
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <p className="font-semibold text-gray-900">{batch.batchName}</p>
+                      <p className="mt-1 text-xs font-medium text-gray-600">{batch.eggTypeLabel || 'Regular Size Eggs'}</p>
                       <p className="text-sm text-gray-500 mt-1">
                         On hand: {batch.onHand.toLocaleString()} · Available: {batch.available.toLocaleString()}
                       </p>
@@ -788,7 +790,10 @@ function InventoryControlReport({ data }) {
             <tbody>
               {activeInventory.map((batch) => (
                 <tr key={batch.batchId} className="border-b border-gray-50">
-                  <td className="py-3 px-4 text-sm font-medium text-gray-900">{batch.batchName}</td>
+                  <td className="py-3 px-4 text-sm font-medium text-gray-900">
+                    <div>{batch.batchName}</div>
+                    <div className="mt-1 text-xs font-medium text-gray-500">{batch.eggTypeLabel || 'Regular Size Eggs'}</div>
+                  </td>
                   <td className="py-3 px-4 text-sm text-right">{batch.onHand.toLocaleString()}</td>
                   <td className="py-3 px-4 text-sm text-right">{batch.booked.toLocaleString()}</td>
                   <td className="py-3 px-4 text-sm text-right">{batch.available.toLocaleString()}</td>

@@ -53,6 +53,8 @@ export default function AdminConfig() {
   const [policySaving, setPolicySaving] = useState(false);
   const [transactionCategories, setTransactionCategories] = useState([]);
   const [transactionCategorySaving, setTransactionCategorySaving] = useState(false);
+  const [customerEggTypes, setCustomerEggTypes] = useState([]);
+  const [eggTypeSaving, setEggTypeSaving] = useState(false);
 
   const [accounts, setAccounts] = useState([]);
   const [newAccount, setNewAccount] = useState(DEFAULT_NEW_ACCOUNT);
@@ -75,6 +77,7 @@ export default function AdminConfig() {
         crackAllowancePercent: String(response.policy?.crackAllowancePercent ?? ''),
       });
       setTransactionCategories(response.transactionCategories || []);
+      setCustomerEggTypes(response.customerEggTypes || []);
       setAccounts(response.bankAccounts || []);
       setAccountDrafts(buildDrafts(response.bankAccounts || []));
     } catch {
@@ -106,6 +109,12 @@ export default function AdminConfig() {
   function updateTransactionCategory(category, field, value) {
     setTransactionCategories((current) => current.map((entry) => (
       entry.category === category ? { ...entry, [field]: value } : entry
+    )));
+  }
+
+  function updateCustomerEggType(key, field, value) {
+    setCustomerEggTypes((current) => current.map((entry) => (
+      entry.key === key ? { ...entry, [field]: value } : entry
     )));
   }
 
@@ -167,6 +176,22 @@ export default function AdminConfig() {
     }
   }
 
+  async function saveCustomerEggTypes() {
+    resetNotice();
+    setEggTypeSaving(true);
+    try {
+      const response = await api.patch('/admin/config/customer-egg-types', {
+        customerEggTypes,
+      });
+      setCustomerEggTypes(response.customerEggTypes || []);
+      setSuccess('Customer egg types updated.');
+    } catch (err) {
+      setError(err.error || 'Failed to update customer egg types');
+    } finally {
+      setEggTypeSaving(false);
+    }
+  }
+
   async function saveAccount(accountId) {
     resetNotice();
     setSavingAccountId(accountId);
@@ -223,6 +248,66 @@ export default function AdminConfig() {
       {success ? (
         <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{success}</div>
       ) : null}
+
+      <section className="bg-white rounded-xl border border-gray-200 p-5">
+        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Customer Egg Types</h2>
+            <p className="text-sm text-gray-500 mt-1">
+              These are the names customers and staff see. Turn off any type you are not selling right now. Large eggs starts off hidden by default.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={saveCustomerEggTypes}
+            disabled={eggTypeSaving}
+            className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
+          >
+            {eggTypeSaving ? 'Saving...' : 'Save egg types'}
+          </button>
+        </div>
+
+        <div className="space-y-4 mt-5">
+          {customerEggTypes.map((entry) => (
+            <div key={entry.key} className="rounded-xl border border-gray-200 p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-semibold text-gray-900">{entry.label || entry.key}</p>
+                {!entry.isActive ? (
+                  <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-500">
+                    Hidden from selection
+                  </span>
+                ) : null}
+              </div>
+              <p className="text-xs text-gray-400 mt-2">{entry.key}</p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+                <input
+                  type="text"
+                  value={entry.label || ''}
+                  onChange={(e) => updateCustomerEggType(entry.key, 'label', e.target.value)}
+                  placeholder="Display label"
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+                <input
+                  type="text"
+                  value={entry.shortLabel || ''}
+                  onChange={(e) => updateCustomerEggType(entry.key, 'shortLabel', e.target.value)}
+                  placeholder="Short label"
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+                <label className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(entry.isActive)}
+                    onChange={(e) => updateCustomerEggType(entry.key, 'isActive', e.target.checked)}
+                  />
+                  Show this egg type when staff create or edit a batch
+                </label>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <section className="bg-white rounded-xl border border-gray-200 p-5">
         <h2 className="text-lg font-semibold text-gray-900">Policy Settings</h2>

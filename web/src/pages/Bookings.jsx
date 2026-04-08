@@ -496,6 +496,9 @@ function CreateBookingModal({ onClose, onCreated }) {
                         <div>
                           <p className="font-semibold text-gray-900">{batch.name}</p>
                           <p className="mt-1 text-sm text-gray-500">Expected {formatDate(batch.expectedDate)}</p>
+                          <p className="mt-1 text-sm font-medium text-gray-700">
+                            {batch.eggTypeLabel || 'Regular Size Eggs'}
+                          </p>
                           <p className="mt-1 text-xs text-gray-400">
                             FE sources: {(batch.eggCodes || []).map((eggCode) => eggCode.code).join(', ') || '—'}
                           </p>
@@ -513,7 +516,7 @@ function CreateBookingModal({ onClose, onCreated }) {
               {selectedBatch && (
                 <>
                   <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
-                    Use one booking price for this batch. The FE codes in the batch may have different cost prices, but the customer is booking the same egg size at one selling price.
+                    The customer is booking {selectedBatch.eggTypeLabel || 'this egg type'} at one batch price. FE codes stay in the background for internal cost tracking.
                   </div>
 
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

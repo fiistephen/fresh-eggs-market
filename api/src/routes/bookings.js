@@ -1,6 +1,7 @@
 import prisma from '../plugins/prisma.js';
 import { authenticate } from '../plugins/auth.js';
 import { authorize } from '../middleware/authorize.js';
+import { getCustomerEggTypeConfig, getCustomerEggTypeLabel } from '../utils/appSettings.js';
 
 const ELIGIBLE_BOOKING_PAYMENT_CATEGORIES = [
   'CUSTOMER_DEPOSIT',
@@ -30,7 +31,7 @@ function mapBatchEggCode(eggCode, batch = null) {
   };
 }
 
-function enrichBooking(booking) {
+function enrichBooking(booking, eggTypes = []) {
   const amountPaid = Number(booking.amountPaid);
   const orderValue = Number(booking.orderValue);
   const minimumPayment = orderValue * 0.8;
@@ -57,6 +58,8 @@ function enrichBooking(booking) {
         ...(booking.batch.wholesalePrice !== undefined && { wholesalePrice: Number(booking.batch.wholesalePrice) }),
         ...(booking.batch.retailPrice !== undefined && { retailPrice: Number(booking.batch.retailPrice) }),
         ...(booking.batch.costPrice !== undefined && { costPrice: Number(booking.batch.costPrice) }),
+        eggTypeKey: booking.batch.eggTypeKey || 'REGULAR',
+        eggTypeLabel: getCustomerEggTypeLabel(eggTypes, booking.batch.eggTypeKey || 'REGULAR'),
         ...(booking.batch.eggCodes && {
           eggCodes: booking.batch.eggCodes.map((eggCode) => mapBatchEggCode(eggCode, booking.batch)),
         }),
@@ -75,6 +78,7 @@ function buildBookingInclude() {
         name: true,
         expectedDate: true,
         status: true,
+        eggTypeKey: true,
         wholesalePrice: true,
         retailPrice: true,
         costPrice: true,
@@ -313,8 +317,8 @@ export default async function bookingRoutes(fastify) {
         include: buildBookingInclude(),
         orderBy: { createdAt: 'desc' },
       });
-
-      return reply.send({ bookings: bookings.map(enrichBooking) });
+      const eggTypes = await getCustomerEggTypeConfig();
+      return reply.send({ bookings: bookings.map((booking) => enrichBooking(booking, eggTypes)) });
     },
   });
 
@@ -327,7 +331,8 @@ export default async function bookingRoutes(fastify) {
       });
 
       if (!booking) return reply.code(404).send({ error: 'Booking not found' });
-      return reply.send({ booking: enrichBooking(booking) });
+      const eggTypes = await getCustomerEggTypeConfig();
+      return reply.send({ booking: enrichBooking(booking, eggTypes) });
     },
   });
 
@@ -451,7 +456,8 @@ export default async function bookingRoutes(fastify) {
         });
       });
 
-      return reply.code(201).send({ booking: enrichBooking(booking) });
+      const eggTypes = await getCustomerEggTypeConfig();
+      return reply.code(201).send({ booking: enrichBooking(booking, eggTypes) });
     },
   });
 
@@ -546,7 +552,8 @@ export default async function bookingRoutes(fastify) {
         });
       });
 
-      return reply.send({ booking: enrichBooking(booking) });
+      const eggTypes = await getCustomerEggTypeConfig();
+      return reply.send({ booking: enrichBooking(booking, eggTypes) });
     },
   });
 
@@ -605,13 +612,15 @@ export default async function bookingRoutes(fastify) {
         include: buildBookingInclude(),
       });
 
-      return reply.send({ booking: enrichBooking(booking) });
+      const eggTypes = await getCustomerEggTypeConfig();
+      return reply.send({ booking: enrichBooking(booking, eggTypes) });
     },
   });
 
   fastify.get('/bookings/open-batches', {
     preHandler: [authenticate],
     handler: async (request, reply) => {
+      const eggTypes = await getCustomerEggTypeConfig();
       const openBatches = await prisma.batch.findMany({
         where: { status: 'OPEN' },
         include: {
@@ -637,6 +646,8 @@ export default async function bookingRoutes(fastify) {
         return {
           id: batch.id,
           name: batch.name,
+          eggTypeKey: batch.eggTypeKey || 'REGULAR',
+          eggTypeLabel: getCustomerEggTypeLabel(eggTypes, batch.eggTypeKey || 'REGULAR'),
           expectedDate: batch.expectedDate,
           wholesalePrice: Number(batch.wholesalePrice),
           retailPrice: Number(batch.retailPrice),

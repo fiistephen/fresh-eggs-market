@@ -6,7 +6,11 @@ import {
   roundTo2,
   safeDivide,
 } from '../utils/operationsPolicy.js';
-import { getOperationsPolicy } from '../utils/appSettings.js';
+import {
+  getCustomerEggTypeConfig,
+  getCustomerEggTypeLabel,
+  getOperationsPolicy,
+} from '../utils/appSettings.js';
 
 function startOfDay(value) {
   const date = new Date(value);
@@ -52,6 +56,7 @@ export default async function reportsRoutes(fastify) {
     handler: async (request, reply) => {
       const { dateFrom, dateTo } = request.query;
       const where = buildDateRangeWhere({ dateFrom, dateTo });
+      const eggTypes = await getCustomerEggTypeConfig();
 
       const sales = await prisma.sale.findMany({
         where,
@@ -66,6 +71,12 @@ export default async function reportsRoutes(fastify) {
                 select: {
                   id: true,
                   code: true,
+                  batch: {
+                    select: {
+                      id: true,
+                      eggTypeKey: true,
+                    },
+                  },
                   item: {
                     select: {
                       id: true,
@@ -173,15 +184,20 @@ export default async function reportsRoutes(fastify) {
           const lineCost = quantity * Number(lineItem.costPrice);
           const lineProfit = lineTotal - lineCost;
           const item = lineItem.batchEggCode?.item;
+          const eggTypeKey = lineItem.batchEggCode?.batch?.eggTypeKey || 'REGULAR';
+          const eggTypeLabel = getCustomerEggTypeLabel(eggTypes, eggTypeKey);
           const category = item?.category || 'UNCATEGORIZED';
-          const itemLabel = item?.code && item?.name && item.name !== item.code
-            ? `${item.name} (${item.code})`
-            : item?.name || item?.code || lineItem.batchEggCode?.code || 'Unknown item';
+          const isEggItem = category === 'FE_EGGS' || Boolean(lineItem.batchEggCode?.batch);
+          const itemLabel = isEggItem
+            ? eggTypeLabel
+            : item?.code && item?.name && item.name !== item.code
+              ? `${item.name} (${item.code})`
+              : item?.name || item?.code || lineItem.batchEggCode?.code || 'Unknown item';
 
-          const itemKey = `${item?.id || lineItem.batchEggCode?.code || 'unknown'}:${lineItem.saleType}`;
+          const itemKey = `${isEggItem ? `egg-type:${eggTypeKey}` : item?.id || lineItem.batchEggCode?.code || 'unknown'}:${lineItem.saleType}`;
           const itemEntry = byItemMap.get(itemKey) || {
-            itemCode: item?.code || lineItem.batchEggCode?.code || 'Unknown item',
-            itemName: item?.name || lineItem.batchEggCode?.code || 'Unknown item',
+            itemCode: isEggItem ? eggTypeKey : item?.code || lineItem.batchEggCode?.code || 'Unknown item',
+            itemName: isEggItem ? eggTypeLabel : item?.name || lineItem.batchEggCode?.code || 'Unknown item',
             itemLabel,
             saleType: lineItem.saleType,
             category,
@@ -290,7 +306,10 @@ export default async function reportsRoutes(fastify) {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER')],
     handler: async (request, reply) => {
       const { dateFrom, dateTo } = request.query;
-      const policy = await getOperationsPolicy();
+      const [policy, eggTypes] = await Promise.all([
+        getOperationsPolicy(),
+        getCustomerEggTypeConfig(),
+      ]);
 
       const batches = await prisma.batch.findMany({
         where: {
@@ -386,6 +405,8 @@ export default async function reportsRoutes(fastify) {
         return {
           batchId: batch.id,
           batchName: batch.name,
+          eggTypeKey: batch.eggTypeKey || 'REGULAR',
+          eggTypeLabel: getCustomerEggTypeLabel(eggTypes, batch.eggTypeKey || 'REGULAR'),
           status: batch.status,
           batchDate,
           monthKey: monthBucketKey(batchDate),

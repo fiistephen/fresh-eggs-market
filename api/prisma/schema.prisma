@@ -96,6 +96,7 @@ model Batch {
   availableForBooking   Int         @map("available_for_booking")  // How many can be booked
   actualQuantity        Int?        @map("actual_quantity")        // Actual received (paid + free)
   freeCrates            Int         @default(3) @map("free_crates") // Free crates from farm (usually 3)
+  eggTypeKey            String      @default("REGULAR") @map("egg_type_key")
 
   wholesalePrice        Decimal     @map("wholesale_price") @db.Decimal(12, 2)
   retailPrice           Decimal     @map("retail_price")   @db.Decimal(12, 2)

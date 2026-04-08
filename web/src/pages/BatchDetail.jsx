@@ -156,6 +156,9 @@ export default function BatchDetail() {
             {batch.receivedDate && <> · Received {formatDate(batch.receivedDate)}</>}
             {batch.closedDate && <> · Closed {formatDate(batch.closedDate)}</>}
           </p>
+          <p className="mt-2 text-sm font-medium text-gray-700">
+            Customer-facing type: {batch.eggTypeLabel || 'Regular Size Eggs'}
+          </p>
         </div>
 
         {/* Action buttons */}
@@ -394,6 +397,10 @@ function DetailsTab({ batch, analysis }) {
             <div>
               <p className="text-xs text-gray-400">FE codes in batch</p>
               <p className="mt-1 text-lg font-semibold text-gray-900">{feMix.length}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400">Customer-facing type</p>
+              <p className="mt-1 text-lg font-semibold text-gray-900">{batch.eggTypeLabel || 'Regular Size Eggs'}</p>
             </div>
           </div>
         </div>
@@ -1422,11 +1429,41 @@ function EditBatchModal({ batch, onClose, onUpdated }) {
     expectedDate: batch.expectedDate ? new Date(batch.expectedDate).toISOString().split('T')[0] : '',
     expectedQuantity: batch.expectedQuantity,
     availableForBooking: batch.availableForBooking,
+    eggTypeKey: batch.eggTypeKey || 'REGULAR',
     wholesalePrice: batch.wholesalePrice,
     retailPrice: batch.retailPrice,
   });
+  const [eggTypes, setEggTypes] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadEggTypes() {
+      try {
+        const response = await api.get('/batches/meta');
+        if (!cancelled) {
+          const options = response.activeCustomerEggTypes || [];
+          const hasCurrent = options.some((entry) => entry.key === batch.eggTypeKey);
+          setEggTypes(hasCurrent || !batch.eggTypeLabel ? options : [
+            ...options,
+            {
+              key: batch.eggTypeKey,
+              label: batch.eggTypeLabel || batch.eggTypeKey,
+              shortLabel: batch.eggTypeShortLabel || batch.eggTypeKey,
+              isActive: false,
+            },
+          ]);
+        }
+      } catch {
+        if (!cancelled) setEggTypes([]);
+      }
+    }
+
+    loadEggTypes();
+    return () => { cancelled = true; };
+  }, [batch.eggTypeKey, batch.eggTypeLabel, batch.eggTypeShortLabel]);
 
   function update(field, value) {
     setForm(f => ({ ...f, [field]: value }));
@@ -1441,6 +1478,7 @@ function EditBatchModal({ batch, onClose, onUpdated }) {
         expectedDate: form.expectedDate,
         expectedQuantity: Number(form.expectedQuantity),
         availableForBooking: Number(form.availableForBooking),
+        eggTypeKey: form.eggTypeKey,
         wholesalePrice: Number(form.wholesalePrice),
         retailPrice: Number(form.retailPrice),
       });
@@ -1496,6 +1534,20 @@ function EditBatchModal({ batch, onClose, onUpdated }) {
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
               />
             </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Customer-facing egg type</label>
+            <select
+              required
+              value={form.eggTypeKey}
+              onChange={e => update('eggTypeKey', e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+            >
+              {(eggTypes.length > 0 ? eggTypes : [{ key: 'REGULAR', label: 'Regular Size Eggs' }]).map((eggType) => (
+                <option key={eggType.key} value={eggType.key}>{eggType.label}</option>
+              ))}
+            </select>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

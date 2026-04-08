@@ -219,6 +219,48 @@ Future improvements Codex should consider when appropriate:
 
 - add a production release checklist
 - add a pre-deploy diff summary command
+
+---
+
+## 32. 2026-04-08 Customer-Facing Egg Types Layer
+
+New product clarification from the business:
+
+- FE source codes are mainly internal sourcing/cost records.
+- Customers should see customer-facing egg types such as `Regular Size Eggs`, `Small Size Eggs`, and `Large Eggs`.
+- Different FE codes can share the same customer-facing price if they are the same egg size.
+
+Implementation decisions:
+
+- Added admin-controlled customer-facing egg types in app settings.
+- Default egg types are:
+  - `Regular Size Eggs` (on)
+  - `Small Size Eggs` (on)
+  - `Large Eggs` (off by default)
+- Admin can rename labels and turn egg types on or off.
+- At least one egg type must stay active.
+
+Batch model updates:
+
+- Batches now store one customer-facing egg type key at the batch level.
+- Create Batch only shows active egg types for selection.
+- New batches default to `Regular`.
+- FE rows remain internal batch source rows with separate cost prices.
+- Batch-wide wholesale and retail selling prices remain shared across the whole batch.
+
+UX updates:
+
+- Internal pages now show the customer-facing egg type more clearly in Batches, Batch Detail, Bookings, and Sales.
+- The portal now speaks in customer-facing egg type language and no longer shows FE source codes to customers.
+- Reports started shifting from FE source display toward customer-facing egg type labels where relevant, especially Sales by Item and Batch Summary.
+
+Validation completed locally:
+
+- Prisma schema validates.
+- Prisma client generates.
+- Updated backend routes import cleanly.
+- Frontend build passes.
+- add a pre-deploy diff summary command
 - add a backup/rollback helper for API and frontend deploys
 - reconcile the repo compose model with the real VPS topology in a controlled way
 - bring `codex.md` and `claude.md` into a consistent maintenance rhythm

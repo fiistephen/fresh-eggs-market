@@ -2,8 +2,10 @@ import prisma from '../plugins/prisma.js';
 import { authenticate } from '../plugins/auth.js';
 import { authorize } from '../middleware/authorize.js';
 import {
+  getCustomerEggTypeConfig,
   getOperationsPolicy,
   getTransactionCategoryConfig,
+  saveCustomerEggTypeConfig,
   saveOperationsPolicy,
   saveTransactionCategoryConfig,
 } from '../utils/appSettings.js';
@@ -35,16 +37,18 @@ export default async function adminRoutes(fastify) {
   fastify.get('/admin/config', {
     preHandler: [authenticate, authorize('ADMIN')],
     handler: async () => {
-      const [policy, bankAccounts, transactionCategories] = await Promise.all([
+      const [policy, bankAccounts, transactionCategories, customerEggTypes] = await Promise.all([
         getOperationsPolicy(),
         loadBankAccounts(),
         getTransactionCategoryConfig(),
+        getCustomerEggTypeConfig(),
       ]);
 
       return {
         policy,
         bankAccounts,
         transactionCategories,
+        customerEggTypes,
       };
     },
   });
@@ -81,6 +85,22 @@ export default async function adminRoutes(fastify) {
 
       const transactionCategories = await saveTransactionCategoryConfig(categories, request.user.sub);
       return { transactionCategories };
+    },
+  });
+
+  fastify.patch('/admin/config/customer-egg-types', {
+    preHandler: [authenticate, authorize('ADMIN')],
+    handler: async (request, reply) => {
+      const customerEggTypes = Array.isArray(request.body?.customerEggTypes) ? request.body.customerEggTypes : null;
+      if (!customerEggTypes) {
+        return reply.code(400).send({ error: 'customerEggTypes must be an array.' });
+      }
+      if (!customerEggTypes.some((entry) => entry?.isActive)) {
+        return reply.code(400).send({ error: 'Keep at least one customer-facing egg type turned on.' });
+      }
+
+      const saved = await saveCustomerEggTypeConfig(customerEggTypes, request.user.sub);
+      return { customerEggTypes: saved };
     },
   });
 

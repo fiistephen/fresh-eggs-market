@@ -138,6 +138,9 @@ function BatchCard({ batch, onOpen }) {
             {batch.receivedDate && <> · Received {formatDate(batch.receivedDate)}</>}
             {batch.closedDate && <> · Closed {formatDate(batch.closedDate)}</>}
           </p>
+          <p className="mt-2 text-sm font-medium text-gray-700">
+            Customer-facing type: {batch.eggTypeLabel || 'Regular Size Eggs'}
+          </p>
           {batch.eggCodes?.length > 0 ? (
             <p className="mt-2 text-sm text-gray-600">
               FE mix: <span className="font-medium">{batch.eggCodes.map((eggCode) => eggCode.code).join(', ')}</span>
@@ -376,11 +379,13 @@ function CreateBatchModal({ onClose, onCreated }) {
     expectedDate: '',
     expectedQuantity: 1800,
     availableForBooking: 1800,
+    eggTypeKey: 'REGULAR',
     wholesalePrice: '',
     retailPrice: '',
   });
   const [items, setItems] = useState([EMPTY_BATCH_ITEM]);
   const [feItems, setFeItems] = useState([]);
+  const [eggTypes, setEggTypes] = useState([]);
   const [loadingItems, setLoadingItems] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -388,19 +393,34 @@ function CreateBatchModal({ onClose, onCreated }) {
   useEffect(() => {
     let cancelled = false;
 
-    async function loadFeItems() {
+    async function loadCreateBatchMeta() {
       setLoadingItems(true);
       try {
-        const response = await api.get('/items?category=FE_EGGS');
-        if (!cancelled) setFeItems(response.items || []);
+        const [itemsResponse, metaResponse] = await Promise.all([
+          api.get('/items?category=FE_EGGS'),
+          api.get('/batches/meta'),
+        ]);
+        if (cancelled) return;
+        setFeItems(itemsResponse.items || []);
+        const activeEggTypes = metaResponse.activeCustomerEggTypes || [];
+        setEggTypes(activeEggTypes);
+        setForm((current) => ({
+          ...current,
+          eggTypeKey: activeEggTypes.find((entry) => entry.key === 'REGULAR')?.key
+            || activeEggTypes[0]?.key
+            || 'REGULAR',
+        }));
       } catch {
-        if (!cancelled) setFeItems([]);
+        if (!cancelled) {
+          setFeItems([]);
+          setEggTypes([]);
+        }
       } finally {
         if (!cancelled) setLoadingItems(false);
       }
     }
 
-    loadFeItems();
+    loadCreateBatchMeta();
     return () => { cancelled = true; };
   }, []);
 
@@ -488,6 +508,7 @@ function CreateBatchModal({ onClose, onCreated }) {
         ...form,
         expectedQuantity: Number(form.expectedQuantity),
         availableForBooking: Number(form.availableForBooking),
+        eggTypeKey: form.eggTypeKey,
         wholesalePrice: Number(form.wholesalePrice),
         retailPrice: Number(form.retailPrice),
         plannedItems: preparedItems,
@@ -545,6 +566,27 @@ function CreateBatchModal({ onClose, onCreated }) {
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
               />
             </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Customer-facing egg type</label>
+            <select
+              required
+              value={form.eggTypeKey}
+              onChange={e => update('eggTypeKey', e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+            >
+              {eggTypes.length === 0 ? (
+                <option value="REGULAR">Regular Size Eggs</option>
+              ) : (
+                eggTypes.map((eggType) => (
+                  <option key={eggType.key} value={eggType.key}>{eggType.label}</option>
+                ))
+              )}
+            </select>
+            <p className="mt-1 text-xs text-gray-500">
+              Only egg types turned on in Admin show here. New batches start on Regular by default.
+            </p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

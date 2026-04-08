@@ -634,6 +634,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
                             <div className="flex items-start justify-between gap-3">
                               <div>
                                 <p className="font-semibold text-gray-900">{booking.batch?.name || 'Batch'}</p>
+                                <p className="text-sm font-medium text-gray-700 mt-1">{booking.batch?.eggTypeLabel || 'Regular Size Eggs'}</p>
                                 <p className="text-sm text-gray-500 mt-1">
                                   {booking.quantity} crates{booking.batchEggCode?.code ? ` of ${booking.batchEggCode.code}` : ''} booked on {formatDate(booking.createdAt)}
                                 </p>
@@ -722,6 +723,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
                             <div className="flex items-center justify-between gap-3">
                               <div>
                                 <p className="font-semibold text-gray-900">{batch.name}</p>
+                                <p className="text-sm font-medium text-gray-700 mt-1">{batch.eggTypeLabel || 'Regular Size Eggs'}</p>
                                 <p className="text-sm text-gray-500 mt-1">
                                   Wholesale {formatCurrency(batch.wholesalePrice)} · Retail {formatCurrency(batch.retailPrice)}
                                 </p>
