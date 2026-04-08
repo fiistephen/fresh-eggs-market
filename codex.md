@@ -1263,6 +1263,13 @@ Minimum update format:
   - wrong statement files can be selected and removed from the active import queue by marking the import `CANCELLED`
   - imports with posted lines cannot be removed from the queue
   - imported lines now default to `PENDING_REVIEW` instead of `READY_TO_POST`
+  - import review workspace now supports:
+    - search by narration, reference, amount, or line number
+    - status filtering
+    - selecting visible editable lines in bulk
+    - bulk category assignment
+    - bulk status changes for pending, ready, skipped, or duplicate
+  - posted lines stay protected from bulk editing
 - Customer booking queue:
   - `CUSTOMER_BOOKING` inflows now land in a dedicated Banking > Customer bookings queue
   - from there staff can:

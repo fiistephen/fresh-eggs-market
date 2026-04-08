@@ -868,10 +868,57 @@ function ImportsView({
   onImportQueueUpdated,
 }) {
   const [selectedImportIds, setSelectedImportIds] = useState([]);
+  const [selectedLineIds, setSelectedLineIds] = useState([]);
+  const [statusFilter, setStatusFilter] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [bulkCategory, setBulkCategory] = useState('');
+  const [bulkStatus, setBulkStatus] = useState('');
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [bulkError, setBulkError] = useState('');
 
   useEffect(() => {
     setSelectedImportIds((current) => current.filter((id) => imports.some((importRecord) => importRecord.id === id)));
   }, [imports]);
+
+  useEffect(() => {
+    setSelectedLineIds([]);
+    setStatusFilter('');
+    setSearchTerm('');
+    setBulkCategory('');
+    setBulkStatus('');
+    setBulkError('');
+  }, [selectedImportId]);
+
+  const filteredImportLines = selectedImportLines.filter((line) => {
+    if (statusFilter && line.reviewStatus !== statusFilter) return false;
+    if (!searchTerm.trim()) return true;
+
+    const amount = line.direction === 'OUTFLOW' ? line.debitAmount : line.creditAmount;
+    const search = searchTerm.trim().toLowerCase();
+    const haystack = [
+      line.lineNumber,
+      line.description,
+      line.docNum,
+      line.notes,
+      line.direction,
+      line.selectedCategory,
+      line.suggestedCategory,
+      amount,
+    ]
+      .filter((value) => value !== null && value !== undefined)
+      .join(' ')
+      .toLowerCase();
+
+    return haystack.includes(search);
+  });
+
+  const editableVisibleLines = filteredImportLines.filter((line) => line.reviewStatus !== 'POSTED');
+  const categoryOptions = [...new Set(editableVisibleLines.flatMap((line) => categoryOptionsForDirection(line.direction, categoryMap, line.selectedCategory || line.suggestedCategory || '')))];
+
+  useEffect(() => {
+    const visibleEditableIds = new Set(editableVisibleLines.map((line) => line.id));
+    setSelectedLineIds((current) => current.filter((id) => visibleEditableIds.has(id)));
+  }, [statusFilter, searchTerm, selectedImportLines]);
 
   async function removeSelectedImports() {
     if (selectedImportIds.length === 0) return;
@@ -888,6 +935,38 @@ function ImportsView({
     setSelectedImportIds((current) => (
       checked ? [...new Set([...current, importId])] : current.filter((id) => id !== importId)
     ));
+  }
+
+  function toggleLine(lineId, checked) {
+    setSelectedLineIds((current) => (
+      checked ? [...new Set([...current, lineId])] : current.filter((id) => id !== lineId)
+    ));
+  }
+
+  async function applyBulkUpdate() {
+    if (!selectedImportId || selectedLineIds.length === 0) return;
+    if (!bulkCategory && !bulkStatus) {
+      setBulkError('Choose a category or a status before applying a bulk update.');
+      return;
+    }
+
+    setBulkSaving(true);
+    setBulkError('');
+    try {
+      await api.post(`/banking/imports/${selectedImportId}/lines/bulk-update`, {
+        lineIds: selectedLineIds,
+        ...(bulkCategory ? { selectedCategory: bulkCategory } : {}),
+        ...(bulkStatus ? { reviewStatus: bulkStatus } : {}),
+      });
+      setSelectedLineIds([]);
+      setBulkCategory('');
+      setBulkStatus('');
+      onLineUpdated();
+    } catch (err) {
+      setBulkError(err.error || 'Failed to apply the bulk update');
+    } finally {
+      setBulkSaving(false);
+    }
   }
 
   return (
@@ -1009,21 +1088,92 @@ function ImportsView({
               <ImportCountCard label="Skipped" value={importCount(selectedImport, 'SKIPPED') || importCount(selectedImport, 'skipped')} tone="gray" />
             </div>
 
-            <div className="border-b border-gray-100 px-6 py-4">
+            <div className="space-y-4 border-b border-gray-100 px-6 py-4">
               <p className="text-sm text-gray-600">
-                Every line in the statement stays documented here. Review and categorize the lines one by one, then mark the correct ones as ready to post.
+                Every line in the statement stays documented here. Review, search, filter, and update the lines in bulk, then post the ready ones.
               </p>
+
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_220px_220px]">
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                  placeholder="Search by narration, reference, amount, or line number"
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+                />
+                <select
+                  value={statusFilter}
+                  onChange={(event) => setStatusFilter(event.target.value)}
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+                >
+                  <option value="">All statuses</option>
+                  <option value="PENDING_REVIEW">Pending</option>
+                  <option value="READY_TO_POST">Ready</option>
+                  <option value="DUPLICATE">Duplicate</option>
+                  <option value="SKIPPED">Skipped</option>
+                  <option value="POSTED">Posted</option>
+                </select>
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600">
+                  Showing {filteredImportLines.length} of {selectedImportLines.length} lines
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                <div className="grid grid-cols-1 gap-3 xl:grid-cols-[220px_220px_auto]">
+                  <select
+                    value={bulkCategory}
+                    onChange={(event) => setBulkCategory(event.target.value)}
+                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+                  >
+                    <option value="">Bulk category</option>
+                    {categoryOptions.map((category) => (
+                      <option key={category} value={category}>{categoryLabel(category, categoryMap)}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={bulkStatus}
+                    onChange={(event) => setBulkStatus(event.target.value)}
+                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+                  >
+                    <option value="">Bulk status</option>
+                    <option value="PENDING_REVIEW">Move to pending</option>
+                    <option value="READY_TO_POST">Mark ready</option>
+                    <option value="SKIPPED">Mark skipped</option>
+                    <option value="DUPLICATE">Mark duplicate</option>
+                  </select>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <label className="flex items-center gap-2 text-sm text-gray-600">
+                      <input
+                        type="checkbox"
+                        checked={editableVisibleLines.length > 0 && selectedLineIds.length === editableVisibleLines.length}
+                        onChange={(event) => setSelectedLineIds(event.target.checked ? editableVisibleLines.map((line) => line.id) : [])}
+                      />
+                      Select visible editable lines
+                    </label>
+                    <button
+                      type="button"
+                      onClick={applyBulkUpdate}
+                      disabled={selectedLineIds.length === 0 || bulkSaving}
+                      className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                    >
+                      {bulkSaving ? 'Applying…' : `Apply to ${selectedLineIds.length || 0} line${selectedLineIds.length === 1 ? '' : 's'}`}
+                    </button>
+                  </div>
+                </div>
+                {bulkError && <p className="mt-3 text-sm text-red-600">{bulkError}</p>}
+              </div>
             </div>
 
-            {selectedImportLines.length === 0 ? (
+            {filteredImportLines.length === 0 ? (
               <div className="px-6 py-24">
-                <EmptyState title="No lines found" body="This import does not have any parsed statement lines." />
+                <EmptyState title="No matching lines" body="Try clearing the search or changing the status filter." />
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1040px]">
+                <table className="w-full min-w-[1080px]">
                   <thead>
                     <tr className="border-b border-gray-100">
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Select</th>
                       <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Line</th>
                       <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Date</th>
                       <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Description</th>
@@ -1036,11 +1186,13 @@ function ImportsView({
                     </tr>
                   </thead>
                   <tbody>
-                    {selectedImportLines.map((line) => (
+                    {filteredImportLines.map((line) => (
                       <ImportLineRow
                         key={line.id}
                         line={line}
                         categoryMap={categoryMap}
+                        selected={selectedLineIds.includes(line.id)}
+                        onToggleSelected={toggleLine}
                         onSaved={onLineUpdated}
                       />
                     ))}
@@ -2052,7 +2204,7 @@ function ReconciliationModal({ accounts, imports, onClose, onSaved }) {
   );
 }
 
-function ImportLineRow({ line, categoryMap, onSaved }) {
+function ImportLineRow({ line, categoryMap, selected, onToggleSelected, onSaved }) {
   const [draft, setDraft] = useState({
     selectedCategory: line.selectedCategory || line.suggestedCategory || '',
     reviewStatus: line.reviewStatus,
@@ -2074,6 +2226,14 @@ function ImportLineRow({ line, categoryMap, onSaved }) {
 
   return (
     <tr className="border-b border-gray-50 align-top">
+      <td className="px-4 py-3">
+        <input
+          type="checkbox"
+          checked={selected}
+          disabled={line.reviewStatus === 'POSTED'}
+          onChange={(event) => onToggleSelected(line.id, event.target.checked)}
+        />
+      </td>
       <td className="px-4 py-3 text-sm text-gray-500">{line.lineNumber}</td>
       <td className="px-4 py-3 text-sm text-gray-600">{fmtDate(line.transactionDate || line.actualTransactionDate || line.valueDate)}</td>
       <td className="px-4 py-3 text-sm text-gray-700">

@@ -804,6 +804,76 @@ export default async function bankingRoutes(fastify) {
     },
   });
 
+  fastify.post('/banking/imports/:id/lines/bulk-update', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
+    handler: async (request, reply) => {
+      const lineIds = Array.isArray(request.body?.lineIds) ? [...new Set(request.body.lineIds.filter(Boolean))] : [];
+      const { selectedCategory, reviewStatus, notes } = request.body || {};
+
+      if (lineIds.length === 0) {
+        return reply.code(400).send({ error: 'Select at least one line.' });
+      }
+      if (selectedCategory === undefined && reviewStatus === undefined && notes === undefined) {
+        return reply.code(400).send({ error: 'Choose at least one bulk change to apply.' });
+      }
+
+      const lines = await prisma.bankStatementLine.findMany({
+        where: { importId: request.params.id, id: { in: lineIds } },
+        select: {
+          id: true,
+          direction: true,
+          reviewStatus: true,
+        },
+      });
+
+      if (lines.length === 0) {
+        return reply.code(404).send({ error: 'No matching import lines were found.' });
+      }
+      if (lines.some((line) => line.reviewStatus === 'POSTED')) {
+        return reply.code(400).send({ error: 'Posted lines cannot be changed in bulk.' });
+      }
+
+      const updates = {};
+      const categoryConfig = await getTransactionCategoryConfig();
+
+      if (selectedCategory !== undefined) {
+        const categoryEntry = categoryConfig.find((entry) => entry.category === selectedCategory);
+        if (!categoryEntry) {
+          return reply.code(400).send({ error: 'Invalid category.' });
+        }
+        const invalidDirectionLine = lines.find((line) => line.direction && line.direction !== categoryEntry.direction);
+        if (invalidDirectionLine) {
+          return reply.code(400).send({ error: 'Selected category does not match the direction of every chosen line.' });
+        }
+        updates.selectedCategory = selectedCategory;
+      }
+
+      if (reviewStatus !== undefined) {
+        const validStatuses = ['PENDING_REVIEW', 'READY_TO_POST', 'SKIPPED', 'DUPLICATE'];
+        if (!validStatuses.includes(reviewStatus)) {
+          return reply.code(400).send({ error: `reviewStatus must be one of ${validStatuses.join(', ')}` });
+        }
+        updates.reviewStatus = reviewStatus;
+      } else if (updates.selectedCategory) {
+        updates.reviewStatus = 'READY_TO_POST';
+      }
+
+      if (notes !== undefined) {
+        updates.notes = notes || null;
+      }
+
+      await prisma.bankStatementLine.updateMany({
+        where: { importId: request.params.id, id: { in: lines.map((line) => line.id) } },
+        data: updates,
+      });
+
+      return reply.send({
+        updatedCount: lines.length,
+        lineIds: lines.map((line) => line.id),
+      });
+    },
+  });
+
   fastify.delete('/banking/imports/:id/lines/:lineId', {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
     handler: async (request, reply) => {
