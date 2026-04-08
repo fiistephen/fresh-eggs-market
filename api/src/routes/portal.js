@@ -30,6 +30,83 @@ function mapBatchEggCode(eggCode, batch = null) {
   };
 }
 
+function mapPortalBatch(batch, eggTypes, extra = {}) {
+  return {
+    id: batch.id,
+    name: batch.name,
+    eggTypeKey: batch.eggTypeKey || 'REGULAR',
+    eggTypeLabel: getCustomerEggTypeLabel(eggTypes, batch.eggTypeKey || 'REGULAR'),
+    expectedDate: batch.expectedDate,
+    receivedDate: batch.receivedDate,
+    wholesalePrice: Number(batch.wholesalePrice),
+    retailPrice: Number(batch.retailPrice),
+    expectedQuantity: batch.expectedQuantity,
+    availableForBooking: batch.availableForBooking,
+    eggCodes: (batch.eggCodes || []).map((ec) => mapBatchEggCode(ec, batch)),
+    ...extra,
+  };
+}
+
+async function getCustomerFromUser(userId) {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) return { user: null, customer: null };
+
+  const customer = await prisma.customer.findFirst({ where: { email: user.email } });
+  return { user, customer };
+}
+
+async function buildReceivedBatchAvailability(batchId) {
+  const [batch, bookedAgg, writeOffAgg, sales] = await Promise.all([
+    prisma.batch.findUnique({
+      where: { id: batchId },
+      include: {
+        eggCodes: { select: { id: true, code: true, quantity: true, freeQty: true, costPrice: true, wholesalePrice: true, retailPrice: true } },
+      },
+    }),
+    prisma.booking.aggregate({
+      where: { batchId, status: 'CONFIRMED' },
+      _sum: { quantity: true },
+    }),
+    prisma.inventoryCount.aggregate({
+      where: { batchId },
+      _sum: { crackedWriteOff: true },
+    }),
+    prisma.sale.findMany({
+      where: {
+        lineItems: {
+          some: {
+            batchEggCode: { batchId },
+          },
+        },
+      },
+      select: {
+        lineItems: {
+          where: { batchEggCode: { batchId } },
+          select: { quantity: true },
+        },
+      },
+    }),
+  ]);
+
+  if (!batch) return null;
+
+  const totalReceived = batch.actualQuantity ?? batch.eggCodes.reduce((sum, eggCode) => sum + eggCode.quantity + (eggCode.freeQty || 0), 0);
+  const totalBooked = bookedAgg._sum.quantity || 0;
+  const totalWrittenOff = writeOffAgg._sum.crackedWriteOff || 0;
+  const totalSold = sales.reduce((sum, sale) => sum + sale.lineItems.reduce((lineSum, line) => lineSum + line.quantity, 0), 0);
+  const onHand = Math.max(0, totalReceived - totalSold - totalWrittenOff);
+  const availableForSale = Math.max(0, onHand - totalBooked);
+
+  return {
+    batch,
+    totalBooked,
+    totalSold,
+    totalWrittenOff,
+    onHand,
+    availableForSale,
+  };
+}
+
 export default async function portalRoutes(fastify) {
   // ────────────────────────────────────────────────────────────
   // PUBLIC: GET /portal/batches — open batches for customer viewing
@@ -72,6 +149,35 @@ export default async function portalRoutes(fastify) {
           eggCodes: batch.eggCodes.map((ec) => mapBatchEggCode(ec, batch)),
           bookingsCount: batch._count.bookings,
         });
+      }
+
+      return reply.send({ batches: result });
+    },
+  });
+
+  fastify.get('/portal/available-now', {
+    handler: async (request, reply) => {
+      const eggTypes = await getCustomerEggTypeConfig();
+      const receivedBatches = await prisma.batch.findMany({
+        where: { status: 'RECEIVED' },
+        include: {
+          eggCodes: { select: { id: true, code: true, quantity: true, freeQty: true, costPrice: true, wholesalePrice: true, retailPrice: true } },
+        },
+        orderBy: [{ receivedDate: 'desc' }, { expectedDate: 'asc' }],
+      });
+
+      const result = [];
+      for (const batch of receivedBatches) {
+        const availability = await buildReceivedBatchAvailability(batch.id);
+        if (!availability || availability.availableForSale <= 0) continue;
+
+        result.push(mapPortalBatch(batch, eggTypes, {
+          totalBooked: availability.totalBooked,
+          totalSold: availability.totalSold,
+          totalWrittenOff: availability.totalWrittenOff,
+          onHand: availability.onHand,
+          availableForSale: availability.availableForSale,
+        }));
       }
 
       return reply.send({ batches: result });
@@ -213,6 +319,42 @@ export default async function portalRoutes(fastify) {
     },
   });
 
+  fastify.get('/portal/my-buy-now-requests', {
+    preHandler: [authenticate, authorize('CUSTOMER')],
+    handler: async (request, reply) => {
+      const { customer } = await getCustomerFromUser(request.user.sub);
+      if (!customer) return reply.send({ requests: [], customerId: null });
+
+      const eggTypes = await getCustomerEggTypeConfig();
+      const requests = await prisma.portalOrderRequest.findMany({
+        where: { customerId: customer.id },
+        include: {
+          batch: { select: { id: true, name: true, expectedDate: true, receivedDate: true, eggTypeKey: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      return reply.send({
+        customerId: customer.id,
+        requests: requests.map((entry) => ({
+          id: entry.id,
+          batchId: entry.batchId,
+          batch: entry.batch.name,
+          eggTypeLabel: getCustomerEggTypeLabel(eggTypes, entry.batch.eggTypeKey || 'REGULAR'),
+          expectedDate: entry.batch.expectedDate,
+          receivedDate: entry.batch.receivedDate,
+          quantity: entry.quantity,
+          priceType: entry.priceType,
+          unitPrice: Number(entry.unitPrice),
+          estimatedTotal: Number(entry.estimatedTotal),
+          status: entry.status,
+          notes: entry.notes,
+          createdAt: entry.createdAt,
+        })),
+      });
+    },
+  });
+
   // ────────────────────────────────────────────────────────────
   // AUTH: POST /portal/book — customer places a booking
   // ────────────────────────────────────────────────────────────
@@ -323,6 +465,95 @@ export default async function portalRoutes(fastify) {
     },
   });
 
+  fastify.post('/portal/buy-now-request', {
+    preHandler: [authenticate, authorize('CUSTOMER')],
+    handler: async (request, reply) => {
+      const { batchId, quantity, priceType = 'RETAIL', notes } = request.body;
+      if (!batchId) return reply.code(400).send({ error: 'batchId is required' });
+      if (!quantity || !Number.isInteger(quantity) || quantity < 1) {
+        return reply.code(400).send({ error: 'quantity must be a positive integer' });
+      }
+      if (!['WHOLESALE', 'RETAIL'].includes(priceType)) {
+        return reply.code(400).send({ error: 'priceType must be WHOLESALE or RETAIL' });
+      }
+
+      const { customer } = await getCustomerFromUser(request.user.sub);
+      if (!customer) return reply.code(400).send({ error: 'No customer record found. Please contact support.' });
+
+      const availability = await buildReceivedBatchAvailability(batchId);
+      if (!availability?.batch) return reply.code(404).send({ error: 'Batch not found' });
+      if (availability.batch.status !== 'RECEIVED') {
+        return reply.code(400).send({ error: 'This batch is not ready for immediate purchase.' });
+      }
+      if (quantity > availability.availableForSale) {
+        return reply.code(400).send({ error: `Only ${availability.availableForSale} crates are available right now.` });
+      }
+
+      const unitPrice = priceType === 'WHOLESALE'
+        ? Number(availability.batch.wholesalePrice)
+        : Number(availability.batch.retailPrice);
+      const estimatedTotal = quantity * unitPrice;
+
+      const existingOpen = await prisma.portalOrderRequest.findFirst({
+        where: {
+          customerId: customer.id,
+          batchId,
+          status: 'OPEN',
+          priceType,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      const requestRecord = existingOpen
+        ? await prisma.portalOrderRequest.update({
+            where: { id: existingOpen.id },
+            data: {
+              quantity,
+              unitPrice,
+              estimatedTotal,
+              notes: notes?.trim() || null,
+            },
+            include: {
+              batch: { select: { name: true, expectedDate: true, receivedDate: true, eggTypeKey: true } },
+            },
+          })
+        : await prisma.portalOrderRequest.create({
+            data: {
+              customerId: customer.id,
+              batchId,
+              quantity,
+              priceType,
+              unitPrice,
+              estimatedTotal,
+              notes: notes?.trim() || null,
+            },
+            include: {
+              batch: { select: { name: true, expectedDate: true, receivedDate: true, eggTypeKey: true } },
+            },
+          });
+
+      const eggTypes = await getCustomerEggTypeConfig();
+
+      return reply.code(existingOpen ? 200 : 201).send({
+        request: {
+          id: requestRecord.id,
+          batch: requestRecord.batch.name,
+          eggTypeLabel: getCustomerEggTypeLabel(eggTypes, requestRecord.batch.eggTypeKey || 'REGULAR'),
+          quantity: requestRecord.quantity,
+          priceType: requestRecord.priceType,
+          unitPrice: Number(requestRecord.unitPrice),
+          estimatedTotal: Number(requestRecord.estimatedTotal),
+          status: requestRecord.status,
+          receivedDate: requestRecord.batch.receivedDate,
+          createdAt: requestRecord.createdAt,
+        },
+        message: existingOpen
+          ? 'Your existing buy-now request has been updated.'
+          : 'Your buy-now request has been sent. The team will confirm pickup and payment steps.',
+      });
+    },
+  });
+
   // ────────────────────────────────────────────────────────────
   // AUTH: GET /portal/profile — customer profile
   // ────────────────────────────────────────────────────────────
@@ -342,6 +573,7 @@ export default async function portalRoutes(fastify) {
       const stats = customer ? {
         totalBookings: customer._count.bookings,
         totalPurchases: customer._count.sales,
+        totalBuyNowRequests: await prisma.portalOrderRequest.count({ where: { customerId: customer.id, status: 'OPEN' } }),
       } : { totalBookings: 0, totalPurchases: 0 };
 
       return reply.send({

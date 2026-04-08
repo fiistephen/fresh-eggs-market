@@ -69,6 +69,7 @@ model Customer {
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   bookings         Booking[]
+  portalOrderRequests PortalOrderRequest[]
   sales            Sale[]
   bankTransactions BankTransaction[]
   statementLines   BankStatementLine[]
@@ -107,6 +108,7 @@ model Batch {
 
   eggCodes    BatchEggCode[]
   bookings    Booking[]
+  portalOrderRequests PortalOrderRequest[]
   sales       Sale[]
   inventory   InventoryCount[]
 
@@ -168,6 +170,21 @@ enum BookingStatus {
   CANCELLED   // Cancelled, refund issued
 }
 
+enum PortalOrderRequestStatus {
+  OPEN
+  FULFILLED
+  CANCELLED
+}
+
+enum PortalOrderRequestType {
+  BUY_NOW
+}
+
+enum PortalPriceType {
+  WHOLESALE
+  RETAIL
+}
+
 model Booking {
   id             String        @id @default(cuid())
   customerId     String        @map("customer_id")
@@ -189,6 +206,26 @@ model Booking {
   allocations BookingPaymentAllocation[]
 
   @@map("bookings")
+}
+
+model PortalOrderRequest {
+  id             String                   @id @default(cuid())
+  customerId     String                   @map("customer_id")
+  batchId        String                   @map("batch_id")
+  requestType    PortalOrderRequestType   @default(BUY_NOW) @map("request_type")
+  status         PortalOrderRequestStatus @default(OPEN)
+  quantity       Int
+  priceType      PortalPriceType          @map("price_type")
+  unitPrice      Decimal                  @map("unit_price") @db.Decimal(12, 2)
+  estimatedTotal Decimal                  @map("estimated_total") @db.Decimal(12, 2)
+  notes          String?
+  createdAt      DateTime                 @default(now()) @map("created_at")
+  updatedAt      DateTime                 @updatedAt @map("updated_at")
+
+  customer Customer @relation(fields: [customerId], references: [id])
+  batch    Batch    @relation(fields: [batchId], references: [id])
+
+  @@map("portal_order_requests")
 }
 
 // ─── SALES ─────────────────────────────────────────────────────
