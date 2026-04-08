@@ -441,6 +441,9 @@ export default function Banking() {
             if (selectedImportId) loadImportDetail(selectedImportId);
             loadImports();
           }}
+          onImportQueueUpdated={() => {
+            loadImports();
+          }}
         />
       )}
 
@@ -862,28 +865,28 @@ function ImportsView({
   postingImport,
   onPostImport,
   onLineUpdated,
+  onImportQueueUpdated,
 }) {
-  const [selectedLineIds, setSelectedLineIds] = useState([]);
-  const [showSkippedLines, setShowSkippedLines] = useState(false);
-  const visibleImportLines = selectedImportLines.filter((line) => showSkippedLines || line.reviewStatus !== 'SKIPPED');
-  const removableLines = visibleImportLines.filter((line) => !['POSTED', 'SKIPPED'].includes(line.reviewStatus));
+  const [selectedImportIds, setSelectedImportIds] = useState([]);
 
   useEffect(() => {
-    setSelectedLineIds([]);
-    setShowSkippedLines(false);
-  }, [selectedImportId, selectedImportLines.length]);
+    setSelectedImportIds((current) => current.filter((id) => imports.some((importRecord) => importRecord.id === id)));
+  }, [imports]);
 
-  async function removeSelectedLines() {
-    if (!selectedImportId || selectedLineIds.length === 0) return;
-    if (!window.confirm(`Remove ${selectedLineIds.length} selected line(s) from the active import queue? They will stay documented under skipped items.`)) return;
-    await api.post(`/banking/imports/${selectedImportId}/lines/remove`, { lineIds: selectedLineIds });
-    setSelectedLineIds([]);
-    onLineUpdated();
+  async function removeSelectedImports() {
+    if (selectedImportIds.length === 0) return;
+    if (!window.confirm(`Remove ${selectedImportIds.length} selected import${selectedImportIds.length === 1 ? '' : 's'} from the active queue? The imported lines will stay documented, but the wrong statement file will leave the queue.`)) return;
+    await api.post('/banking/imports/remove', { importIds: selectedImportIds });
+    if (selectedImportIds.includes(selectedImportId)) {
+      onSelectImport('');
+    }
+    setSelectedImportIds([]);
+    onImportQueueUpdated();
   }
 
-  function toggleLine(lineId, checked) {
-    setSelectedLineIds((current) => (
-      checked ? [...new Set([...current, lineId])] : current.filter((id) => id !== lineId)
+  function toggleImport(importId, checked) {
+    setSelectedImportIds((current) => (
+      checked ? [...new Set([...current, importId])] : current.filter((id) => id !== importId)
     ));
   }
 
@@ -891,7 +894,26 @@ function ImportsView({
     <div className="grid grid-cols-1 gap-6 xl:grid-cols-[320px_1fr]">
       <div className="rounded-2xl border border-gray-200 bg-white p-4">
         <h2 className="text-lg font-semibold text-gray-900">Import queue</h2>
-        <p className="mt-1 text-sm text-gray-500">Open an import to review line classifications before posting.</p>
+        <p className="mt-1 text-sm text-gray-500">Open an import to review line classifications before posting. If the wrong statement file was uploaded, remove that import from the queue here.</p>
+
+        <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-600">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={imports.length > 0 && selectedImportIds.length === imports.length}
+              onChange={(event) => setSelectedImportIds(event.target.checked ? imports.map((importRecord) => importRecord.id) : [])}
+            />
+            Select imports
+          </label>
+          <button
+            type="button"
+            onClick={removeSelectedImports}
+            disabled={selectedImportIds.length === 0}
+            className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Remove selected imports
+          </button>
+        </div>
 
         {importsLoading ? (
           <div className="py-12 text-center text-sm text-gray-500">Loading imports…</div>
@@ -902,29 +924,42 @@ function ImportsView({
         ) : (
           <div className="mt-4 space-y-2">
             {imports.map((importRecord) => (
-              <button
+              <div
                 key={importRecord.id}
-                onClick={() => onSelectImport(importRecord.id)}
-                className={`w-full rounded-xl border p-3 text-left transition-colors ${
+                className={`w-full rounded-xl border p-3 transition-colors ${
                   selectedImportId === importRecord.id
                     ? 'border-brand-300 bg-brand-50'
                     : 'border-gray-200 hover:border-brand-200 hover:bg-gray-50'
                 }`}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-gray-900">{importRecord.originalFilename}</p>
-                    <p className="mt-1 text-xs text-gray-500">{displayAccountName(importRecord.bankAccount) || 'Unknown account'}</p>
-                  </div>
-                  <span className={`rounded-full px-2 py-1 text-[11px] font-medium ${RECONCILIATION_STYLES[importRecord.status === 'POSTED' ? 'BALANCED' : importRecord.status === 'PARTIALLY_POSTED' ? 'OPEN' : 'VARIANCE']}`}>
-                    {importRecord.status.toLowerCase()}
-                  </span>
+                <div className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedImportIds.includes(importRecord.id)}
+                    onChange={(event) => toggleImport(importRecord.id, event.target.checked)}
+                    className="mt-1"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => onSelectImport(importRecord.id)}
+                    className="flex-1 text-left"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">{importRecord.originalFilename}</p>
+                        <p className="mt-1 text-xs text-gray-500">{displayAccountName(importRecord.bankAccount) || 'Unknown account'}</p>
+                      </div>
+                      <span className={`rounded-full px-2 py-1 text-[11px] font-medium ${RECONCILIATION_STYLES[importRecord.status === 'POSTED' ? 'BALANCED' : importRecord.status === 'PARTIALLY_POSTED' ? 'OPEN' : 'VARIANCE']}`}>
+                        {importRecord.status.toLowerCase()}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
+                      <span>{importRecord.parsedRowCount} lines</span>
+                      <span>{importRecord.postedRowCount} posted</span>
+                    </div>
+                  </button>
                 </div>
-                <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
-                  <span>{importRecord.parsedRowCount} lines</span>
-                  <span>{importRecord.postedRowCount} posted</span>
-                </div>
-              </button>
+              </div>
             ))}
           </div>
         )}
@@ -974,51 +1009,21 @@ function ImportsView({
               <ImportCountCard label="Skipped" value={importCount(selectedImport, 'SKIPPED') || importCount(selectedImport, 'skipped')} tone="gray" />
             </div>
 
-            <div className="flex flex-col gap-3 border-b border-gray-100 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-3 text-sm text-gray-600">
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={removableLines.length > 0 && selectedLineIds.length === removableLines.length}
-                    onChange={(event) => setSelectedLineIds(event.target.checked ? removableLines.map((line) => line.id) : [])}
-                  />
-                  Select all removable lines
-                </label>
-                <span>{selectedLineIds.length} selected</span>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={showSkippedLines}
-                    onChange={(event) => setShowSkippedLines(event.target.checked)}
-                  />
-                  Show removed items
-                </label>
-              </div>
-              <button
-                type="button"
-                onClick={removeSelectedLines}
-                disabled={selectedLineIds.length === 0}
-                className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Remove selected from active queue
-              </button>
+            <div className="border-b border-gray-100 px-6 py-4">
+              <p className="text-sm text-gray-600">
+                Every line in the statement stays documented here. Review and categorize the lines one by one, then mark the correct ones as ready to post.
+              </p>
             </div>
 
-            {visibleImportLines.length === 0 ? (
+            {selectedImportLines.length === 0 ? (
               <div className="px-6 py-24">
-                <EmptyState
-                  title={showSkippedLines ? 'No lines found' : 'No active lines left'}
-                  body={showSkippedLines
-                    ? 'This import does not have any parsed statement lines.'
-                    : 'Everything in this import is either posted or removed from the active queue.'}
-                />
+                <EmptyState title="No lines found" body="This import does not have any parsed statement lines." />
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1100px]">
+                <table className="w-full min-w-[1040px]">
                   <thead>
                     <tr className="border-b border-gray-100">
-                      <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Select</th>
                       <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Line</th>
                       <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Date</th>
                       <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Description</th>
@@ -1031,13 +1036,11 @@ function ImportsView({
                     </tr>
                   </thead>
                   <tbody>
-                    {visibleImportLines.map((line) => (
+                    {selectedImportLines.map((line) => (
                       <ImportLineRow
                         key={line.id}
                         line={line}
                         categoryMap={categoryMap}
-                        selected={selectedLineIds.includes(line.id)}
-                        onToggleSelected={toggleLine}
                         onSaved={onLineUpdated}
                       />
                     ))}
@@ -2049,14 +2052,13 @@ function ReconciliationModal({ accounts, imports, onClose, onSaved }) {
   );
 }
 
-function ImportLineRow({ line, categoryMap, selected, onToggleSelected, onSaved }) {
+function ImportLineRow({ line, categoryMap, onSaved }) {
   const [draft, setDraft] = useState({
     selectedCategory: line.selectedCategory || line.suggestedCategory || '',
     reviewStatus: line.reviewStatus,
     notes: line.notes || '',
   });
   const [saving, setSaving] = useState(false);
-  const [removing, setRemoving] = useState(false);
   const categories = categoryOptionsForDirection(line.direction, categoryMap, draft.selectedCategory);
   const amount = line.direction === 'OUTFLOW' ? line.debitAmount : line.creditAmount;
 
@@ -2070,27 +2072,8 @@ function ImportLineRow({ line, categoryMap, selected, onToggleSelected, onSaved 
     }
   }
 
-  async function removeLine() {
-    if (!window.confirm('Remove this item from the active import queue? It will stay documented under skipped items.')) return;
-    setRemoving(true);
-    try {
-      await api.delete(`/banking/imports/${line.importId}/lines/${line.id}`);
-      onSaved();
-    } finally {
-      setRemoving(false);
-    }
-  }
-
   return (
     <tr className="border-b border-gray-50 align-top">
-      <td className="px-4 py-3">
-        <input
-          type="checkbox"
-          checked={selected}
-          disabled={['POSTED', 'SKIPPED'].includes(line.reviewStatus)}
-          onChange={(event) => onToggleSelected(line.id, event.target.checked)}
-        />
-      </td>
       <td className="px-4 py-3 text-sm text-gray-500">{line.lineNumber}</td>
       <td className="px-4 py-3 text-sm text-gray-600">{fmtDate(line.transactionDate || line.actualTransactionDate || line.valueDate)}</td>
       <td className="px-4 py-3 text-sm text-gray-700">
@@ -2142,25 +2125,14 @@ function ImportLineRow({ line, categoryMap, selected, onToggleSelected, onSaved 
       <td className="px-4 py-3">
         {line.reviewStatus === 'POSTED' ? (
           <span className="text-xs font-medium text-green-700">Posted</span>
-        ) : line.reviewStatus === 'SKIPPED' ? (
-          <span className="text-xs font-medium text-amber-700">Removed from active queue</span>
         ) : (
-          <div className="flex gap-2">
-            <button
-              onClick={saveLine}
-              disabled={saving || removing}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {saving ? 'Saving…' : 'Save'}
-            </button>
-            <button
-              onClick={removeLine}
-              disabled={saving || removing}
-              className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {removing ? 'Removing…' : 'Remove from queue'}
-            </button>
-          </div>
+          <button
+            onClick={saveLine}
+            disabled={saving}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
         )}
       </td>
     </tr>

@@ -145,11 +145,6 @@ async function getTransactionAllocatedAmount(bankTransactionId) {
   return Number(allocationAgg._sum.amount || 0);
 }
 
-function buildQueueRemovalNote(existingNotes = null) {
-  const stamp = `Removed from active import queue on ${new Date().toISOString()}`;
-  return existingNotes ? `${existingNotes}\n${stamp}` : stamp;
-}
-
 async function validateCustomer(customerId) {
   if (!customerId) return null;
   const customer = await prisma.customer.findUnique({ where: { id: customerId } });
@@ -597,10 +592,11 @@ export default async function bankingRoutes(fastify) {
   fastify.get('/banking/imports', {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
     handler: async (request, reply) => {
-      const { bankAccountId, status, limit = 20 } = request.query;
+      const { bankAccountId, status, includeCancelled, limit = 20 } = request.query;
       const where = {};
       if (bankAccountId) where.bankAccountId = bankAccountId;
       if (status) where.status = status;
+      else if (!['1', 'true', true].includes(includeCancelled)) where.status = { not: 'CANCELLED' };
 
       const imports = await prisma.bankStatementImport.findMany({
         where,
@@ -615,6 +611,77 @@ export default async function bankingRoutes(fastify) {
 
       return reply.send({
         imports: imports.map((record) => enrichImportRecord(record)),
+      });
+    },
+  });
+
+  fastify.delete('/banking/imports/:id', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
+    handler: async (request, reply) => {
+      const record = await prisma.bankStatementImport.findUnique({
+        where: { id: request.params.id },
+        include: {
+          _count: {
+            select: {
+              lines: { where: { reviewStatus: 'POSTED' } },
+            },
+          },
+        },
+      });
+
+      if (!record) return reply.code(404).send({ error: 'Import not found' });
+      if (record._count.lines > 0 || ['POSTED', 'PARTIALLY_POSTED'].includes(record.status)) {
+        return reply.code(400).send({ error: 'Imports with posted lines cannot be removed from the queue.' });
+      }
+
+      const updated = await prisma.bankStatementImport.update({
+        where: { id: record.id },
+        data: { status: 'CANCELLED' },
+        include: {
+          bankAccount: { select: { id: true, name: true, accountType: true, lastFour: true } },
+          importedBy: { select: { firstName: true, lastName: true } },
+          _count: { select: { lines: true, reconciliations: true } },
+        },
+      });
+
+      return reply.send({ import: enrichImportRecord(updated) });
+    },
+  });
+
+  fastify.post('/banking/imports/remove', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
+    handler: async (request, reply) => {
+      const importIds = Array.isArray(request.body?.importIds) ? request.body.importIds : [];
+      if (importIds.length === 0) {
+        return reply.code(400).send({ error: 'Select at least one import to remove from the queue.' });
+      }
+
+      const records = await prisma.bankStatementImport.findMany({
+        where: { id: { in: importIds } },
+        include: {
+          _count: {
+            select: {
+              lines: { where: { reviewStatus: 'POSTED' } },
+            },
+          },
+        },
+      });
+
+      if (records.length === 0) {
+        return reply.code(404).send({ error: 'No matching imports were found.' });
+      }
+      if (records.some((record) => record._count.lines > 0 || ['POSTED', 'PARTIALLY_POSTED'].includes(record.status))) {
+        return reply.code(400).send({ error: 'One or more selected imports already has posted lines and cannot be removed from the queue.' });
+      }
+
+      await prisma.bankStatementImport.updateMany({
+        where: { id: { in: records.map((record) => record.id) } },
+        data: { status: 'CANCELLED' },
+      });
+
+      return reply.send({
+        removedImportIds: records.map((record) => record.id),
+        removedCount: records.length,
       });
     },
   });
@@ -740,62 +807,17 @@ export default async function bankingRoutes(fastify) {
   fastify.delete('/banking/imports/:id/lines/:lineId', {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
     handler: async (request, reply) => {
-      const existing = await prisma.bankStatementLine.findFirst({
-        where: { id: request.params.lineId, importId: request.params.id },
+      return reply.code(400).send({
+        error: 'Transaction lines from a bank statement cannot be removed. Remove the whole import from the queue if the wrong statement was uploaded.',
       });
-      if (!existing) return reply.code(404).send({ error: 'Import line not found' });
-      if (existing.reviewStatus === 'POSTED') {
-        return reply.code(400).send({ error: 'Posted lines cannot be removed from the queue' });
-      }
-
-      const line = await prisma.bankStatementLine.update({
-        where: { id: existing.id },
-        data: {
-          reviewStatus: 'SKIPPED',
-          notes: buildQueueRemovalNote(existing.notes),
-        },
-      });
-      await recalculateImportStatus(request.params.id);
-
-      return reply.send({ line: enrichStatementLine(line) });
     },
   });
 
   fastify.post('/banking/imports/:id/lines/remove', {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
     handler: async (request, reply) => {
-      const lineIds = Array.isArray(request.body?.lineIds) ? request.body.lineIds : [];
-      if (lineIds.length === 0) {
-        return reply.code(400).send({ error: 'Select at least one line to remove.' });
-      }
-
-      const lines = await prisma.bankStatementLine.findMany({
-        where: { importId: request.params.id, id: { in: lineIds } },
-        select: { id: true, reviewStatus: true },
-      });
-
-      if (lines.length === 0) {
-        return reply.code(404).send({ error: 'No matching import lines were found.' });
-      }
-      if (lines.some((line) => line.reviewStatus === 'POSTED')) {
-        return reply.code(400).send({ error: 'Posted lines cannot be removed from the queue.' });
-      }
-
-      await prisma.bankStatementLine.updateMany({
-        where: {
-          importId: request.params.id,
-          id: { in: lines.map((line) => line.id) },
-          reviewStatus: { not: 'POSTED' },
-        },
-        data: {
-          reviewStatus: 'SKIPPED',
-        },
-      });
-      await recalculateImportStatus(request.params.id);
-
-      return reply.send({
-        removedLineIds: lines.map((line) => line.id),
-        removedCount: lines.length,
+      return reply.code(400).send({
+        error: 'Transaction lines from a bank statement cannot be removed. Remove the whole import from the queue if the wrong statement was uploaded.',
       });
     },
   });

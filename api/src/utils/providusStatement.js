@@ -190,7 +190,7 @@ export function parseProvidusStatement(csvText, { bankAccountId } = {}) {
       direction,
       suggestedCategory,
       selectedCategory: suggestedCategory,
-      reviewStatus: 'READY_TO_POST',
+      reviewStatus: 'PENDING_REVIEW',
       fingerprint,
       rawPayload: {
         columns,
