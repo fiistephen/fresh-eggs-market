@@ -108,20 +108,6 @@ export default function ImportLineRow({ line, categoryMap, selected, onToggleSel
             placeholder="Bank name - Depositor name"
             className="w-full rounded-md border border-surface-200 px-2 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-surface-100"
           />
-          {!isPosted && (
-            <div className="space-y-1">
-              <button
-                type="button"
-                onClick={() => setDraft((c) => ({ ...c, notes: autoCleanDescription(c.description) }))}
-                className="text-caption-medium font-medium text-brand-700 hover:text-brand-800"
-              >
-                Rebuild clean description from bank narration
-              </button>
-              <div className="text-caption text-surface-400">
-                This keeps the original bank narration unchanged for audit history.
-              </div>
-            </div>
-          )}
         </div>
       </td>
       <td className="px-4 py-3">
