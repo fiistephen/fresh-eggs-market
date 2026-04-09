@@ -16,8 +16,7 @@ import CustomerLiability from './Reports/CustomerLiability';
 import Expenses from './Reports/Expenses';
 
 // Modals
-import RecordTransactionModal from './RecordTransactionModal';
-import BulkTransactionModal from './BulkTransactionModal';
+import EntryModal from './EntryModal';
 import InternalTransferModal from './InternalTransferModal';
 import StatementImportModal from './StatementImportModal';
 import ReconciliationModal from './ReconciliationModal';
@@ -94,17 +93,14 @@ export default function Banking() {
   });
 
   /* ── Modal visibility ────────────────────────────────── */
-  const [showRecordModal, setShowRecordModal] = useState(false);
-  const [showBulkModal, setShowBulkModal] = useState(false);
+  const [showEntryModal, setShowEntryModal] = useState(false);
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showReconcileModal, setShowReconcileModal] = useState(false);
   const [postingImport, setPostingImport] = useState(false);
 
   /* ── Action menu state ───────────────────────────────── */
-  const [showEntryMenu, setShowEntryMenu] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
-  const entryRef = useRef(null);
   const moreRef = useRef(null);
 
   /* ── Derived ─────────────────────────────────────────── */
@@ -115,7 +111,6 @@ export default function Banking() {
   /* ── Close menus on outside click ────────────────────── */
   useEffect(() => {
     function handleClick(e) {
-      if (entryRef.current && !entryRef.current.contains(e.target)) setShowEntryMenu(false);
       if (moreRef.current && !moreRef.current.contains(e.target)) setShowMoreMenu(false);
     }
     document.addEventListener('mousedown', handleClick);
@@ -333,31 +328,12 @@ export default function Banking() {
 
         {canRecord && (
           <div className="flex items-center gap-2">
-            {/* Primary: Record entry + dropdown */}
-            <div className="relative" ref={entryRef}>
-              <div className="flex">
-                <button
-                  onClick={() => setShowRecordModal(true)}
-                  className="rounded-l-lg bg-brand-500 px-3.5 py-2 text-sm font-medium text-surface-900 hover:bg-brand-400 transition-colors duration-fast shadow-xs"
-                >
-                  + Record entry
-                </button>
-                <button
-                  onClick={() => setShowEntryMenu((v) => !v)}
-                  className="rounded-r-lg border-l border-brand-600 bg-brand-500 px-2 py-2 text-surface-900 hover:bg-brand-400 transition-colors duration-fast shadow-xs"
-                >
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
-                </button>
-              </div>
-              {showEntryMenu && (
-                <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded-lg border border-surface-200 bg-surface-0 py-1 shadow-md">
-                  <button onClick={() => { setShowBulkModal(true); setShowEntryMenu(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 duration-fast">
-                    <svg className="h-4 w-4 text-surface-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z" /></svg>
-                    Enter many at once
-                  </button>
-                </div>
-              )}
-            </div>
+            <button
+              onClick={() => setShowEntryModal(true)}
+              className="rounded-lg bg-brand-500 px-3.5 py-2 text-sm font-medium text-surface-900 hover:bg-brand-400 transition-colors duration-fast shadow-xs"
+            >
+              Record entry
+            </button>
 
             {/* More actions */}
             <div className="relative" ref={moreRef}>
@@ -537,35 +513,21 @@ export default function Banking() {
 
       {/* ── Modals ─────────────────────────────────────────── */}
 
-      {showRecordModal && (
-        <RecordTransactionModal
+      {showEntryModal && (
+        <EntryModal
           accounts={accounts}
           transactionCategories={transactionCategories}
           categoryMap={categoryMap}
           onCategoriesChanged={loadMeta}
-          onClose={() => setShowRecordModal(false)}
+          onClose={() => setShowEntryModal(false)}
           onRecorded={(shouldClose) => {
             if (shouldClose) {
-              setShowRecordModal(false);
+              setShowEntryModal(false);
               refreshAfterMutation();
             } else {
               loadAccounts();
               loadTransactions(true);
             }
-          }}
-        />
-      )}
-
-      {showBulkModal && (
-        <BulkTransactionModal
-          accounts={accounts}
-          transactionCategories={transactionCategories}
-          categoryMap={categoryMap}
-          onCategoriesChanged={loadMeta}
-          onClose={() => setShowBulkModal(false)}
-          onRecorded={() => {
-            setShowBulkModal(false);
-            refreshAfterMutation();
           }}
         />
       )}
