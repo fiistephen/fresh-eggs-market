@@ -8,16 +8,16 @@ export default {
       },
       colors: {
         brand: {
-          50: '#FFF8F0',
-          100: '#FFEDD5',
-          200: '#FED7AA',
-          300: '#FDBA74',
-          400: '#FB923C',
-          500: '#F97316',
-          600: '#EA580C',
-          700: '#C2410C',
-          800: '#9A3412',
-          900: '#7C2D12',
+          50: '#FEFBF0',
+          100: '#FEF3CC',
+          200: '#FDE69A',
+          300: '#FBD554',
+          400: '#F9C72E',
+          500: '#F7BA20',
+          600: '#D49A08',
+          700: '#AA7506',
+          800: '#8A5D0A',
+          900: '#6E4A0E',
         },
         surface: {
           0: '#FFFFFF',
@@ -99,7 +99,7 @@ export default {
         'md': '0 4px 12px rgba(0,0,0,0.08)',
         'lg': '0 8px 24px rgba(0,0,0,0.12)',
         'xl': '0 16px 48px rgba(0,0,0,0.16)',
-        'glow': '0 0 0 3px rgba(249,115,22,0.15)',
+        'glow': '0 0 0 3px rgba(247,186,32,0.15)',
         'glow-error': '0 0 0 3px rgba(239,68,68,0.15)',
       },
       transitionDuration: {
@@ -134,7 +134,7 @@ export default {
           '100%': { opacity: '1' },
         },
         'row-flash': {
-          '0%': { backgroundColor: 'rgba(249,115,22,0.08)' },
+          '0%': { backgroundColor: 'rgba(247,186,32,0.08)' },
           '100%': { backgroundColor: 'transparent' },
         },
         'skeleton': {
