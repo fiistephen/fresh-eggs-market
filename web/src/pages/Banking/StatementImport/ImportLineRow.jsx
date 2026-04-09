@@ -65,6 +65,7 @@ export default function ImportLineRow({ line, categoryMap, selected, onToggleSel
       <td className="px-4 py-3 text-body text-surface-600">{fmtDate(line.transactionDate || line.actualTransactionDate || line.valueDate)}</td>
       <td className="px-4 py-3 text-body text-surface-700">
         <div className="min-w-[320px] space-y-2">
+          <div className="text-caption-medium uppercase tracking-wide text-surface-400">Original bank narration</div>
           <textarea
             value={draft.description}
             onChange={(e) => setDraft((c) => ({ ...c, description: e.target.value }))}
@@ -98,6 +99,7 @@ export default function ImportLineRow({ line, categoryMap, selected, onToggleSel
       </td>
       <td className="px-4 py-3">
         <div className="min-w-[260px] space-y-2">
+          <div className="text-caption-medium uppercase tracking-wide text-surface-400">Clean description</div>
           <textarea
             value={draft.notes}
             onChange={(e) => setDraft((c) => ({ ...c, notes: e.target.value }))}
@@ -107,13 +109,18 @@ export default function ImportLineRow({ line, categoryMap, selected, onToggleSel
             className="w-full rounded-md border border-surface-200 px-2 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-surface-100"
           />
           {!isPosted && (
-            <button
-              type="button"
-              onClick={() => setDraft((c) => ({ ...c, notes: autoCleanDescription(c.description) }))}
-              className="text-caption-medium font-medium text-brand-700 hover:text-brand-800"
-            >
-              Auto-fill clean description
-            </button>
+            <div className="space-y-1">
+              <button
+                type="button"
+                onClick={() => setDraft((c) => ({ ...c, notes: autoCleanDescription(c.description) }))}
+                className="text-caption-medium font-medium text-brand-700 hover:text-brand-800"
+              >
+                Rebuild clean description from bank narration
+              </button>
+              <div className="text-caption text-surface-400">
+                This keeps the original bank narration unchanged for audit history.
+              </div>
+            </div>
           )}
         </div>
       </td>
