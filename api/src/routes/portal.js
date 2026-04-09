@@ -124,6 +124,20 @@ function getPortalCheckoutSummary(checkout, eggTypes = []) {
   };
 }
 
+function buildPortalBatchSummary(batch, eggTypes = []) {
+  if (!batch) return null;
+  return {
+    id: batch.id,
+    name: batch.name,
+    eggTypeLabel: getCustomerEggTypeLabel(eggTypes, batch.eggTypeKey || 'REGULAR'),
+    expectedDate: batch.expectedDate,
+    receivedDate: batch.receivedDate,
+    status: batch.status,
+    wholesalePrice: batch.wholesalePrice != null ? Number(batch.wholesalePrice) : null,
+    retailPrice: batch.retailPrice != null ? Number(batch.retailPrice) : null,
+  };
+}
+
 function getCheckoutPriceType(checkoutType) {
   return checkoutType === 'BUY_NOW' ? 'RETAIL' : 'WHOLESALE';
 }
@@ -471,7 +485,7 @@ async function getPortalOrdersForCustomer(customerId) {
     source: 'BOOKING',
     reference: booking.portalCheckout?.reference || booking.id,
     batchId: booking.batchId,
-    batch: booking.batch.name,
+    batch: buildPortalBatchSummary(booking.batch, eggTypes),
     eggTypeLabel: getCustomerEggTypeLabel(eggTypes, booking.batch.eggTypeKey || 'REGULAR'),
     batchStatus: booking.batch.status,
     batchArrived: booking.batch.status !== 'OPEN',
@@ -500,7 +514,7 @@ async function getPortalOrdersForCustomer(customerId) {
     source: 'BUY_NOW_ORDER',
     reference: request.paymentReference || request.id,
     batchId: request.batchId,
-    batch: request.batch.name,
+    batch: buildPortalBatchSummary(request.batch, eggTypes),
     eggTypeLabel: getCustomerEggTypeLabel(eggTypes, request.batch.eggTypeKey || 'REGULAR'),
     batchStatus: request.batch.status,
     batchArrived: Boolean(request.batch.receivedDate),
@@ -531,7 +545,7 @@ async function getPortalOrdersForCustomer(customerId) {
     source: checkout.checkoutType === 'BOOK_UPCOMING' ? 'BOOKING_CHECKOUT' : 'BUY_NOW_CHECKOUT',
     reference: checkout.reference,
     batchId: checkout.batchId,
-    batch: checkout.batch.name,
+    batch: buildPortalBatchSummary(checkout.batch, eggTypes),
     eggTypeLabel: getCustomerEggTypeLabel(eggTypes, checkout.batch.eggTypeKey || 'REGULAR'),
     batchStatus: checkout.batch.status,
     batchArrived: Boolean(checkout.batch.receivedDate) || checkout.batch.status !== 'OPEN',
@@ -775,6 +789,13 @@ export default async function portalRoutes(fastify) {
           lastName: user.lastName,
           phone: user.phone,
         },
+        customer: customer ? {
+          id: customer.id,
+          name: customer.name,
+          email: customer.email,
+          phone: customer.phone,
+          isFirstTime: customer.isFirstTime,
+        } : null,
         customerId: customer?.id || null,
         isFirstTime: customer?.isFirstTime ?? true,
         orderLimitProfile,

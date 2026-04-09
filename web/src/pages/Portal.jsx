@@ -15,6 +15,14 @@ const TRANSFER_DETAILS = {
   accountName: 'Fresh Egg Wholesales Market',
 };
 
+function profileDisplayName(profile, user) {
+  if (profile?.customer?.name) return profile.customer.name;
+  const fullName = [profile?.user?.firstName, profile?.user?.lastName].filter(Boolean).join(' ').trim();
+  if (fullName) return fullName;
+  const fallbackUser = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim();
+  return fallbackUser || user?.phone || user?.email || 'Customer';
+}
+
 // SVG Icons
 const IconChevronRight = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -658,18 +666,27 @@ function getOrderStatus(order) {
   if (order.kind === 'BOOKING') {
     if (order.source === 'BOOKING_CHECKOUT') {
       if (order.status === 'AWAITING_PAYMENT') return { label: 'Waiting for card payment', tone: 'warning' };
-      if (order.status === 'CONFIRMED') return { label: 'Crates held, waiting for transfer', tone: 'info' };
+      if (order.status === 'AWAITING_TRANSFER') return { label: 'Waiting for transfer confirmation', tone: 'info' };
+      if (order.status === 'FAILED') return { label: 'Payment failed', tone: 'error' };
+      if (order.status === 'PAID') return { label: 'Booking confirmed', tone: 'success' };
       if (order.status === 'PICKED_UP') return { label: 'Completed', tone: 'success' };
       if (order.status === 'CANCELLED') return { label: 'Cancelled', tone: 'error' };
     } else {
+      if (order.status === 'CONFIRMED' && order.batchArrived) return { label: 'Batch has arrived', tone: 'success' };
       if (order.status === 'CONFIRMED') return { label: 'Booking confirmed', tone: 'success' };
       if (order.status === 'PICKED_UP') return { label: 'Picked up', tone: 'neutral' };
       if (order.status === 'CANCELLED') return { label: 'Cancelled', tone: 'error' };
     }
   }
-  if (order.kind === 'DIRECT_SALE') {
+  if (order.kind === 'BUY_NOW') {
+    if (order.source === 'BUY_NOW_CHECKOUT') {
+      if (order.status === 'AWAITING_PAYMENT') return { label: 'Waiting for card payment', tone: 'warning' };
+      if (order.status === 'AWAITING_TRANSFER') return { label: 'Waiting for transfer confirmation', tone: 'info' };
+      if (order.status === 'FAILED') return { label: 'Payment failed', tone: 'error' };
+      if (order.status === 'CANCELLED') return { label: 'Cancelled', tone: 'error' };
+    }
+    if (order.status === 'APPROVED_FOR_PICKUP') return { label: 'Approved for pickup', tone: 'success' };
     if (order.status === 'AWAITING_TRANSFER') return { label: 'Waiting for transfer', tone: 'warning' };
-    if (order.status === 'COMPLETED') return { label: 'Ready for pickup', tone: 'success' };
     if (order.status === 'PICKED_UP') return { label: 'Picked up', tone: 'neutral' };
     if (order.status === 'CANCELLED') return { label: 'Cancelled', tone: 'error' };
   }
@@ -687,22 +704,90 @@ function getOrderNextStep(order) {
   if (order.kind === 'BOOKING') {
     if (order.source === 'BOOKING_CHECKOUT') {
       if (order.status === 'AWAITING_PAYMENT') return 'Complete your card payment to confirm the hold.';
-      if (order.status === 'CONFIRMED') return `Transfer ${fmtMoney(order.balanceAfterPayment)} to confirm. Your batch arrives ${fmtDate(order.batch.expectedDate)}.`;
+      if (order.status === 'AWAITING_TRANSFER') return `Transfer ${fmtMoney(order.amountToPay || order.orderValue)} and wait for admin confirmation.`;
+      if (order.status === 'FAILED') return 'This payment was not completed. You can try again.';
       if (order.status === 'PICKED_UP') return 'Your eggs have been picked up.';
     } else {
+      if (order.status === 'CONFIRMED' && order.batchArrived) return 'Your batch has arrived. Please come for pickup.';
       if (order.status === 'CONFIRMED') return `Your booking is confirmed. Expected on ${fmtDate(order.batch.expectedDate)}.`;
       if (order.status === 'PICKED_UP') return 'Your eggs have been picked up.';
     }
   }
-  if (order.kind === 'DIRECT_SALE') {
-    if (order.status === 'AWAITING_TRANSFER') return `Transfer ${fmtMoney(order.amountToPay)} to complete your order.`;
-    if (order.status === 'COMPLETED') return 'Your eggs are ready for pickup.';
+  if (order.kind === 'BUY_NOW') {
+    if (order.source === 'BUY_NOW_CHECKOUT') {
+      if (order.status === 'AWAITING_PAYMENT') return 'Complete your card payment to hold and approve this order.';
+      if (order.status === 'AWAITING_TRANSFER') return `Transfer ${fmtMoney(order.amountToPay || order.orderValue)} and wait for admin confirmation.`;
+      if (order.status === 'FAILED') return 'This payment was not completed. You can try again.';
+    }
+    if (order.status === 'APPROVED_FOR_PICKUP') return 'Your eggs are ready for pickup from today until the next 3 days.';
     if (order.status === 'PICKED_UP') return 'Your eggs have been picked up.';
   }
   return 'Your order is being processed.';
 }
 
-function MyActivity({ orders, loading }) {
+function OrderDetailModal({ order, onClose }) {
+  if (!order) return null;
+  const status = getOrderStatus(order);
+  const paymentText = getOrderPaymentText(order);
+  const nextStep = getOrderNextStep(order);
+
+  return (
+    <Modal title="Order details" open={true} onClose={onClose}>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-caption text-surface-500">{order.kind === 'BOOKING' ? 'Upcoming booking' : 'Buy now order'}</p>
+            <h3 className="mt-1 text-title font-semibold text-surface-900">{order.batch?.name || 'Order'}</h3>
+          </div>
+          <Badge status={status.tone}>{status.label}</Badge>
+        </div>
+
+        <Card variant="outlined" className="border border-surface-200 p-4 text-body">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Metric label="Egg type" value={order.eggTypeLabel || order.batch?.eggTypeLabel || '—'} />
+            <Metric label="Quantity" value={`${fmt(order.quantity)} crates`} />
+            <Metric label="Order value" value={fmtMoney(order.orderValue)} />
+            <Metric label="Payment made" value={fmtMoney(order.amountPaid)} />
+            <Metric label="Payment remaining" value={fmtMoney(order.balance)} />
+            <Metric label="Payment progress" value={`${Number(order.paymentPercent || 0)}%`} />
+            <Metric label="Payment method" value={paymentText} />
+            <Metric label="Price used" value={order.priceType === 'WHOLESALE' ? 'Wholesale' : order.priceType === 'RETAIL' ? 'Retail' : '—'} />
+          </div>
+        </Card>
+
+        <Card variant="outlined" className="border border-surface-200 p-4 text-body">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Metric label="Order date" value={fmtDateTime(order.createdAt)} />
+            <Metric label="Last updated" value={fmtDateTime(order.updatedAt)} />
+            <Metric label="Expected batch date" value={fmtDate(order.expectedDate)} />
+            <Metric label="Batch arrival" value={order.batchArrived ? fmtDate(order.batchArrivalDate || order.batch?.receivedDate) : 'Not arrived yet'} />
+            <Metric label="Pickup window start" value={fmtDateTime(order.pickupWindowStart)} />
+            <Metric label="Pickup window end" value={fmtDateTime(order.pickupWindowEnd)} />
+            <Metric label="Payment window ends" value={fmtDateTime(order.paymentWindowEndsAt)} />
+            <Metric label="Reference" value={order.reference || '—'} />
+          </div>
+        </Card>
+
+        <div className="rounded-md border border-info-200 bg-info-50 p-3 text-body text-info-700">
+          {nextStep}
+        </div>
+
+        {order.notes ? (
+          <Card variant="outlined" className="border border-surface-200 p-4 text-body">
+            <p className="text-caption text-surface-500 mb-1">Notes</p>
+            <p className="text-body text-surface-800">{order.notes}</p>
+          </Card>
+        ) : null}
+
+        <Button variant="primary" size="lg" onClick={onClose} className="w-full">
+          Close
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+function MyActivity({ orders, loading, onOpenOrder }) {
   if (loading) {
     return (
       <div className="text-center py-12">
@@ -715,8 +800,8 @@ function MyActivity({ orders, loading }) {
     return (
       <EmptyState
         icon={<IconBox className="w-12 h-12" />}
-        title="No bookings yet"
-        description="You haven't placed any bookings or purchases yet. Browse available batches to get started."
+        title="No previous orders yet"
+        description="You have not placed any bookings or purchases yet. Browse available batches to get started."
       />
     );
   }
@@ -730,7 +815,12 @@ function MyActivity({ orders, loading }) {
         const batchDate = order.batch?.expectedDate || order.batch?.receivedDate;
 
         return (
-          <Card key={order.id} variant="outlined" className="border border-surface-200 cursor-pointer hover:shadow-md transition-shadow">
+          <Card
+            key={order.id}
+            variant="outlined"
+            className="border border-surface-200 cursor-pointer hover:shadow-md transition-shadow"
+            onClick={() => onOpenOrder?.(order)}
+          >
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1">
                 <div className="flex items-center gap-3 mb-2">
@@ -742,10 +832,12 @@ function MyActivity({ orders, loading }) {
                 <div className="mt-2 flex items-center gap-4 text-caption text-surface-500">
                   <span>{paymentText}</span>
                   <span>{fmtDate(order.createdAt)}</span>
+                  {order.batchArrived ? <span>Batch arrived</span> : null}
                 </div>
               </div>
               <div className="text-right flex-shrink-0">
-                <p className="text-title font-semibold text-surface-900">{fmtMoney(order.amountToPay || order.orderValue || 0)}</p>
+                <p className="text-title font-semibold text-surface-900">{fmtMoney(order.orderValue || 0)}</p>
+                <p className="mt-1 text-caption text-brand-700">Open details</p>
               </div>
             </div>
           </Card>
@@ -833,20 +925,21 @@ export default function Portal() {
   const [viewMode, setViewMode] = useState(user ? 'activity' : null);
   const [selectedBatchForBooking, setSelectedBatchForBooking] = useState(null);
   const [selectedBatchForBuyNow, setSelectedBatchForBuyNow] = useState(null);
+  const [selectedOrder, setSelectedOrder] = useState(null);
 
   async function loadData() {
     setLoading(true);
     try {
-      const [batchesRes, ordersRes, profileRes, policyRes] = await Promise.all([
+      const [upcomingRes, availableNowRes, ordersRes, profileRes] = await Promise.all([
         api.get('/portal/batches'),
-        user ? api.get('/portal/my-bookings') : Promise.resolve({ data: [] }),
+        api.get('/portal/available-now'),
+        user ? api.get('/portal/orders') : Promise.resolve({ orders: [] }),
         user ? api.get('/portal/profile') : Promise.resolve(null),
-        api.get('/config/policies'),
       ]);
-      setBatches(batchesRes.data || []);
-      setOrders(ordersRes.data || []);
+      setBatches([...(upcomingRes.batches || []), ...(availableNowRes.batches || [])]);
+      setOrders(ordersRes.orders || []);
       setProfile(profileRes);
-      setPolicy(policyRes);
+      setPolicy(upcomingRes.policy || availableNowRes.policy || null);
     } catch (err) {
       console.error('Failed to load portal data:', err);
     } finally {
@@ -880,7 +973,7 @@ export default function Portal() {
           <div className="flex items-center justify-between gap-4">
             <div>
               <h1 className="text-title font-bold text-surface-900">Fresh Eggs Market</h1>
-              <p className="text-caption text-surface-600">{profile?.user?.name || 'Customer'}</p>
+              <p className="text-caption text-surface-600">{profileDisplayName(profile, user)}</p>
             </div>
             <Button
               variant="ghost"
@@ -929,7 +1022,7 @@ export default function Portal() {
         {viewMode === 'activity' ? (
           <div>
             <h2 className="text-heading text-surface-800 mb-4">Your orders</h2>
-            <MyActivity orders={orders} loading={loading} />
+            <MyActivity orders={orders} loading={loading} onOpenOrder={setSelectedOrder} />
           </div>
         ) : (
           <div>
@@ -964,6 +1057,13 @@ export default function Portal() {
           policy={policy}
           onClose={() => setSelectedBatchForBuyNow(null)}
           onFinished={() => loadData()}
+        />
+      )}
+
+      {selectedOrder && (
+        <OrderDetailModal
+          order={selectedOrder}
+          onClose={() => setSelectedOrder(null)}
         />
       )}
     </div>
