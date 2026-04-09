@@ -1,6 +1,6 @@
-import { ACCOUNT_STYLES, fmtMoney, fmtDate, displayAccountName } from './shared/constants';
+import { ACCOUNT_STYLES, DIRECTION_COLORS, SOURCE_LABELS, fmtMoney, fmtDate, displayAccountName, accountLabel, categoryLabel } from './shared/constants';
 
-export default function TodayView({ loading, accounts, imports, customerBookingQueue, portalTransferQueue, canViewReports, onNavigate }) {
+export default function TodayView({ loading, accounts, imports, transactions, categoryMap, customerBookingQueue, portalTransferQueue, canViewReports, onNavigate }) {
   if (loading) {
     return <div className="rounded-2xl border border-gray-200 bg-white px-6 py-20 text-center text-sm text-gray-500">Loading…</div>;
   }
@@ -97,14 +97,12 @@ export default function TodayView({ loading, accounts, imports, customerBookingQ
                   <span className="text-gray-400">{account.isVirtual ? 'Virtual ledger' : 'Not reconciled'}</span>
                 )}
               </div>
-
-              {/* Hover detail */}
-              <div className="pointer-events-none absolute inset-x-0 top-full z-10 mt-1 rounded-lg border border-gray-200 bg-white p-3 opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
-                <div className="flex justify-between text-xs">
-                  <span className="text-green-600">In: {fmtMoney(account.totalInflows)}</span>
-                  <span className="text-red-500">Out: {fmtMoney(account.totalOutflows)}</span>
+              <div className="mt-3 space-y-1 border-t border-gray-100 pt-3 text-[11px]">
+                <div className="flex items-center justify-between">
+                  <span className="text-green-600">In {fmtMoney(account.totalInflows)}</span>
+                  <span className="text-red-500">Out {fmtMoney(account.totalOutflows)}</span>
                 </div>
-                <p className="mt-1 text-xs text-gray-500">{account.transactionCount} transactions</p>
+                <p className="text-gray-500">{account.transactionCount} transactions</p>
               </div>
             </div>
           );
@@ -139,6 +137,55 @@ export default function TodayView({ loading, accounts, imports, customerBookingQ
           <p className="text-sm font-medium text-green-800">All clear — nothing needs attention right now.</p>
         </div>
       )}
+
+      {/* ── Recent activity ─────────────────────────────── */}
+      <div className="rounded-xl border border-gray-200 bg-white">
+        <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">Recent activity</h2>
+            <p className="text-xs text-gray-500">Latest banking entries across all accounts.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onNavigate('transactions')}
+            className="text-xs font-medium text-brand-600 hover:text-brand-700"
+          >
+            Open transactions
+          </button>
+        </div>
+        {!transactions || transactions.length === 0 ? (
+          <div className="px-6 py-12 text-center text-sm text-gray-500">No recent banking activity yet.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px]">
+              <thead>
+                <tr className="border-b border-gray-100 bg-gray-50/50">
+                  <th className="px-4 py-2.5 text-left text-xs font-medium uppercase text-gray-500">Date</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium uppercase text-gray-500">Account</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium uppercase text-gray-500">Category</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium uppercase text-gray-500">Source</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium uppercase text-gray-500">Description</th>
+                  <th className="px-4 py-2.5 text-right text-xs font-medium uppercase text-gray-500">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {transactions.slice(0, 8).map((transaction) => (
+                  <tr key={transaction.id} className="border-b border-gray-50">
+                    <td className="px-4 py-2.5 text-sm text-gray-600">{fmtDate(transaction.transactionDate)}</td>
+                    <td className="px-4 py-2.5 text-sm text-gray-800">{accountLabel(transaction.bankAccount)}</td>
+                    <td className="px-4 py-2.5 text-sm text-gray-600">{categoryLabel(transaction.category, categoryMap)}</td>
+                    <td className="px-4 py-2.5 text-sm text-gray-500">{SOURCE_LABELS[transaction.sourceType] || transaction.sourceType}</td>
+                    <td className="px-4 py-2.5 text-sm text-gray-500">{transaction.description || transaction.reference || '—'}</td>
+                    <td className={`px-4 py-2.5 text-right text-sm font-semibold ${DIRECTION_COLORS[transaction.direction]}`}>
+                      {transaction.direction === 'INFLOW' ? '+' : '−'}{fmtMoney(transaction.amount)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

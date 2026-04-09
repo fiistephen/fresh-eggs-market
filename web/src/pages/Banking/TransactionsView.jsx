@@ -4,6 +4,7 @@ import { EmptyState } from './shared/ui';
 
 export default function TransactionsView({ accounts, transactions, total, loading, filters, categoryMap, page, pageSize, totalPages, onPageChange, onFilterChange }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   const hasActiveFilters = filters.bankAccountId || filters.direction || filters.sourceType || filters.dateFrom || filters.dateTo;
   const rangeStart = Math.min((page - 1) * pageSize + 1, total);
@@ -55,6 +56,15 @@ export default function TransactionsView({ accounts, transactions, total, loadin
               Clear all
             </button>
           )}
+
+          <button
+            onClick={() => setDetailsOpen((value) => !value)}
+            className={`rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors ${
+              detailsOpen ? 'bg-gray-100 text-gray-800' : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            {detailsOpen ? 'Hide extra details' : 'Show extra details'}
+          </button>
 
           {/* Right side: count */}
           <span className="ml-auto text-xs text-gray-500">
@@ -135,14 +145,16 @@ export default function TransactionsView({ accounts, transactions, total, loadin
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[800px]">
+            <table className={`w-full ${detailsOpen ? 'min-w-[1080px]' : 'min-w-[800px]'}`}>
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50/50">
                   <th className="px-4 py-2.5 text-left text-xs font-medium uppercase text-gray-500">Date</th>
                   <th className="px-4 py-2.5 text-left text-xs font-medium uppercase text-gray-500">Account</th>
                   <th className="px-4 py-2.5 text-left text-xs font-medium uppercase text-gray-500">Category</th>
+                  {detailsOpen && <th className="px-4 py-2.5 text-left text-xs font-medium uppercase text-gray-500">Source</th>}
                   <th className="px-4 py-2.5 text-left text-xs font-medium uppercase text-gray-500">Description</th>
                   <th className="px-4 py-2.5 text-left text-xs font-medium uppercase text-gray-500">Customer</th>
+                  {detailsOpen && <th className="px-4 py-2.5 text-left text-xs font-medium uppercase text-gray-500">Recorded by</th>}
                   <th className="px-4 py-2.5 text-right text-xs font-medium uppercase text-gray-500">Amount</th>
                 </tr>
               </thead>
@@ -152,8 +164,12 @@ export default function TransactionsView({ accounts, transactions, total, loadin
                     <td className="px-4 py-2.5 text-sm text-gray-600">{fmtDate(t.transactionDate)}</td>
                     <td className="px-4 py-2.5 text-sm text-gray-800">{accountLabel(t.bankAccount)}</td>
                     <td className="px-4 py-2.5 text-sm text-gray-600">{categoryLabel(t.category, categoryMap)}</td>
-                    <td className="px-4 py-2.5 text-sm text-gray-500 max-w-[200px] truncate">{t.description || t.reference || '—'}</td>
+                    {detailsOpen && <td className="px-4 py-2.5 text-sm text-gray-500">{SOURCE_LABELS[t.sourceType] || t.sourceType}</td>}
+                    <td className="px-4 py-2.5 text-sm text-gray-500 max-w-[240px] truncate" title={[t.description, t.reference].filter(Boolean).join(' · ') || '—'}>
+                      {t.description || t.reference || '—'}
+                    </td>
                     <td className="px-4 py-2.5 text-sm text-gray-500">{t.customer?.name || '—'}</td>
+                    {detailsOpen && <td className="px-4 py-2.5 text-sm text-gray-500">{t.enteredBy?.firstName || '—'}</td>}
                     <td className={`px-4 py-2.5 text-right text-sm font-semibold ${DIRECTION_COLORS[t.direction]}`}>
                       {t.direction === 'INFLOW' ? '+' : '−'}{fmtMoney(t.amount)}
                     </td>

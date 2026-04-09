@@ -425,6 +425,8 @@ export default function Banking() {
           loading={loading}
           accounts={accounts}
           imports={imports}
+          transactions={transactions}
+          categoryMap={categoryMap}
           customerBookingQueue={customerBookingQueue}
           portalTransferQueue={portalTransferQueue}
           canViewReports={canViewReports}
