@@ -30,6 +30,11 @@ function formatDate(value) {
 export default function Bookings() {
   const { user } = useAuth();
   const [bookings, setBookings] = useState([]);
+  const [portalTransferBookings, setPortalTransferBookings] = useState([]);
+  const [portalCardBookings, setPortalCardBookings] = useState([]);
+  const [portalQueueLoading, setPortalQueueLoading] = useState(true);
+  const [portalQueueError, setPortalQueueError] = useState('');
+  const [workingPortalCheckoutId, setWorkingPortalCheckoutId] = useState('');
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
   const [showCreate, setShowCreate] = useState(false);
@@ -43,6 +48,10 @@ export default function Bookings() {
     loadBookings();
   }, [filter]);
 
+  useEffect(() => {
+    loadPortalBookingQueue();
+  }, []);
+
   async function loadBookings() {
     setLoading(true);
     setError('');
@@ -54,6 +63,46 @@ export default function Bookings() {
       setError('Failed to load bookings');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadPortalBookingQueue() {
+    setPortalQueueLoading(true);
+    setPortalQueueError('');
+    try {
+      const data = await api.get('/portal/admin/booking-checkouts');
+      setPortalTransferBookings(data.transferQueue || []);
+      setPortalCardBookings(data.recentCardBookings || []);
+    } catch {
+      setPortalQueueError('Failed to load portal booking confirmations');
+    } finally {
+      setPortalQueueLoading(false);
+    }
+  }
+
+  async function confirmPortalTransfer(checkoutId) {
+    setWorkingPortalCheckoutId(checkoutId);
+    setPortalQueueError('');
+    try {
+      await api.post(`/portal/admin/booking-checkouts/${checkoutId}/admin-confirm`, {});
+      await loadPortalBookingQueue();
+    } catch (err) {
+      setPortalQueueError(err.error || 'Failed to confirm this portal booking transfer');
+    } finally {
+      setWorkingPortalCheckoutId('');
+    }
+  }
+
+  async function rejectPortalTransfer(checkoutId) {
+    setWorkingPortalCheckoutId(checkoutId);
+    setPortalQueueError('');
+    try {
+      await api.post(`/portal/admin/booking-checkouts/${checkoutId}/reject`, {});
+      await loadPortalBookingQueue();
+    } catch (err) {
+      setPortalQueueError(err.error || 'Failed to reject this portal booking transfer');
+    } finally {
+      setWorkingPortalCheckoutId('');
     }
   }
 
@@ -93,6 +142,16 @@ export default function Bookings() {
           Do not type payment manually here. First record the customer&apos;s payment in Banking. Then come here and apply that money to the booking.
         </p>
       </Card>
+
+      <PortalBookingReviewSection
+        loading={portalQueueLoading}
+        error={portalQueueError}
+        transferQueue={portalTransferBookings}
+        recentCardBookings={portalCardBookings}
+        workingId={workingPortalCheckoutId}
+        onConfirm={confirmPortalTransfer}
+        onReject={rejectPortalTransfer}
+      />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <SummaryCard label="Bookings in view" value={summary.count} />
@@ -231,6 +290,138 @@ function SummaryCard({ label, value }) {
       <p className="text-overline text-surface-600">{label}</p>
       <p className="mt-3 text-metric font-bold text-surface-900">{value}</p>
     </Card>
+  );
+}
+
+function PortalBookingReviewSection({
+  loading,
+  error,
+  transferQueue,
+  recentCardBookings,
+  workingId,
+  onConfirm,
+  onReject,
+}) {
+  if (loading) {
+    return (
+      <Card className="p-4">
+        <p className="text-body text-surface-500">Loading portal booking payments…</p>
+      </Card>
+    );
+  }
+
+  if ((!transferQueue || transferQueue.length === 0) && (!recentCardBookings || recentCardBookings.length === 0)) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-4">
+      <Card variant="warning" className="p-4">
+        <h2 className="text-overline uppercase text-warning-900">Portal booking payments</h2>
+        <p className="mt-2 text-body text-warning-900">
+          Transfer bookings have two checkpoints: first a staff admin confirmation when the money is seen, then a full confirmation when the matching bank statement line is linked in Banking. The statement is the final source of financial truth.
+        </p>
+      </Card>
+
+      {error ? (
+        <Card variant="error" className="p-4">
+          <p className="text-body text-error-900">{error}</p>
+        </Card>
+      ) : null}
+
+      {transferQueue?.length ? (
+        <Card className="p-4 space-y-3">
+          <div>
+            <h3 className="text-heading font-semibold text-surface-900">Portal transfer bookings waiting for action</h3>
+            <p className="mt-2 text-body text-surface-500">Use this to mark “money seen” first. The final financial confirmation still happens when the statement line is linked in Banking.</p>
+          </div>
+
+          {transferQueue.map((checkout) => {
+            const isAdminConfirmed = checkout.status === 'ADMIN_CONFIRMED';
+            return (
+              <div key={checkout.id} className="rounded-lg border border-surface-200 p-4">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-body-medium font-semibold text-surface-900">{checkout.customer?.name || 'Customer'}</p>
+                      <Badge color={isAdminConfirmed ? 'warning' : 'neutral'}>
+                        {isAdminConfirmed ? 'Admin confirmed, waiting for statement' : 'Waiting for admin confirmation'}
+                      </Badge>
+                    </div>
+                    <p className="text-body text-surface-500">
+                      {checkout.batch?.name} · {checkout.batch?.eggTypeLabel || 'Regular Size Eggs'} · {checkout.quantity} crates
+                    </p>
+                    <p className="text-caption text-surface-500">
+                      Ref {checkout.reference} · Created {formatDate(checkout.createdAt)}
+                      {checkout.adminConfirmedAt ? ` · Admin confirmed ${formatDate(checkout.adminConfirmedAt)}` : ''}
+                    </p>
+                  </div>
+                  <div className="text-right space-y-1">
+                    <p className="text-body-medium font-semibold text-surface-900">{formatCurrency(checkout.amountToPay)}</p>
+                    <p className="text-caption text-surface-500">Booking payment now</p>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex flex-wrap justify-end gap-3">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => onReject(checkout.id)}
+                    disabled={workingId === checkout.id}
+                  >
+                    {workingId === checkout.id ? 'Working…' : 'Reject'}
+                  </Button>
+                  {!isAdminConfirmed ? (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => onConfirm(checkout.id)}
+                      disabled={workingId === checkout.id}
+                    >
+                      {workingId === checkout.id ? 'Working…' : 'Confirm money seen'}
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
+        </Card>
+      ) : null}
+
+      {recentCardBookings?.length ? (
+        <Card className="p-4 space-y-3">
+          <div>
+            <h3 className="text-heading font-semibold text-surface-900">Recent portal card bookings</h3>
+            <p className="mt-2 text-body text-surface-500">These are portal bookings that already passed card verification and were created immediately.</p>
+          </div>
+
+          <div className="space-y-3">
+            {recentCardBookings.map((checkout) => (
+              <div key={checkout.id} className="rounded-lg border border-surface-200 p-4">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-body-medium font-semibold text-surface-900">{checkout.customer?.name || 'Customer'}</p>
+                      <Badge color="success">Card booking confirmed</Badge>
+                    </div>
+                    <p className="text-body text-surface-500">
+                      {checkout.batch?.name} · {checkout.batch?.eggTypeLabel || 'Regular Size Eggs'} · {checkout.quantity} crates
+                    </p>
+                    <p className="text-caption text-surface-500">
+                      Ref {checkout.reference} · Confirmed {formatDate(checkout.updatedAt)}
+                    </p>
+                  </div>
+                  <div className="text-right space-y-1">
+                    <p className="text-body-medium font-semibold text-surface-900">{formatCurrency(checkout.amountToPay)}</p>
+                    <p className="text-caption text-surface-500">Paid by card</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      ) : null}
+    </div>
   );
 }
 
@@ -970,4 +1161,3 @@ function CancelBookingModal({ booking, onClose, onCancelled }) {
     </div>
   );
 }
-

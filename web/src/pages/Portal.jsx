@@ -951,6 +951,7 @@ function getOrderStatus(order) {
     if (order.source === 'BOOKING_CHECKOUT') {
       if (order.status === 'AWAITING_PAYMENT') return { label: 'Waiting for card payment', tone: 'warning' };
       if (order.status === 'AWAITING_TRANSFER') return { label: 'Waiting for transfer confirmation', tone: 'info' };
+      if (order.status === 'ADMIN_CONFIRMED') return { label: 'Waiting for bank statement confirmation', tone: 'warning' };
       if (order.status === 'FAILED') return { label: 'Payment failed', tone: 'error' };
       if (order.status === 'PAID') return { label: 'Booking confirmed', tone: 'success' };
       if (order.status === 'PICKED_UP') return { label: 'Completed', tone: 'success' };
@@ -989,6 +990,7 @@ function getOrderNextStep(order) {
     if (order.source === 'BOOKING_CHECKOUT') {
       if (order.status === 'AWAITING_PAYMENT') return 'Complete your card payment to confirm the hold.';
       if (order.status === 'AWAITING_TRANSFER') return `Transfer ${fmtMoney(order.amountToPay || order.orderValue)} and wait for admin confirmation.`;
+      if (order.status === 'ADMIN_CONFIRMED') return 'The transfer has been seen by the team. Your booking will become fully confirmed after the matching bank statement line is linked.';
       if (order.status === 'FAILED') return 'This payment was not completed. You can try again.';
       if (order.status === 'PICKED_UP') return 'Your eggs have been picked up.';
     } else {

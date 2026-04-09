@@ -45,6 +45,16 @@ function candidateSummary(candidate) {
   return parts.join(' · ');
 }
 
+function portalCandidateSummary(candidate) {
+  if (!candidate) return '';
+  const parts = [];
+  if (candidate.reference) parts.push(candidate.reference);
+  if (candidate.customer?.name) parts.push(candidate.customer.name);
+  if (candidate.batch?.name) parts.push(candidate.batch.name);
+  if (candidate.adminConfirmedAt) parts.push(fmtDate(candidate.adminConfirmedAt));
+  return parts.join(' · ');
+}
+
 export default function ImportLineRow({ line, bankAccountId, categoryMap, selected, onToggleSelected, onSaved }) {
   const [draft, setDraft] = useState({
     description: line.description || '',
@@ -52,15 +62,20 @@ export default function ImportLineRow({ line, bankAccountId, categoryMap, select
     reviewStatus: line.reviewStatus,
     notes: line.notes || autoCleanDescription(line.description || ''),
     matchedCashDepositBatchId: line.matchedCashDepositBatch?.id || '',
+    selectedPortalCheckoutId: line.selectedPortalCheckout?.id || '',
   });
   const [saving, setSaving] = useState(false);
   const [matchCandidates, setMatchCandidates] = useState([]);
   const [matchingLoading, setMatchingLoading] = useState(false);
   const [matchingError, setMatchingError] = useState('');
+  const [portalCandidates, setPortalCandidates] = useState([]);
+  const [portalMatchingLoading, setPortalMatchingLoading] = useState(false);
+  const [portalMatchingError, setPortalMatchingError] = useState('');
   const categories = categoryOptionsForDirection(line.direction, categoryMap, draft.selectedCategory);
   const amount = line.direction === 'OUTFLOW' ? line.debitAmount : line.creditAmount;
   const isPosted = line.reviewStatus === 'POSTED';
   const needsCashDepositMatch = draft.selectedCategory === 'CASH_DEPOSIT_CONFIRMATION';
+  const needsPortalBookingMatch = draft.selectedCategory === 'CUSTOMER_BOOKING';
 
   useEffect(() => {
     let active = true;
@@ -105,12 +120,55 @@ export default function ImportLineRow({ line, bankAccountId, categoryMap, select
     };
   }, [amount, bankAccountId, isPosted, line.actualTransactionDate, line.transactionDate, line.valueDate, needsCashDepositMatch]);
 
+  useEffect(() => {
+    let active = true;
+
+    async function loadPortalCandidates() {
+      if (!needsPortalBookingMatch || !amount || isPosted) {
+        setPortalCandidates([]);
+        setPortalMatchingError('');
+        return;
+      }
+
+      setPortalMatchingLoading(true);
+      setPortalMatchingError('');
+      try {
+        const params = new URLSearchParams({
+          amount: String(amount),
+          transactionDate: String(line.transactionDate || line.actualTransactionDate || line.valueDate || ''),
+          ...(line.selectedCustomerId ? { customerId: line.selectedCustomerId } : {}),
+        });
+        const response = await api.get(`/banking/portal-booking-match-candidates?${params.toString()}`);
+        if (!active) return;
+        const candidates = response.candidates || [];
+        setPortalCandidates(candidates);
+        setDraft((current) => {
+          if (current.selectedPortalCheckoutId || !candidates.length) return current;
+          return candidates.length === 1
+            ? { ...current, selectedPortalCheckoutId: candidates[0].id }
+            : current;
+        });
+      } catch (err) {
+        if (!active) return;
+        setPortalMatchingError(err.error || 'Could not load portal booking matches');
+      } finally {
+        if (active) setPortalMatchingLoading(false);
+      }
+    }
+
+    loadPortalCandidates();
+    return () => {
+      active = false;
+    };
+  }, [amount, isPosted, line.actualTransactionDate, line.selectedCustomerId, line.transactionDate, line.valueDate, needsPortalBookingMatch]);
+
   async function saveLine() {
     setSaving(true);
     try {
       await api.patch(`/banking/imports/${line.importId}/lines/${line.id}`, {
         ...draft,
         matchedCashDepositBatchId: draft.matchedCashDepositBatchId || null,
+        selectedPortalCheckoutId: draft.selectedPortalCheckoutId || null,
       });
       onSaved();
     } finally {
@@ -150,6 +208,7 @@ export default function ImportLineRow({ line, bankAccountId, categoryMap, select
             ...c,
             selectedCategory: e.target.value,
             matchedCashDepositBatchId: e.target.value === 'CASH_DEPOSIT_CONFIRMATION' ? c.matchedCashDepositBatchId : '',
+            selectedPortalCheckoutId: e.target.value === 'CUSTOMER_BOOKING' ? c.selectedPortalCheckoutId : '',
           }))}
           disabled={isPosted}
           className="w-full rounded-md border border-surface-200 px-2 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-surface-100"
@@ -208,9 +267,39 @@ export default function ImportLineRow({ line, bankAccountId, categoryMap, select
               {matchingLoading ? <p className="text-caption text-surface-400">Finding possible matches…</p> : null}
               {matchingError ? <p className="text-caption text-error-600">{matchingError}</p> : null}
             </>
+          ) : needsPortalBookingMatch ? (
+            <>
+              <select
+                value={draft.selectedPortalCheckoutId}
+                onChange={(e) => setDraft((c) => ({ ...c, selectedPortalCheckoutId: e.target.value }))}
+                disabled={isPosted || portalMatchingLoading}
+                className="w-full rounded-md border border-surface-200 px-2 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-surface-100"
+              >
+                <option value="">Choose portal booking</option>
+                {portalCandidates.map((candidate) => (
+                  <option key={candidate.id} value={candidate.id}>
+                    {fmtMoney(candidate.amountToPay)} · {portalCandidateSummary(candidate)}
+                  </option>
+                ))}
+              </select>
+              {draft.selectedPortalCheckoutId ? (
+                <p className="text-caption text-surface-500">
+                  {portalCandidateSummary(portalCandidates.find((candidate) => candidate.id === draft.selectedPortalCheckoutId) || line.selectedPortalCheckout || {})}
+                </p>
+              ) : null}
+              {!portalMatchingLoading && !portalMatchingError && portalCandidates.length === 0 ? (
+                <p className="text-caption text-surface-400">No admin-confirmed portal booking matches were found for this amount and date.</p>
+              ) : null}
+              {portalMatchingLoading ? <p className="text-caption text-surface-400">Finding portal booking matches…</p> : null}
+              {portalMatchingError ? <p className="text-caption text-error-600">{portalMatchingError}</p> : null}
+            </>
           ) : line.matchedCashDepositBatch ? (
             <div className="rounded-md border border-surface-200 bg-surface-50 px-3 py-2 text-caption text-surface-600">
               {fmtMoney(line.matchedCashDepositBatch.amount)} · {fmtDate(line.matchedCashDepositBatch.depositDate)}
+            </div>
+          ) : line.selectedPortalCheckout ? (
+            <div className="rounded-md border border-surface-200 bg-surface-50 px-3 py-2 text-caption text-surface-600">
+              {portalCandidateSummary(line.selectedPortalCheckout)}
             </div>
           ) : (
             <span className="text-caption text-surface-400">—</span>

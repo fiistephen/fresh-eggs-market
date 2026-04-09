@@ -110,6 +110,7 @@ function getPortalCheckoutSummary(checkout, eggTypes = []) {
     paymentWindowEndsAt: checkout.paymentWindowEndsAt,
     pickupWindowStart: checkout.pickupWindowStart,
     pickupWindowEnd: checkout.pickupWindowEnd,
+    adminConfirmedAt: checkout.adminConfirmedAt,
     createdAt: checkout.createdAt,
     updatedAt: checkout.updatedAt,
     batch: checkout.batch ? {
@@ -122,6 +123,46 @@ function getPortalCheckoutSummary(checkout, eggTypes = []) {
       wholesalePrice: Number(checkout.batch.wholesalePrice),
       retailPrice: Number(checkout.batch.retailPrice),
     } : null,
+  };
+}
+
+function mapAdminBookingCheckout(checkout, eggTypes = []) {
+  return {
+    id: checkout.id,
+    reference: checkout.reference,
+    checkoutType: checkout.checkoutType,
+    paymentMethod: checkout.paymentMethod,
+    status: checkout.status,
+    customer: checkout.customer,
+    batch: {
+      id: checkout.batch.id,
+      name: checkout.batch.name,
+      eggTypeLabel: getCustomerEggTypeLabel(eggTypes, checkout.batch.eggTypeKey || 'REGULAR'),
+      expectedDate: checkout.batch.expectedDate,
+      receivedDate: checkout.batch.receivedDate,
+      status: checkout.batch.status,
+    },
+    booking: checkout.booking ? {
+      id: checkout.booking.id,
+      status: checkout.booking.status,
+      createdAt: checkout.booking.createdAt,
+    } : null,
+    quantity: checkout.quantity,
+    priceType: checkout.priceType,
+    unitPrice: Number(checkout.unitPrice || 0),
+    orderValue: Number(checkout.orderValue),
+    amountToPay: Number(checkout.amountToPay),
+    balanceAfterPayment: Number(checkout.balanceAfterPayment),
+    paymentWindowEndsAt: checkout.paymentWindowEndsAt,
+    adminConfirmedAt: checkout.adminConfirmedAt,
+    adminConfirmedBy: checkout.adminConfirmedBy ? {
+      firstName: checkout.adminConfirmedBy.firstName,
+      lastName: checkout.adminConfirmedBy.lastName,
+    } : null,
+    confirmationStatementLineId: checkout.confirmationStatementLineId,
+    createdAt: checkout.createdAt,
+    updatedAt: checkout.updatedAt,
+    notes: checkout.notes,
   };
 }
 
@@ -554,7 +595,7 @@ async function getPortalOrdersForCustomer(customerId) {
     expectedDate: checkout.batch.expectedDate,
     quantity: checkout.quantity,
     orderValue: Number(checkout.orderValue),
-    amountPaid: checkout.status === 'PAID' ? Number(checkout.amountToPay) : 0,
+    amountPaid: ['ADMIN_CONFIRMED', 'PAID'].includes(checkout.status) ? Number(checkout.amountToPay) : 0,
     balance: Math.max(0, Number(checkout.orderValue) - Number(checkout.amountToPay)),
     paymentPercent: Number(checkout.orderValue) > 0
       ? Math.round((Number(checkout.amountToPay) / Number(checkout.orderValue)) * 100)
@@ -1099,6 +1140,7 @@ export default async function portalRoutes(fastify) {
       const eggTypes = await getCustomerEggTypeConfig();
       const queue = await prisma.portalCheckout.findMany({
         where: {
+          checkoutType: 'BUY_NOW',
           paymentMethod: 'TRANSFER',
           status: 'AWAITING_TRANSFER',
         },
@@ -1140,6 +1182,150 @@ export default async function portalRoutes(fastify) {
     },
   });
 
+  fastify.get('/portal/admin/booking-checkouts', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
+    handler: async (request, reply) => {
+      const eggTypes = await getCustomerEggTypeConfig();
+      const [transferQueue, recentCardBookings] = await Promise.all([
+        prisma.portalCheckout.findMany({
+          where: {
+            checkoutType: 'BOOK_UPCOMING',
+            paymentMethod: 'TRANSFER',
+            status: { in: ['AWAITING_TRANSFER', 'ADMIN_CONFIRMED'] },
+          },
+          include: {
+            customer: { select: { id: true, name: true, phone: true, email: true } },
+            batch: { select: { id: true, name: true, expectedDate: true, receivedDate: true, eggTypeKey: true, status: true } },
+            booking: { select: { id: true, status: true, createdAt: true } },
+            adminConfirmedBy: { select: { firstName: true, lastName: true } },
+          },
+          orderBy: [{ createdAt: 'asc' }],
+        }),
+        prisma.portalCheckout.findMany({
+          where: {
+            checkoutType: 'BOOK_UPCOMING',
+            paymentMethod: 'CARD',
+            status: 'PAID',
+          },
+          include: {
+            customer: { select: { id: true, name: true, phone: true, email: true } },
+            batch: { select: { id: true, name: true, expectedDate: true, receivedDate: true, eggTypeKey: true, status: true } },
+            booking: { select: { id: true, status: true, createdAt: true } },
+          },
+          orderBy: [{ verifiedAt: 'desc' }, { updatedAt: 'desc' }],
+          take: 10,
+        }),
+      ]);
+
+      return reply.send({
+        transferQueue: transferQueue.map((checkout) => mapAdminBookingCheckout(checkout, eggTypes)),
+        recentCardBookings: recentCardBookings.map((checkout) => mapAdminBookingCheckout(checkout, eggTypes)),
+      });
+    },
+  });
+
+  fastify.get('/portal/admin/booking-checkouts/match-candidates', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
+    handler: async (request, reply) => {
+      const eggTypes = await getCustomerEggTypeConfig();
+      const { amount, transactionDate, customerId } = request.query;
+      const amountNumber = Number(amount || 0);
+      const targetDate = transactionDate ? new Date(transactionDate) : new Date();
+      const minDate = new Date(targetDate);
+      minDate.setDate(minDate.getDate() - 3);
+      const maxDate = new Date(targetDate);
+      maxDate.setDate(maxDate.getDate() + 3);
+
+      const candidates = await prisma.portalCheckout.findMany({
+        where: {
+          checkoutType: 'BOOK_UPCOMING',
+          paymentMethod: 'TRANSFER',
+          status: 'ADMIN_CONFIRMED',
+          amountToPay: amountNumber ? amountNumber : undefined,
+          createdAt: { gte: minDate, lte: maxDate },
+          ...(customerId ? { customerId } : {}),
+          confirmationStatementLineId: null,
+        },
+        include: {
+          customer: { select: { id: true, name: true, phone: true, email: true } },
+          batch: { select: { id: true, name: true, expectedDate: true, receivedDate: true, eggTypeKey: true, status: true } },
+          booking: { select: { id: true, status: true, createdAt: true } },
+          adminConfirmedBy: { select: { firstName: true, lastName: true } },
+        },
+        orderBy: [{ adminConfirmedAt: 'desc' }, { createdAt: 'desc' }],
+      });
+
+      return reply.send({
+        candidates: candidates.map((checkout) => mapAdminBookingCheckout(checkout, eggTypes)),
+      });
+    },
+  });
+
+  fastify.post('/portal/admin/booking-checkouts/:id/admin-confirm', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
+    handler: async (request, reply) => {
+      const checkout = await prisma.portalCheckout.findUnique({
+        where: { id: request.params.id },
+      });
+      if (!checkout || checkout.checkoutType !== 'BOOK_UPCOMING' || checkout.paymentMethod !== 'TRANSFER') {
+        return reply.code(404).send({ error: 'Portal booking transfer not found.' });
+      }
+      if (checkout.status === 'ADMIN_CONFIRMED') {
+        return reply.send({ confirmed: true, alreadyConfirmed: true, message: 'This transfer is already marked as seen. It still needs the bank statement line for final confirmation.' });
+      }
+      if (checkout.status !== 'AWAITING_TRANSFER') {
+        return reply.code(400).send({ error: 'This booking is no longer waiting for admin confirmation.' });
+      }
+
+      await prisma.portalCheckout.update({
+        where: { id: checkout.id },
+        data: {
+          status: 'ADMIN_CONFIRMED',
+          adminConfirmedAt: new Date(),
+          adminConfirmedById: request.user.sub,
+        },
+      });
+
+      return reply.send({
+        confirmed: true,
+        message: 'Admin confirmation saved. This booking still needs a matching bank statement line before it becomes fully confirmed.',
+      });
+    },
+  });
+
+  fastify.post('/portal/admin/booking-checkouts/:id/reject', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
+    handler: async (request, reply) => {
+      const { reason = '' } = request.body || {};
+      const checkout = await prisma.portalCheckout.findUnique({
+        where: { id: request.params.id },
+      });
+      if (!checkout || checkout.checkoutType !== 'BOOK_UPCOMING' || checkout.paymentMethod !== 'TRANSFER') {
+        return reply.code(404).send({ error: 'Portal booking transfer not found.' });
+      }
+      if (!['AWAITING_TRANSFER', 'ADMIN_CONFIRMED'].includes(checkout.status)) {
+        return reply.code(400).send({ error: 'This booking transfer can no longer be rejected from the pending queue.' });
+      }
+
+      await prisma.portalCheckout.update({
+        where: { id: checkout.id },
+        data: {
+          status: 'CANCELLED',
+          adminConfirmedAt: null,
+          adminConfirmedById: null,
+          notes: reason?.trim()
+            ? `${checkout.notes ? `${checkout.notes}\n` : ''}Rejected: ${reason.trim()}`
+            : checkout.notes,
+        },
+      });
+
+      return reply.send({
+        rejected: true,
+        message: 'Transfer rejected. The held booking crates are now available again.',
+      });
+    },
+  });
+
   fastify.post('/portal/admin/transfer-checkouts/:id/approve', {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
     handler: async (request, reply) => {
@@ -1154,7 +1340,18 @@ export default async function portalRoutes(fastify) {
       }
 
       if (checkout.checkoutType === 'BOOK_UPCOMING') {
-        await finalizeUpcomingBookingCheckout(checkout, request.user.sub);
+        await prisma.portalCheckout.update({
+          where: { id: checkout.id },
+          data: {
+            status: 'ADMIN_CONFIRMED',
+            adminConfirmedAt: new Date(),
+            adminConfirmedById: request.user.sub,
+          },
+        });
+        return reply.send({
+          approved: true,
+          message: 'Transfer marked as seen. This booking still needs a matching bank statement line for full confirmation.',
+        });
       } else {
         await finalizeBuyNowCheckout(checkout, request.user.sub);
       }
@@ -1178,7 +1375,7 @@ export default async function portalRoutes(fastify) {
       if (!checkout || checkout.paymentMethod !== 'TRANSFER') {
         return reply.code(404).send({ error: 'Transfer hold not found.' });
       }
-      if (checkout.status !== 'AWAITING_TRANSFER') {
+      if (!['AWAITING_TRANSFER', 'ADMIN_CONFIRMED'].includes(checkout.status)) {
         return reply.code(400).send({ error: 'This transfer hold is no longer waiting for confirmation.' });
       }
 
@@ -1186,6 +1383,8 @@ export default async function portalRoutes(fastify) {
         where: { id: checkout.id },
         data: {
           status: 'CANCELLED',
+          adminConfirmedAt: null,
+          adminConfirmedById: null,
           notes: reason?.trim()
             ? `${checkout.notes ? `${checkout.notes}\n` : ''}Rejected: ${reason.trim()}`
             : checkout.notes,

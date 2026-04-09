@@ -43,6 +43,7 @@ model User {
   appSettingsUpdated AppSetting[] @relation("AppSettingUpdatedBy")
   cashDepositBatchesCreated CashDepositBatch[] @relation("CashDepositBatchCreatedBy")
   cashDepositBatchesConfirmed CashDepositBatch[] @relation("CashDepositBatchConfirmedBy")
+  portalCheckoutsAdminConfirmed PortalCheckout[] @relation("PortalCheckoutAdminConfirmedBy")
 
   @@map("users")
 }
@@ -266,6 +267,7 @@ enum PortalCheckoutType {
 enum PortalCheckoutStatus {
   AWAITING_PAYMENT
   AWAITING_TRANSFER
+  ADMIN_CONFIRMED
   PAID
   FAILED
   CANCELLED
@@ -293,6 +295,9 @@ model PortalCheckout {
   paymentWindowEndsAt  DateTime?                @map("payment_window_ends_at")
   pickupWindowStart    DateTime?                @map("pickup_window_start")
   pickupWindowEnd      DateTime?                @map("pickup_window_end")
+  adminConfirmedById   String?                  @map("admin_confirmed_by_id")
+  adminConfirmedAt     DateTime?                @map("admin_confirmed_at")
+  confirmationStatementLineId String?           @unique @map("confirmation_statement_line_id")
   notes                String?
   verifiedAt           DateTime?                @map("verified_at")
   createdAt            DateTime                 @default(now()) @map("created_at")
@@ -302,6 +307,9 @@ model PortalCheckout {
   batch                Batch                    @relation(fields: [batchId], references: [id])
   booking              Booking?                 @relation(fields: [bookingId], references: [id])
   portalOrderRequest   PortalOrderRequest?      @relation(fields: [portalOrderRequestId], references: [id])
+  adminConfirmedBy     User?                    @relation("PortalCheckoutAdminConfirmedBy", fields: [adminConfirmedById], references: [id])
+  selectedStatementLine BankStatementLine?      @relation("BankStatementLineSelectedPortalCheckout")
+  confirmationStatementLine BankStatementLine?  @relation("PortalCheckoutConfirmedStatementLine", fields: [confirmationStatementLineId], references: [id])
 
   @@map("portal_checkouts")
 }
@@ -523,6 +531,7 @@ model BankStatementLine {
   selectedCategory   String?                   @map("selected_category")
   selectedCustomerId String?                   @map("selected_customer_id")
   matchedCashDepositBatchId String?            @map("matched_cash_deposit_batch_id")
+  selectedPortalCheckoutId String?             @unique @map("selected_portal_checkout_id")
   notes              String?
   fingerprint        String                    @unique
   postedTransactionId String?                  @unique @map("posted_transaction_id")
@@ -535,6 +544,8 @@ model BankStatementLine {
   postedTransaction BankTransaction?    @relation(fields: [postedTransactionId], references: [id])
   matchedCashDepositBatch CashDepositBatch? @relation("CashDepositBatchMatchedStatementLine", fields: [matchedCashDepositBatchId], references: [id])
   confirmedCashDepositBatch CashDepositBatch? @relation("CashDepositBatchConfirmedStatementLine")
+  selectedPortalCheckout PortalCheckout? @relation("BankStatementLineSelectedPortalCheckout", fields: [selectedPortalCheckoutId], references: [id])
+  confirmedPortalCheckout PortalCheckout? @relation("PortalCheckoutConfirmedStatementLine")
 
   @@unique([importId, lineNumber])
   @@map("bank_statement_lines")

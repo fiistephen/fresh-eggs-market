@@ -164,6 +164,92 @@ async function validateCustomer(customerId) {
   return customer || false;
 }
 
+async function finalizePortalTransferBookingFromStatement({
+  portalCheckoutId,
+  bankTransactionId,
+  statementLineId,
+  enteredById,
+}) {
+  const checkout = await prisma.portalCheckout.findUnique({
+    where: { id: portalCheckoutId },
+    include: {
+      batch: {
+        select: {
+          id: true,
+          name: true,
+          expectedDate: true,
+        },
+      },
+    },
+  });
+
+  if (!checkout || checkout.checkoutType !== 'BOOK_UPCOMING' || checkout.paymentMethod !== 'TRANSFER') {
+    throw new Error('Portal booking transfer was not found.');
+  }
+  if (checkout.status !== 'ADMIN_CONFIRMED') {
+    throw new Error('Portal booking transfer is not waiting for statement confirmation.');
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const booking = checkout.bookingId
+      ? await tx.booking.update({
+          where: { id: checkout.bookingId },
+          data: { status: 'CONFIRMED' },
+        })
+      : await tx.booking.create({
+          data: {
+            customerId: checkout.customerId,
+            batchId: checkout.batchId,
+            quantity: checkout.quantity,
+            amountPaid: checkout.amountToPay,
+            orderValue: checkout.orderValue,
+            status: 'CONFIRMED',
+            channel: 'website',
+            notes: checkout.notes?.trim() || `Confirmed from statement line for portal booking ${checkout.reference}`,
+          },
+        });
+
+    await tx.bankTransaction.update({
+      where: { id: bankTransactionId },
+      data: {
+        customerId: checkout.customerId,
+        bookingId: booking.id,
+      },
+    });
+
+    await tx.bookingPaymentAllocation.upsert({
+      where: {
+        bookingId_bankTransactionId: {
+          bookingId: booking.id,
+          bankTransactionId,
+        },
+      },
+      update: {
+        amount: checkout.amountToPay,
+        allocatedById: enteredById,
+      },
+      create: {
+        bookingId: booking.id,
+        bankTransactionId,
+        amount: checkout.amountToPay,
+        allocatedById: enteredById,
+      },
+    });
+
+    await tx.portalCheckout.update({
+      where: { id: checkout.id },
+      data: {
+        status: 'PAID',
+        bookingId: booking.id,
+        verifiedAt: new Date(),
+        confirmationStatementLineId: statementLineId,
+      },
+    });
+
+    return booking;
+  });
+}
+
 function createBankTransaction({
   bankAccountId,
   direction,
@@ -1204,6 +1290,18 @@ export default async function bankingRoutes(fastify) {
               status: true,
             },
           },
+          selectedPortalCheckout: {
+            select: {
+              id: true,
+              reference: true,
+              amountToPay: true,
+              status: true,
+              createdAt: true,
+              adminConfirmedAt: true,
+              customer: { select: { id: true, name: true, phone: true } },
+              batch: { select: { id: true, name: true, eggTypeKey: true, expectedDate: true } },
+            },
+          },
         },
         orderBy: { lineNumber: 'asc' },
       });
@@ -1223,7 +1321,7 @@ export default async function bankingRoutes(fastify) {
         return reply.code(400).send({ error: 'Posted lines cannot be edited' });
       }
 
-      const { selectedCategory, selectedCustomerId, matchedCashDepositBatchId, notes, reviewStatus, description } = request.body;
+      const { selectedCategory, selectedCustomerId, matchedCashDepositBatchId, selectedPortalCheckoutId, notes, reviewStatus, description } = request.body;
       const updates = {};
       const categoryConfig = await getTransactionCategoryConfig();
 
@@ -1238,6 +1336,9 @@ export default async function bankingRoutes(fastify) {
         updates.selectedCategory = selectedCategory;
         if (selectedCategory !== 'CASH_DEPOSIT_CONFIRMATION' && matchedCashDepositBatchId === undefined) {
           updates.matchedCashDepositBatchId = null;
+        }
+        if (selectedCategory !== 'CUSTOMER_BOOKING' && selectedPortalCheckoutId === undefined) {
+          updates.selectedPortalCheckoutId = null;
         }
       }
 
@@ -1282,6 +1383,31 @@ export default async function bankingRoutes(fastify) {
         }
       }
 
+      if (selectedPortalCheckoutId !== undefined) {
+        if (selectedPortalCheckoutId) {
+          const portalCheckout = await prisma.portalCheckout.findUnique({
+            where: { id: selectedPortalCheckoutId },
+          });
+          if (!portalCheckout || portalCheckout.checkoutType !== 'BOOK_UPCOMING' || portalCheckout.paymentMethod !== 'TRANSFER') {
+            return reply.code(404).send({ error: 'Portal booking transfer not found.' });
+          }
+          if (portalCheckout.status !== 'ADMIN_CONFIRMED') {
+            return reply.code(400).send({ error: 'Portal booking transfer is not waiting for statement confirmation.' });
+          }
+          const lineAmount = existing.direction === 'OUTFLOW' ? Number(existing.debitAmount || 0) : Number(existing.creditAmount || 0);
+          if (Math.abs(Number(portalCheckout.amountToPay) - lineAmount) > 0.009) {
+            return reply.code(400).send({ error: 'The selected portal booking amount does not match this statement line.' });
+          }
+          if ((selectedCategory || existing.selectedCategory) !== 'CUSTOMER_BOOKING') {
+            return reply.code(400).send({ error: 'Portal booking matching is only available for Customer booking statement lines.' });
+          }
+          updates.selectedPortalCheckoutId = selectedPortalCheckoutId;
+          updates.selectedCustomerId = portalCheckout.customerId;
+        } else {
+          updates.selectedPortalCheckoutId = null;
+        }
+      }
+
       if (notes !== undefined) updates.notes = notes || null;
       else if (updates.description) updates.notes = buildCleanDescription(updates.description) || null;
 
@@ -1306,6 +1432,18 @@ export default async function bankingRoutes(fastify) {
               amount: true,
               depositDate: true,
               status: true,
+            },
+          },
+          selectedPortalCheckout: {
+            select: {
+              id: true,
+              reference: true,
+              amountToPay: true,
+              status: true,
+              createdAt: true,
+              adminConfirmedAt: true,
+              customer: { select: { id: true, name: true, phone: true } },
+              batch: { select: { id: true, name: true, eggTypeKey: true, expectedDate: true } },
             },
           },
         },
@@ -1385,6 +1523,56 @@ export default async function bankingRoutes(fastify) {
     },
   });
 
+  fastify.get('/banking/portal-booking-match-candidates', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
+    handler: async (request, reply) => {
+      const { amount, transactionDate, customerId } = request.query;
+      const amountNumber = Number(amount || 0);
+      const targetDate = transactionDate ? new Date(transactionDate) : new Date();
+      const minDate = new Date(targetDate);
+      minDate.setDate(minDate.getDate() - 3);
+      const maxDate = new Date(targetDate);
+      maxDate.setDate(maxDate.getDate() + 3);
+      const eggTypes = await getCustomerEggTypeConfig();
+
+      const candidates = await prisma.portalCheckout.findMany({
+        where: {
+          checkoutType: 'BOOK_UPCOMING',
+          paymentMethod: 'TRANSFER',
+          status: 'ADMIN_CONFIRMED',
+          amountToPay: amountNumber ? amountNumber : undefined,
+          confirmationStatementLineId: null,
+          createdAt: { gte: minDate, lte: maxDate },
+          ...(customerId ? { customerId } : {}),
+        },
+        include: {
+          customer: { select: { id: true, name: true, phone: true, email: true } },
+          batch: { select: { id: true, name: true, expectedDate: true, receivedDate: true, eggTypeKey: true, status: true } },
+          adminConfirmedBy: { select: { firstName: true, lastName: true } },
+        },
+        orderBy: [{ adminConfirmedAt: 'desc' }, { createdAt: 'desc' }],
+      });
+
+      return reply.send({
+        candidates: candidates.map((checkout) => ({
+          id: checkout.id,
+          reference: checkout.reference,
+          status: checkout.status,
+          customer: checkout.customer,
+          batch: {
+            ...checkout.batch,
+            eggTypeLabel: getCustomerEggTypeLabel(eggTypes, checkout.batch.eggTypeKey || 'REGULAR'),
+          },
+          amountToPay: Number(checkout.amountToPay),
+          quantity: checkout.quantity,
+          adminConfirmedAt: checkout.adminConfirmedAt,
+          createdAt: checkout.createdAt,
+          adminConfirmedBy: checkout.adminConfirmedBy,
+        })),
+      });
+    },
+  });
+
   fastify.delete('/banking/imports/:id/lines/:lineId', {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
     handler: async (request, reply) => {
@@ -1415,6 +1603,7 @@ export default async function bankingRoutes(fastify) {
             orderBy: { lineNumber: 'asc' },
             include: {
               matchedCashDepositBatch: true,
+              selectedPortalCheckout: true,
             },
           },
         },
@@ -1472,6 +1661,25 @@ export default async function bankingRoutes(fastify) {
           }
         }
 
+        if (line.selectedPortalCheckoutId) {
+          if (line.selectedCategory !== 'CUSTOMER_BOOKING') {
+            skipped.push({ lineId: line.id, reason: 'Portal booking link can only be used with Customer booking category.' });
+            continue;
+          }
+          if (line.direction !== 'INFLOW') {
+            skipped.push({ lineId: line.id, reason: 'Portal booking link only works with inflow statement lines.' });
+            continue;
+          }
+          if (!line.selectedPortalCheckout || line.selectedPortalCheckout.status !== 'ADMIN_CONFIRMED') {
+            skipped.push({ lineId: line.id, reason: 'Linked portal booking is no longer waiting for statement confirmation.' });
+            continue;
+          }
+          if (Math.abs(Number(line.selectedPortalCheckout.amountToPay || 0) - amount) > 0.009) {
+            skipped.push({ lineId: line.id, reason: 'Linked portal booking amount does not match the statement inflow.' });
+            continue;
+          }
+        }
+
         const transaction = await createBankTransaction({
           bankAccountId: line.selectedCategory === 'CASH_DEPOSIT_CONFIRMATION'
             ? line.matchedCashDepositBatch.toBankAccountId
@@ -1484,7 +1692,7 @@ export default async function bankingRoutes(fastify) {
             : line.description,
           reference: line.docNum,
           transactionDate: line.transactionDate || new Date(),
-          customerId: line.selectedCustomerId,
+          customerId: line.selectedPortalCheckout?.customerId || line.selectedCustomerId,
           enteredById: request.user.sub,
           sourceType: 'STATEMENT_IMPORT',
           sourceFingerprint: line.fingerprint,
@@ -1507,6 +1715,15 @@ export default async function bankingRoutes(fastify) {
               confirmedAt: new Date(),
               confirmationStatementLineId: line.id,
             },
+          });
+        }
+
+        if (line.selectedPortalCheckoutId) {
+          await finalizePortalTransferBookingFromStatement({
+            portalCheckoutId: line.selectedPortalCheckoutId,
+            bankTransactionId: transaction.id,
+            statementLineId: line.id,
+            enteredById: request.user.sub,
           });
         }
 
