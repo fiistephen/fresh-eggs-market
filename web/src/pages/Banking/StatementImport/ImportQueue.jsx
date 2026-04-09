@@ -6,12 +6,18 @@ import { EmptyState, StatusChip, ImportCountCard } from '../shared/ui';
 import ImportLineRow from './ImportLineRow';
 
 export default function ImportsView({
-  accounts,
   categoryMap,
   imports,
+  importsTotal,
+  importsPage,
+  importsPageSize,
+  importsSearch,
   importsLoading,
   selectedImportId,
   onSelectImport,
+  onSearchChange,
+  onPageChange,
+  importTotalPages,
   selectedImport,
   selectedImportLines,
   selectedImportLoading,
@@ -49,6 +55,8 @@ export default function ImportsView({
 
   const editableVisibleLines = filteredImportLines.filter((line) => line.reviewStatus !== 'POSTED');
   const categoryOptions = [...new Set(editableVisibleLines.flatMap((line) => categoryOptionsForDirection(line.direction, categoryMap, line.selectedCategory || line.suggestedCategory || '')))];
+  const importRangeStart = importsTotal === 0 ? 0 : (importsPage - 1) * importsPageSize + 1;
+  const importRangeEnd = Math.min(importsPage * importsPageSize, importsTotal);
 
   useEffect(() => {
     const visibleEditableIds = new Set(editableVisibleLines.map((l) => l.id));
@@ -102,45 +110,94 @@ export default function ImportsView({
   if (imports.length === 0) {
     return (
       <div className="rounded-xl border border-gray-200 bg-white px-6 py-16">
-        <EmptyState title="No bank statements imported yet" body="Use the 'Import statement' button to upload a Providus CSV." />
+        <EmptyState
+          title={importsSearch.trim() ? 'No statements match that search' : 'No bank statements imported yet'}
+          body={importsSearch.trim() ? 'Try a different file name or clear the search to see all statement imports.' : 'Use the “Import statement” button to upload a Providus CSV.'}
+        />
       </div>
     );
   }
 
   return (
     <div className="space-y-3">
-      {/* ── Statement selector (replaces old sidebar) ────── */}
-      <div className="flex flex-wrap items-center gap-3">
-        <select
-          value={selectedImportId}
-          onChange={(e) => onSelectImport(e.target.value)}
-          className="min-w-[280px] rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 outline-none focus:ring-2 focus:ring-brand-500"
-        >
-          {imports.map((rec) => (
-            <option key={rec.id} value={rec.id}>
-              {rec.originalFilename} — {rec.status.toLowerCase().replace(/_/g, ' ')} ({rec.parsedRowCount} lines)
-            </option>
-          ))}
-        </select>
+      {/* ── Statement queue ──────────────────────────────── */}
+      <div className="rounded-xl border border-gray-200 bg-white">
+        <div className="flex flex-wrap items-center gap-3 border-b border-gray-100 px-5 py-4">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">Import queue</h2>
+            <p className="text-xs text-gray-500">Search and open the statement you want to review.</p>
+          </div>
+          <input
+            type="text"
+            value={importsSearch}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder="Search file name or account…"
+            className="min-w-[240px] flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+          />
+          <span className="text-xs text-gray-500">
+            {importsTotal > 0 ? `${importRangeStart}–${importRangeEnd} of ${importsTotal}` : 'No imports'}
+          </span>
+        </div>
 
-        {selectedImport && (
-          <>
-            <div className="flex items-center gap-2 text-xs text-gray-500">
-              <span>{displayAccountName(selectedImport.bankAccount)}</span>
-              <span>·</span>
-              <span>{fmtDate(selectedImport.statementDateFrom)} – {fmtDate(selectedImport.statementDateTo)}</span>
-            </div>
-            {!['POSTED', 'PARTIALLY_POSTED'].includes(selectedImport.status) && (
+        <div className="grid gap-3 px-5 py-4 md:grid-cols-2 xl:grid-cols-3">
+          {imports.map((rec) => {
+            const selected = rec.id === selectedImportId;
+            const pendingCount = Math.max(0, Number(rec.parsedRowCount || 0) - Number(rec.postedRowCount || 0));
+            return (
+              <button
+                key={rec.id}
+                type="button"
+                onClick={() => onSelectImport(rec.id)}
+                className={`rounded-xl border p-4 text-left transition-colors ${
+                  selected
+                    ? 'border-brand-300 bg-brand-50'
+                    : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-gray-900">{rec.originalFilename}</p>
+                    <p className="mt-1 text-xs text-gray-500">{displayAccountName(rec.bankAccount)}</p>
+                  </div>
+                  <StatusChip label={rec.status.toLowerCase().replace(/_/g, ' ')} tone={rec.status === 'POSTED' ? 'green' : rec.status === 'PARTIALLY_POSTED' ? 'amber' : 'gray'} />
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-gray-500">
+                  <span>{fmtDate(rec.statementDateFrom)} – {fmtDate(rec.statementDateTo)}</span>
+                  <span>·</span>
+                  <span>{rec.parsedRowCount} lines</span>
+                  <span>·</span>
+                  <span>{pendingCount} not yet posted</span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {importsTotal > importsPageSize && (
+          <div className="flex items-center justify-between border-t border-gray-100 px-5 py-3">
+            <p className="text-xs text-gray-500">
+              Showing {importRangeStart}–{importRangeEnd} of {importsTotal}
+            </p>
+            <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={removeImportFromQueue}
-                disabled={removingImport}
-                className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={() => onPageChange(importsPage - 1)}
+                disabled={importsPage <= 1}
+                className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                {removingImport ? 'Removing…' : 'Remove from queue'}
+                Previous
               </button>
-            )}
-          </>
+              <span className="text-xs text-gray-500">Page {importsPage} of {importTotalPages}</span>
+              <button
+                type="button"
+                onClick={() => onPageChange(importsPage + 1)}
+                disabled={importsPage >= importTotalPages}
+                className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Next
+              </button>
+            </div>
+          </div>
         )}
       </div>
 
@@ -162,10 +219,27 @@ export default function ImportsView({
                   <p className="text-xs text-gray-500">
                     Review the lines, fix categories, then post only the lines that are ready.
                   </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                    <span>{displayAccountName(selectedImport.bankAccount)}</span>
+                    <span>·</span>
+                    <span>{fmtDate(selectedImport.statementDateFrom)} – {fmtDate(selectedImport.statementDateTo)}</span>
+                  </div>
                 </div>
-                <button onClick={onPostImport} disabled={postingImport || selectedImport.status === 'POSTED'} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-gray-300">
-                  {postingImport ? 'Posting…' : selectedImport.status === 'POSTED' ? 'Posted' : 'Post ready lines'}
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  {!['POSTED', 'PARTIALLY_POSTED'].includes(selectedImport.status) && (
+                    <button
+                      type="button"
+                      onClick={removeImportFromQueue}
+                      disabled={removingImport}
+                      className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {removingImport ? 'Removing…' : 'Remove from queue'}
+                    </button>
+                  )}
+                  <button onClick={onPostImport} disabled={postingImport || selectedImport.status === 'POSTED'} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-gray-300">
+                    {postingImport ? 'Posting…' : selectedImport.status === 'POSTED' ? 'Posted' : 'Post ready lines'}
+                  </button>
+                </div>
               </div>
               <div className="flex flex-wrap gap-2">
                 <ImportCountCard label="Ready" value={importCount(selectedImport, 'READY_TO_POST') || importCount(selectedImport, 'ready')} tone="green" />

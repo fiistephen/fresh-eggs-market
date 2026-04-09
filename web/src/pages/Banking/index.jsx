@@ -29,6 +29,7 @@ const TABS = [
   { key: 'imports', label: 'Statements' },
   { key: 'customer-bookings', label: 'Bookings', badge: true },
   { key: 'portal-transfers', label: 'Transfers' },
+  { key: 'reports', label: 'Reports' },
 ];
 
 const REPORT_TABS = [
@@ -40,6 +41,7 @@ const REPORT_TABS = [
 
 /* ── Pagination config ─────────────────────────────────── */
 const PAGE_SIZE = 25;
+const IMPORTS_PAGE_SIZE = 12;
 
 /* ── Main Banking page ─────────────────────────────────── */
 
@@ -55,6 +57,9 @@ export default function Banking() {
   const [transactionsTotal, setTransactionsTotal] = useState(0);
   const [transactionsPage, setTransactionsPage] = useState(1);
   const [imports, setImports] = useState([]);
+  const [importsTotal, setImportsTotal] = useState(0);
+  const [importsPage, setImportsPage] = useState(1);
+  const [importsSearch, setImportsSearch] = useState('');
   const [reconciliations, setReconciliations] = useState([]);
   const [transactionCategories, setTransactionCategories] = useState([]);
   const [selectedImportId, setSelectedImportId] = useState('');
@@ -64,6 +69,7 @@ export default function Banking() {
   const [customerBookingBatches, setCustomerBookingBatches] = useState([]);
   const [portalTransferQueue, setPortalTransferQueue] = useState([]);
   const [bankingPolicy, setBankingPolicy] = useState({ bookingMinimumPaymentPercent: 80 });
+  const [activeReport, setActiveReport] = useState('balances');
 
   /* ── Loading / error state ───────────────────────────── */
   const [loading, setLoading] = useState(true);
@@ -77,6 +83,7 @@ export default function Banking() {
 
   /* ── Transaction filters ─────────────────────────────── */
   const [filters, setFilters] = useState({
+    query: '',
     bankAccountId: '',
     direction: '',
     sourceType: '',
@@ -95,10 +102,8 @@ export default function Banking() {
   /* ── Action menu state ───────────────────────────────── */
   const [showEntryMenu, setShowEntryMenu] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
-  const [showReportsMenu, setShowReportsMenu] = useState(false);
   const entryRef = useRef(null);
   const moreRef = useRef(null);
-  const reportsRef = useRef(null);
 
   /* ── Derived ─────────────────────────────────────────── */
   const canRecord = ['ADMIN', 'MANAGER', 'RECORD_KEEPER'].includes(user?.role);
@@ -110,7 +115,6 @@ export default function Banking() {
     function handleClick(e) {
       if (entryRef.current && !entryRef.current.contains(e.target)) setShowEntryMenu(false);
       if (moreRef.current && !moreRef.current.contains(e.target)) setShowMoreMenu(false);
-      if (reportsRef.current && !reportsRef.current.contains(e.target)) setShowReportsMenu(false);
     }
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
@@ -122,15 +126,15 @@ export default function Banking() {
 
   useEffect(() => {
     if (activeView === 'transactions') loadTransactions();
-  }, [activeView, transactionsPage, filters.bankAccountId, filters.direction, filters.sourceType, filters.dateFrom, filters.dateTo]);
+  }, [activeView, transactionsPage, filters.query, filters.bankAccountId, filters.direction, filters.sourceType, filters.dateFrom, filters.dateTo]);
 
   useEffect(() => {
     if (activeView === 'imports') loadImports();
-  }, [activeView]);
+  }, [activeView, importsPage, importsSearch]);
 
   useEffect(() => {
-    if (activeView === 'balances') loadReconciliations();
-  }, [activeView]);
+    if (activeView === 'reports' && activeReport === 'balances') loadReconciliations();
+  }, [activeView, activeReport]);
 
   useEffect(() => {
     if (selectedImportId) {
@@ -144,7 +148,11 @@ export default function Banking() {
   // Reset page when filters change
   useEffect(() => {
     setTransactionsPage(1);
-  }, [filters.bankAccountId, filters.direction, filters.sourceType, filters.dateFrom, filters.dateTo]);
+  }, [filters.query, filters.bankAccountId, filters.direction, filters.sourceType, filters.dateFrom, filters.dateTo]);
+
+  useEffect(() => {
+    setImportsPage(1);
+  }, [importsSearch]);
 
   /* ── Data loaders ────────────────────────────────────── */
 
@@ -183,6 +191,7 @@ export default function Banking() {
     try {
       const offset = (transactionsPage - 1) * PAGE_SIZE;
       const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
+      if (filters.query) params.set('q', filters.query);
       if (filters.bankAccountId) params.set('bankAccountId', filters.bankAccountId);
       if (filters.direction) params.set('direction', filters.direction);
       if (filters.sourceType) params.set('sourceType', filters.sourceType);
@@ -201,9 +210,13 @@ export default function Banking() {
   async function loadImports() {
     setImportsLoading(true);
     try {
-      const data = await api.get('/banking/imports?limit=20');
+      const offset = (importsPage - 1) * IMPORTS_PAGE_SIZE;
+      const params = new URLSearchParams({ limit: String(IMPORTS_PAGE_SIZE), offset: String(offset) });
+      if (importsSearch.trim()) params.set('search', importsSearch.trim());
+      const data = await api.get(`/banking/imports?${params.toString()}`);
       const nextImports = data.imports || [];
       setImports(nextImports);
+      setImportsTotal(data.total || nextImports.length);
       setSelectedImportId((current) => {
         if (current && nextImports.some((r) => r.id === current)) return current;
         return nextImports[0]?.id || '';
@@ -294,9 +307,15 @@ export default function Banking() {
     setFilters((prev) => ({ ...prev, ...next }));
   }
 
+  function openReport(reportKey = 'balances') {
+    setActiveReport(reportKey);
+    setActiveView('reports');
+  }
+
   /* ── Pagination helpers ──────────────────────────────── */
   const totalPages = Math.max(1, Math.ceil(transactionsTotal / PAGE_SIZE));
-  const isReportView = ['balances', 'unbooked', 'liability', 'expenses'].includes(activeView);
+  const importTotalPages = Math.max(1, Math.ceil(importsTotal / IMPORTS_PAGE_SIZE));
+  const isReportView = activeView === 'reports';
 
   /* ── Render ──────────────────────────────────────────── */
 
@@ -356,7 +375,7 @@ export default function Banking() {
 
       {/* ── Horizontal tab strip ──────────────────────────── */}
       <div className="flex items-center gap-1 overflow-x-auto border-b border-gray-200">
-        {TABS.map((tab) => {
+        {TABS.filter((tab) => canViewReports || tab.key !== 'reports').map((tab) => {
           const isActive = activeView === tab.key;
           const badgeCount = tab.badge ? customerBookingQueue.length : 0;
           return (
@@ -378,37 +397,29 @@ export default function Banking() {
             </button>
           );
         })}
-
-        {/* Reports dropdown tab */}
-        {canViewReports && (
-          <div className="relative" ref={reportsRef}>
-            <button
-              onClick={() => setShowReportsMenu((v) => !v)}
-              className={`flex items-center gap-1 whitespace-nowrap px-4 py-2.5 text-sm font-medium transition-colors ${
-                isReportView
-                  ? 'border-b-2 border-brand-600 text-brand-700'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              {isReportView ? REPORT_TABS.find((t) => t.key === activeView)?.label || 'Reports' : 'Reports'}
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
-            </button>
-            {showReportsMenu && (
-              <div className="absolute left-0 top-full z-20 mt-1 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
-                {REPORT_TABS.map((rt) => (
-                  <button
-                    key={rt.key}
-                    onClick={() => { setActiveView(rt.key); setShowReportsMenu(false); }}
-                    className={`flex w-full items-center px-3 py-2 text-sm ${activeView === rt.key ? 'bg-brand-50 text-brand-700 font-medium' : 'text-gray-700 hover:bg-gray-50'}`}
-                  >
-                    {rt.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
       </div>
+
+      {canViewReports && isReportView && (
+        <div className="flex flex-wrap items-center gap-2">
+          {REPORT_TABS.map((reportTab) => {
+            const isActive = activeReport === reportTab.key;
+            return (
+              <button
+                key={reportTab.key}
+                type="button"
+                onClick={() => setActiveReport(reportTab.key)}
+                className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
+                  isActive
+                    ? 'bg-brand-100 text-brand-700'
+                    : 'bg-white text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                {reportTab.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Error banner */}
       {error && (
@@ -431,6 +442,7 @@ export default function Banking() {
           portalTransferQueue={portalTransferQueue}
           canViewReports={canViewReports}
           onNavigate={setActiveView}
+          onOpenReport={openReport}
         />
       )}
 
@@ -455,9 +467,16 @@ export default function Banking() {
           accounts={accounts}
           categoryMap={categoryMap}
           imports={imports}
+          importsTotal={importsTotal}
+          importsPage={importsPage}
+          importsPageSize={IMPORTS_PAGE_SIZE}
+          importsSearch={importsSearch}
           importsLoading={importsLoading}
           selectedImportId={selectedImportId}
           onSelectImport={setSelectedImportId}
+          onSearchChange={setImportsSearch}
+          onPageChange={setImportsPage}
+          importTotalPages={importTotalPages}
           selectedImport={selectedImport}
           selectedImportLines={selectedImportLines}
           selectedImportLoading={selectedImportLoading}
@@ -497,7 +516,7 @@ export default function Banking() {
         />
       )}
 
-      {activeView === 'balances' && (
+      {activeView === 'reports' && activeReport === 'balances' && (
         <AccountBalances
           accounts={accounts}
           reconciliations={reconciliations}
@@ -505,9 +524,9 @@ export default function Banking() {
         />
       )}
 
-      {activeView === 'unbooked' && <UnbookedDeposits />}
-      {activeView === 'liability' && <CustomerLiability />}
-      {activeView === 'expenses' && <Expenses categoryMap={categoryMap} />}
+      {activeView === 'reports' && activeReport === 'unbooked' && <UnbookedDeposits />}
+      {activeView === 'reports' && activeReport === 'liability' && <CustomerLiability />}
+      {activeView === 'reports' && activeReport === 'expenses' && <Expenses categoryMap={categoryMap} />}
 
       {/* ── Modals ─────────────────────────────────────────── */}
 

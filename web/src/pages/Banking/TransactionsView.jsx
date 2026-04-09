@@ -6,12 +6,13 @@ export default function TransactionsView({ accounts, transactions, total, loadin
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
 
-  const hasActiveFilters = filters.bankAccountId || filters.direction || filters.sourceType || filters.dateFrom || filters.dateTo;
+  const hasActiveFilters = filters.query || filters.bankAccountId || filters.direction || filters.sourceType || filters.dateFrom || filters.dateTo;
   const rangeStart = Math.min((page - 1) * pageSize + 1, total);
   const rangeEnd = Math.min(page * pageSize, total);
 
   /* ── Build active filter chips ───────────────────────── */
   const chips = [];
+  if (filters.query) chips.push({ key: 'query', label: `Search: ${filters.query}` });
   if (filters.bankAccountId) {
     const acct = accounts.find((a) => a.id === filters.bankAccountId);
     chips.push({ key: 'bankAccountId', label: acct ? displayAccountName(acct) : 'Account' });
@@ -29,7 +30,14 @@ export default function TransactionsView({ accounts, transactions, total, loadin
     <div className="space-y-3">
       {/* ── Filter bar ─────────────────────────────────────── */}
       <div className="rounded-xl border border-gray-200 bg-white">
-        <div className="flex items-center gap-2 px-4 py-2.5">
+        <div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
+          <input
+            type="text"
+            value={filters.query}
+            onChange={(e) => onFilterChange({ query: e.target.value })}
+            placeholder="Search description, reference, customer, amount…"
+            className="min-w-[240px] flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+          />
           <button
             onClick={() => setFiltersOpen((v) => !v)}
             className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors ${
@@ -50,7 +58,7 @@ export default function TransactionsView({ accounts, transactions, total, loadin
 
           {hasActiveFilters && (
             <button
-              onClick={() => onFilterChange({ bankAccountId: '', direction: '', sourceType: '', dateFrom: '', dateTo: '' })}
+              onClick={() => onFilterChange({ query: '', bankAccountId: '', direction: '', sourceType: '', dateFrom: '', dateTo: '' })}
               className="text-xs text-gray-500 hover:text-gray-700"
             >
               Clear all

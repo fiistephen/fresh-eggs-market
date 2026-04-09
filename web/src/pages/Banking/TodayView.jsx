@@ -1,6 +1,6 @@
 import { ACCOUNT_STYLES, DIRECTION_COLORS, SOURCE_LABELS, fmtMoney, fmtDate, displayAccountName, accountLabel, categoryLabel } from './shared/constants';
 
-export default function TodayView({ loading, accounts, imports, transactions, categoryMap, customerBookingQueue, portalTransferQueue, canViewReports, onNavigate }) {
+export default function TodayView({ loading, accounts, imports, transactions, categoryMap, customerBookingQueue, portalTransferQueue, canViewReports, onNavigate, onOpenReport }) {
   if (loading) {
     return <div className="rounded-2xl border border-gray-200 bg-white px-6 py-20 text-center text-sm text-gray-500">Loading…</div>;
   }
@@ -51,7 +51,7 @@ export default function TodayView({ loading, accounts, imports, transactions, ca
       count: unreconciledAccounts.length,
       title: `${unreconciledAccounts.length} account${unreconciledAccounts.length === 1 ? '' : 's'} never reconciled`,
       subtitle: 'Check your balances',
-      action: () => onNavigate('balances'),
+      action: () => onOpenReport?.('balances'),
     });
   }
 

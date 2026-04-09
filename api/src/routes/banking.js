@@ -288,7 +288,7 @@ export default async function bankingRoutes(fastify) {
   fastify.get('/banking/transactions', {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
     handler: async (request, reply) => {
-      const { bankAccountId, category, direction, dateFrom, dateTo, customerId, sourceType, limit = 50, offset = 0 } = request.query;
+      const { bankAccountId, category, direction, dateFrom, dateTo, customerId, sourceType, q, limit = 50, offset = 0 } = request.query;
 
       const where = {};
       if (bankAccountId) where.bankAccountId = bankAccountId;
@@ -296,6 +296,30 @@ export default async function bankingRoutes(fastify) {
       if (direction) where.direction = direction;
       if (customerId) where.customerId = customerId;
       if (sourceType) where.sourceType = sourceType;
+      const searchTerm = String(q || '').trim();
+      if (searchTerm) {
+        const searchClauses = [
+          { description: { contains: searchTerm, mode: 'insensitive' } },
+          { reference: { contains: searchTerm, mode: 'insensitive' } },
+          { category: { contains: searchTerm, mode: 'insensitive' } },
+          {
+            customer: {
+              is: {
+                OR: [
+                  { name: { contains: searchTerm, mode: 'insensitive' } },
+                  { phone: { contains: searchTerm, mode: 'insensitive' } },
+                  { email: { contains: searchTerm, mode: 'insensitive' } },
+                ],
+              },
+            },
+          },
+        ];
+        const parsedAmount = Number(searchTerm.replace(/,/g, ''));
+        if (!Number.isNaN(parsedAmount) && searchTerm !== '') {
+          searchClauses.push({ amount: parsedAmount });
+        }
+        where.OR = searchClauses;
+      }
       if (dateFrom || dateTo) {
         where.transactionDate = {};
         if (dateFrom) where.transactionDate.gte = new Date(dateFrom);
@@ -653,25 +677,43 @@ export default async function bankingRoutes(fastify) {
   fastify.get('/banking/imports', {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
     handler: async (request, reply) => {
-      const { bankAccountId, status, includeCancelled, limit = 20 } = request.query;
+      const { bankAccountId, status, includeCancelled, search, limit = 20, offset = 0 } = request.query;
       const where = {};
       if (bankAccountId) where.bankAccountId = bankAccountId;
       if (status) where.status = status;
       else if (!['1', 'true', true].includes(includeCancelled)) where.status = { not: 'CANCELLED' };
+      const searchTerm = String(search || '').trim();
+      if (searchTerm) {
+        where.OR = [
+          { originalFilename: { contains: searchTerm, mode: 'insensitive' } },
+          {
+            bankAccount: {
+              is: {
+                name: { contains: searchTerm, mode: 'insensitive' },
+              },
+            },
+          },
+        ];
+      }
 
-      const imports = await prisma.bankStatementImport.findMany({
-        where,
-        include: {
-          bankAccount: { select: { id: true, name: true, accountType: true, lastFour: true } },
-          importedBy: { select: { firstName: true, lastName: true } },
-          _count: { select: { lines: true, reconciliations: true } },
-        },
-        orderBy: { createdAt: 'desc' },
-        take: parseInt(limit, 10),
-      });
+      const [imports, total] = await Promise.all([
+        prisma.bankStatementImport.findMany({
+          where,
+          include: {
+            bankAccount: { select: { id: true, name: true, accountType: true, lastFour: true } },
+            importedBy: { select: { firstName: true, lastName: true } },
+            _count: { select: { lines: true, reconciliations: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: parseInt(limit, 10),
+          skip: parseInt(offset, 10),
+        }),
+        prisma.bankStatementImport.count({ where }),
+      ]);
 
       return reply.send({
         imports: imports.map((record) => enrichImportRecord(record)),
+        total,
       });
     },
   });
