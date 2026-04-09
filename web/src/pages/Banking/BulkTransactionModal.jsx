@@ -123,14 +123,14 @@ export default function BulkTransactionModal({ accounts, transactionCategories, 
   return (
     <ModalShell title="Enter many at once" onClose={onClose} maxWidth="max-w-6xl">
       <form onSubmit={handleSubmit} className="space-y-4">
-        {error && <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+        {error && <div className="rounded-lg border border-error-100 bg-error-50 px-3 py-2 text-body text-error-700">{error}</div>}
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-gray-600">Fill in the rows below. New rows copy the settings from the row above.</p>
+          <p className="text-body text-surface-600">Fill in the rows below. New rows copy the settings from the row above.</p>
           <button
             type="button"
             onClick={() => setShowCategoryCreator((c) => !c)}
-            className="text-sm font-medium text-brand-600 hover:text-brand-700"
+            className="text-body-medium font-medium text-brand-600 hover:text-brand-700"
           >
             {showCategoryCreator ? 'Close new category' : 'Need a new category?'}
           </button>
@@ -146,30 +146,30 @@ export default function BulkTransactionModal({ accounts, transactionCategories, 
           />
         )}
 
-        <div className="overflow-x-auto rounded-xl border border-gray-200">
+        <div className="overflow-x-auto custom-scrollbar rounded-lg border border-surface-200">
           <table className="w-full min-w-[860px]">
-            <thead className="sticky top-0 z-10 bg-gray-50">
-              <tr className="border-b border-gray-200">
-                <th className="px-3 py-2.5 text-left text-xs font-medium uppercase text-gray-500 w-[80px]">In / Out</th>
-                <th className="px-3 py-2.5 text-left text-xs font-medium uppercase text-gray-500">Account</th>
-                <th className="px-3 py-2.5 text-left text-xs font-medium uppercase text-gray-500">Category</th>
-                <th className="px-3 py-2.5 text-left text-xs font-medium uppercase text-gray-500 w-[120px]">Date</th>
-                <th className="px-3 py-2.5 text-right text-xs font-medium uppercase text-gray-500 w-[120px]">Amount</th>
-                <th className="px-3 py-2.5 text-left text-xs font-medium uppercase text-gray-500">Description</th>
-                <th className="px-3 py-2.5 text-left text-xs font-medium uppercase text-gray-500 w-[160px]">Reference</th>
-                <th className="px-3 py-2.5 text-left text-xs font-medium uppercase text-gray-500 w-[90px]"></th>
+            <thead className="sticky top-0 z-10 bg-surface-50">
+              <tr className="border-b border-surface-200">
+                <th className="px-3 py-2.5 text-left text-overline text-surface-500 w-[80px]">In / Out</th>
+                <th className="px-3 py-2.5 text-left text-overline text-surface-500">Account</th>
+                <th className="px-3 py-2.5 text-left text-overline text-surface-500">Category</th>
+                <th className="px-3 py-2.5 text-left text-overline text-surface-500 w-[120px]">Date</th>
+                <th className="px-3 py-2.5 text-right text-overline text-surface-500 w-[120px]">Amount</th>
+                <th className="px-3 py-2.5 text-left text-overline text-surface-500">Description</th>
+                <th className="px-3 py-2.5 text-left text-overline text-surface-500 w-[160px]">Reference</th>
+                <th className="px-3 py-2.5 text-left text-overline text-surface-500 w-[90px]"></th>
               </tr>
             </thead>
             <tbody>
               {rows.map((row, index) => {
                 const categories = categoryOptionsForDirection(row.direction, categoryMap, row.category);
                 return (
-                  <tr key={row.id} className="border-b border-gray-50">
+                  <tr key={row.id} className="border-b border-surface-50">
                     <td className="px-3 py-2">
                       <button
                         type="button"
                         onClick={() => updateRow(index, { direction: row.direction === 'INFLOW' ? 'OUTFLOW' : 'INFLOW' })}
-                        className={`w-full rounded-lg px-2 py-1.5 text-xs font-semibold ${row.direction === 'INFLOW' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}
+                        className={`w-full rounded-md px-2 py-1.5 text-caption-medium font-semibold ${row.direction === 'INFLOW' ? 'bg-success-100 text-success-700' : 'bg-error-100 text-error-700'}`}
                       >
                         {row.direction === 'INFLOW' ? 'In' : 'Out'}
                       </button>
@@ -178,7 +178,7 @@ export default function BulkTransactionModal({ accounts, transactionCategories, 
                       <select
                         value={row.bankAccountId}
                         onChange={(e) => updateRow(index, { bankAccountId: e.target.value })}
-                        className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+                        className="w-full rounded-md border border-surface-200 px-2 py-1.5 text-body outline-none focus:ring-2 focus:ring-brand-500"
                       >
                         {accounts.map((account) => (
                           <option key={account.id} value={account.id}>{displayAccountName(account)}</option>
@@ -189,7 +189,7 @@ export default function BulkTransactionModal({ accounts, transactionCategories, 
                       <select
                         value={row.category}
                         onChange={(e) => updateRow(index, { category: e.target.value })}
-                        className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+                        className="w-full rounded-md border border-surface-200 px-2 py-1.5 text-body outline-none focus:ring-2 focus:ring-brand-500"
                       >
                         {categories.map((cat) => (
                           <option key={cat} value={cat}>{categoryLabel(cat, categoryMap)}</option>
@@ -201,7 +201,7 @@ export default function BulkTransactionModal({ accounts, transactionCategories, 
                         type="date"
                         value={row.transactionDate}
                         onChange={(e) => updateRow(index, { transactionDate: e.target.value })}
-                        className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+                        className="w-full rounded-md border border-surface-200 px-2 py-1.5 text-body outline-none focus:ring-2 focus:ring-brand-500"
                       />
                     </td>
                     <td className="px-3 py-2">
@@ -211,7 +211,7 @@ export default function BulkTransactionModal({ accounts, transactionCategories, 
                         step="0.01"
                         value={row.amount}
                         onChange={(e) => updateRow(index, { amount: e.target.value })}
-                        className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-right text-sm outline-none focus:ring-2 focus:ring-brand-500"
+                        className="w-full rounded-md border border-surface-200 px-2 py-1.5 text-right text-body outline-none focus:ring-2 focus:ring-brand-500"
                         placeholder="0"
                       />
                     </td>
@@ -220,7 +220,7 @@ export default function BulkTransactionModal({ accounts, transactionCategories, 
                         type="text"
                         value={row.description}
                         onChange={(e) => updateRow(index, { description: e.target.value })}
-                        className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+                        className="w-full rounded-md border border-surface-200 px-2 py-1.5 text-body outline-none focus:ring-2 focus:ring-brand-500"
                         placeholder="e.g. GTBank – Mrs Balogun"
                       />
                     </td>
@@ -229,15 +229,15 @@ export default function BulkTransactionModal({ accounts, transactionCategories, 
                         type="text"
                         value={row.reference}
                         onChange={(e) => updateRow(index, { reference: e.target.value })}
-                        className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+                        className="w-full rounded-md border border-surface-200 px-2 py-1.5 text-body outline-none focus:ring-2 focus:ring-brand-500"
                         placeholder="e.g. teller or transfer ref"
                       />
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex gap-1">
-                        <button type="button" onClick={() => duplicateRow(index)} title="Copy row" className="rounded px-1.5 py-1 text-xs text-gray-500 hover:bg-gray-100 hover:text-gray-700">Copy</button>
+                        <button type="button" onClick={() => duplicateRow(index)} title="Copy row" className="rounded px-1.5 py-1 text-caption text-surface-500 hover:bg-surface-100 hover:text-surface-700">Copy</button>
                         {rows.length > 1 && (
-                          <button type="button" onClick={() => removeRow(index)} title="Remove row" className="rounded px-1.5 py-1 text-xs text-red-500 hover:bg-red-50 hover:text-red-700">Del</button>
+                          <button type="button" onClick={() => removeRow(index)} title="Remove row" className="rounded px-1.5 py-1 text-caption text-error-500 hover:bg-error-50 hover:text-error-700">Del</button>
                         )}
                       </div>
                     </td>
@@ -249,13 +249,13 @@ export default function BulkTransactionModal({ accounts, transactionCategories, 
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <button type="button" onClick={addRow} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+          <button type="button" onClick={addRow} className="rounded-md border border-surface-200 px-3 py-2 text-body-medium text-surface-700 transition-colors duration-fast hover:bg-surface-50">
             + Add row
           </button>
-          <div className="flex flex-wrap gap-4 text-sm">
-            <span className="text-green-700">In: {fmtMoney(totalIn)}</span>
-            <span className="text-red-600">Out: {fmtMoney(totalOut)}</span>
-            <span className="font-semibold text-gray-900">Net: {fmtMoney(totalIn - totalOut)}</span>
+          <div className="flex flex-wrap gap-4 text-body-medium">
+            <span className="text-success-700">In: {fmtMoney(totalIn)}</span>
+            <span className="text-error-600">Out: {fmtMoney(totalOut)}</span>
+            <span className="font-semibold text-surface-900">Net: {fmtMoney(totalIn - totalOut)}</span>
           </div>
         </div>
 

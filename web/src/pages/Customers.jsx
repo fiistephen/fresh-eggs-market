@@ -1,6 +1,32 @@
 import { useState, useEffect } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import { Button, Input, Modal, Card, Badge, EmptyState, Textarea } from '../components/ui';
+
+// SVG Icons
+const PlusIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+  </svg>
+);
+
+const UsersIcon = () => (
+  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
+  </svg>
+);
+
+const EditIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+  </svg>
+);
+
+const AlertIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+    <circle cx="12" cy="12" r="10" />
+  </svg>
+);
 
 function formatCurrency(n) {
   if (n == null) return '—';
@@ -49,63 +75,64 @@ export default function Customers() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Customers</h1>
-          <p className="text-sm text-gray-500 mt-1">{total} customers in the database</p>
+          <h1 className="text-display text-surface-900">Customers</h1>
+          <p className="text-body text-surface-500 mt-1">{total} customers in the database</p>
         </div>
         {canCreate && (
-          <button
+          <Button
+            variant="primary"
+            size="md"
+            icon={<PlusIcon />}
             onClick={() => setShowCreate(true)}
-            className="bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 w-fit"
           >
-            <span className="text-lg leading-none">+</span> New Customer
-          </button>
+            New Customer
+          </Button>
         )}
       </div>
 
       {/* Search */}
       <div className="mb-6">
-        <input
+        <Input
           type="text"
           placeholder="Search by name, phone, or email..."
           value={search}
           onChange={e => setSearch(e.target.value)}
-          className="w-full max-w-md border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+          containerClassName="max-w-md"
         />
       </div>
 
       {error && (
-        <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg mb-4 text-sm">{error}</div>
+        <div className="bg-error-50 text-error-600 px-4 py-3 rounded-lg mb-4 text-body mb-6">
+          {error}
+        </div>
       )}
 
       {/* Customer list */}
       {loading ? (
-        <div className="text-center py-12 text-gray-400">Loading customers...</div>
+        <Card className="text-center py-12">
+          <p className="text-body text-surface-500">Loading customers...</p>
+        </Card>
       ) : customers.length === 0 ? (
-        <div className="text-center py-16">
-          <div className="text-4xl mb-3">👥</div>
-          <p className="text-gray-500">{search ? 'No customers match your search' : 'No customers yet'}</p>
-          {canCreate && !search && (
-            <button
-              onClick={() => setShowCreate(true)}
-              className="mt-4 text-brand-500 hover:text-brand-600 text-sm font-medium"
-            >
-              Add your first customer
-            </button>
-          )}
-        </div>
+        <EmptyState
+          icon={<UsersIcon />}
+          title={search ? 'No customers found' : 'No customers yet'}
+          description={search ? 'Try adjusting your search' : 'Customers will appear here once you add them'}
+          action={canCreate && !search ? () => setShowCreate(true) : undefined}
+          actionLabel={canCreate && !search ? 'Add your first customer' : undefined}
+        />
       ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="overflow-x-auto">
+        <Card variant="outlined" padding="none">
+          <div className="overflow-x-auto custom-scrollbar">
             <table className="w-full min-w-[700px]">
               <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-                  <th className="text-center py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                  <th className="text-center py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Bookings</th>
-                  <th className="text-center py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Sales</th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Joined</th>
+                <tr className="border-b border-surface-200 bg-surface-50">
+                  <th className="text-overline text-surface-500 text-left py-3 px-4 uppercase tracking-wider">Name</th>
+                  <th className="text-overline text-surface-500 text-left py-3 px-4 uppercase tracking-wider">Phone</th>
+                  <th className="text-overline text-surface-500 text-left py-3 px-4 uppercase tracking-wider">Email</th>
+                  <th className="text-overline text-surface-500 text-center py-3 px-4 uppercase tracking-wider">Type</th>
+                  <th className="text-overline text-surface-500 text-center py-3 px-4 uppercase tracking-wider">Bookings</th>
+                  <th className="text-overline text-surface-500 text-center py-3 px-4 uppercase tracking-wider">Sales</th>
+                  <th className="text-overline text-surface-500 text-left py-3 px-4 uppercase tracking-wider">Joined</th>
                 </tr>
               </thead>
               <tbody>
@@ -113,48 +140,57 @@ export default function Customers() {
                   <tr
                     key={c.id}
                     onClick={() => setSelectedCustomer(c.id)}
-                    className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors"
+                    className="border-b border-surface-100 hover:bg-surface-50 cursor-pointer transition-colors duration-fast"
                   >
                     <td className="py-3 px-4">
-                      <span className="font-semibold text-gray-900">{c.name}</span>
+                      <span className="text-body-medium text-surface-900 font-medium">{c.name}</span>
                     </td>
-                    <td className="py-3 px-4 text-sm text-gray-600">{c.phone}</td>
-                    <td className="py-3 px-4 text-sm text-gray-500">{c.email || '—'}</td>
+                    <td className="py-3 px-4 text-body text-surface-600">{c.phone}</td>
+                    <td className="py-3 px-4 text-body text-surface-500">{c.email || '—'}</td>
                     <td className="py-3 px-4 text-center">
-                      <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        c.isFirstTime ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'
-                      }`}>
+                      <Badge status={c.isFirstTime ? 'PENDING' : 'COMPLETED'}>
                         {c.isFirstTime ? 'New' : 'Returning'}
-                      </span>
+                      </Badge>
                     </td>
-                    <td className="py-3 px-4 text-sm text-gray-500 text-center">{c._count?.bookings || 0}</td>
-                    <td className="py-3 px-4 text-sm text-gray-500 text-center">{c._count?.sales || 0}</td>
-                    <td className="py-3 px-4 text-sm text-gray-500">{formatDate(c.createdAt)}</td>
+                    <td className="py-3 px-4 text-body text-surface-500 text-center">{c._count?.bookings || 0}</td>
+                    <td className="py-3 px-4 text-body text-surface-500 text-center">{c._count?.sales || 0}</td>
+                    <td className="py-3 px-4 text-body text-surface-500">{formatDate(c.createdAt)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Create customer modal */}
-      {showCreate && (
+      <Modal
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        title="New Customer"
+        size="md"
+      >
         <CreateCustomerModal
           onClose={() => setShowCreate(false)}
           onCreated={() => { setShowCreate(false); loadCustomers(); }}
         />
-      )}
+      </Modal>
 
       {/* Customer detail modal */}
-      {selectedCustomer && (
-        <CustomerDetailModal
-          customerId={selectedCustomer}
-          canEdit={canEdit}
-          onClose={() => setSelectedCustomer(null)}
-          onUpdated={loadCustomers}
-        />
-      )}
+      <Modal
+        open={!!selectedCustomer}
+        onClose={() => setSelectedCustomer(null)}
+        size="lg"
+      >
+        {selectedCustomer && (
+          <CustomerDetailModal
+            customerId={selectedCustomer}
+            canEdit={canEdit}
+            onClose={() => setSelectedCustomer(null)}
+            onUpdated={loadCustomers}
+          />
+        )}
+      </Modal>
     </div>
   );
 }
@@ -190,76 +226,58 @@ function CreateCustomerModal({ onClose, onCreated }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
-        <div className="px-4 sm:px-6 py-4 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-900">New Customer</h2>
+    <form onSubmit={handleSubmit} className="space-y-4">
+      {error && (
+        <div className="bg-error-50 text-error-600 px-3 py-2 rounded-lg text-body">
+          {error}
         </div>
+      )}
 
-        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4">
-          {error && (
-            <div className="bg-red-50 text-red-600 px-3 py-2 rounded-lg text-sm">{error}</div>
-          )}
+      <Input
+        label="Name"
+        required
+        placeholder="Customer name"
+        value={form.name}
+        onChange={e => update('name', e.target.value)}
+      />
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
-            <input
-              type="text"
-              required
-              placeholder="Customer name"
-              value={form.name}
-              onChange={e => update('name', e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-            />
-          </div>
+      <Input
+        label="Phone"
+        type="tel"
+        required
+        placeholder="+234..."
+        value={form.phone}
+        onChange={e => update('phone', e.target.value)}
+      />
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Phone *</label>
-            <input
-              type="tel"
-              required
-              placeholder="+234..."
-              value={form.phone}
-              onChange={e => update('phone', e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-            />
-          </div>
+      <Input
+        label="Email"
+        type="email"
+        placeholder="Optional"
+        value={form.email}
+        onChange={e => update('email', e.target.value)}
+      />
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-            <input
-              type="email"
-              placeholder="Optional"
-              value={form.email}
-              onChange={e => update('email', e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-            />
-          </div>
+      <Textarea
+        label="Notes"
+        placeholder="Any notes about this customer..."
+        value={form.notes}
+        onChange={e => update('notes', e.target.value)}
+      />
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-            <textarea
-              placeholder="Any notes about this customer..."
-              rows={2}
-              value={form.notes}
-              onChange={e => update('notes', e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none resize-none"
-            />
-          </div>
-
-          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 pt-2">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Cancel</button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors"
-            >
-              {submitting ? 'Creating...' : 'Create Customer'}
-            </button>
-          </div>
-        </form>
+      <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 pt-2">
+        <Button type="button" variant="secondary" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button
+          type="submit"
+          variant="primary"
+          loading={submitting}
+        >
+          {submitting ? 'Creating...' : 'Create Customer'}
+        </Button>
       </div>
-    </div>
+    </form>
   );
 }
 
@@ -310,181 +328,200 @@ function CustomerDetailModal({ customerId, canEdit, onClose, onUpdated }) {
     }
   }
 
-  const BOOKING_STATUS = {
-    CONFIRMED: 'bg-green-100 text-green-700',
-    PICKED_UP: 'bg-blue-100 text-blue-700',
-    CANCELLED: 'bg-red-100 text-red-700',
-  };
-
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        {loading ? (
-          <div className="p-8 text-center text-gray-400">Loading...</div>
-        ) : !customer ? (
-          <div className="p-8 text-center text-red-500">{error || 'Customer not found'}</div>
-        ) : (
-          <>
-            <div className="px-4 sm:px-6 py-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-              <div>
-                {editing ? (
-                  <div className="space-y-3">
-                    <input
-                      type="text"
-                      value={editForm.name}
-                      onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
-                      className="border border-gray-300 rounded-lg px-3 py-1.5 text-lg font-semibold focus:ring-2 focus:ring-brand-500 outline-none"
+    <div className="space-y-6">
+      {loading ? (
+        <div className="text-center py-8 text-surface-400">Loading...</div>
+      ) : !customer ? (
+        <div className="text-center py-8 text-error-600">{error || 'Customer not found'}</div>
+      ) : (
+        <>
+          {/* Header with name and edit button */}
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+            <div className="flex-1">
+              {editing ? (
+                <div className="space-y-3">
+                  <Input
+                    value={editForm.name}
+                    onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
+                    containerClassName="mb-0"
+                  />
+                  <div className="flex gap-2">
+                    <Input
+                      type="tel"
+                      value={editForm.phone}
+                      onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))}
+                      placeholder="Phone"
+                      containerClassName="mb-0 flex-1"
                     />
-                    <div className="flex gap-2">
-                      <input
-                        type="tel"
-                        value={editForm.phone}
-                        onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))}
-                        placeholder="Phone"
-                        className="border border-gray-300 rounded-lg px-2 py-1 text-sm focus:ring-2 focus:ring-brand-500 outline-none"
-                      />
-                      <input
-                        type="email"
-                        value={editForm.email}
-                        onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))}
-                        placeholder="Email"
-                        className="border border-gray-300 rounded-lg px-2 py-1 text-sm focus:ring-2 focus:ring-brand-500 outline-none"
-                      />
-                    </div>
-                    <textarea
-                      value={editForm.notes}
-                      onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))}
-                      placeholder="Notes"
-                      rows={2}
-                      className="w-full border border-gray-300 rounded-lg px-2 py-1 text-sm focus:ring-2 focus:ring-brand-500 outline-none resize-none"
+                    <Input
+                      type="email"
+                      value={editForm.email}
+                      onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))}
+                      placeholder="Email"
+                      containerClassName="mb-0 flex-1"
                     />
                   </div>
-                ) : (
-                  <>
-                    <h2 className="text-lg font-semibold text-gray-900">{customer.name}</h2>
-                    <p className="text-sm text-gray-500 mt-0.5">{customer.phone}{customer.email && ` · ${customer.email}`}</p>
-                    {customer.notes && <p className="text-sm text-gray-400 mt-1 italic">{customer.notes}</p>}
-                  </>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                  customer.isFirstTime ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'
-                }`}>
-                  {customer.isFirstTime ? 'New' : 'Returning'}
-                </span>
-                {canEdit && !editing && (
-                  <button onClick={() => setEditing(true)} className="text-brand-500 hover:text-brand-600 text-sm font-medium">
-                    Edit
-                  </button>
-                )}
-                {editing && (
-                  <div className="flex gap-1">
-                    <button onClick={() => setEditing(false)} className="text-gray-400 hover:text-gray-600 text-sm">Cancel</button>
-                    <button onClick={handleSave} disabled={saving} className="text-brand-500 hover:text-brand-600 text-sm font-medium">
-                      {saving ? 'Saving...' : 'Save'}
-                    </button>
-                  </div>
-                )}
-              </div>
+                  <Textarea
+                    value={editForm.notes}
+                    onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))}
+                    placeholder="Notes"
+                  />
+                </div>
+              ) : (
+                <>
+                  <h2 className="text-title text-surface-900">{customer.name}</h2>
+                  <p className="text-body text-surface-500 mt-1">
+                    {customer.phone}
+                    {customer.email && ` · ${customer.email}`}
+                  </p>
+                  {customer.notes && <p className="text-body text-surface-600 mt-2 italic">{customer.notes}</p>}
+                </>
+              )}
             </div>
 
-            {error && (
-              <div className="mx-4 sm:mx-6 mt-4 bg-red-50 text-red-600 px-3 py-2 rounded-lg text-sm">{error}</div>
-            )}
+            <div className="flex items-center gap-2">
+              <Badge status={customer.isFirstTime ? 'PENDING' : 'COMPLETED'}>
+                {customer.isFirstTime ? 'New' : 'Returning'}
+              </Badge>
 
-            {/* Stats */}
-            {stats && (
-              <div className="px-4 sm:px-6 py-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-xs text-gray-400 uppercase">Total Bookings</p>
-                  <p className="text-lg font-bold text-gray-900">{stats.totalBookings}</p>
-                  <p className="text-xs text-gray-400">{stats.totalBookedCrates.toLocaleString()} crates</p>
-                </div>
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-xs text-gray-400 uppercase">Total Purchases</p>
-                  <p className="text-lg font-bold text-gray-900">{stats.totalSales}</p>
-                  <p className="text-xs text-gray-400">{stats.totalPurchasedCrates.toLocaleString()} crates</p>
-                </div>
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-xs text-gray-400 uppercase">Total Spent</p>
-                  <p className="text-lg font-bold text-green-600">{formatCurrency(stats.totalSpent)}</p>
-                </div>
-              </div>
-            )}
+              {canEdit && !editing && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={<EditIcon />}
+                  onClick={() => setEditing(true)}
+                >
+                  Edit
+                </Button>
+              )}
 
-            {/* Recent bookings */}
-            {customer.bookings?.length > 0 && (
-              <div className="px-4 sm:px-6 pb-4">
-                <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-2">Recent Bookings</h3>
-                <div className="bg-white border border-gray-200 rounded-lg overflow-hidden overflow-x-auto">
+              {editing && (
+                <div className="flex gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setEditing(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    loading={saving}
+                    onClick={handleSave}
+                  >
+                    Save
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {error && (
+            <div className="bg-error-50 text-error-600 px-3 py-2 rounded-lg text-body">
+              {error}
+            </div>
+          )}
+
+          {/* Stats */}
+          {stats && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <Card tint="bg-brand-50">
+                <p className="text-overline text-surface-500">Total Bookings</p>
+                <p className="text-metric text-brand-700 mt-1">{stats.totalBookings}</p>
+                <p className="text-caption text-surface-500 mt-0.5">{stats.totalBookedCrates.toLocaleString()} crates</p>
+              </Card>
+              <Card tint="bg-success-50">
+                <p className="text-overline text-surface-500">Total Purchases</p>
+                <p className="text-metric text-success-700 mt-1">{stats.totalSales}</p>
+                <p className="text-caption text-surface-500 mt-0.5">{stats.totalPurchasedCrates.toLocaleString()} crates</p>
+              </Card>
+              <Card tint="bg-info-50">
+                <p className="text-overline text-surface-500">Total Spent</p>
+                <p className="text-metric text-info-700 mt-1">{formatCurrency(stats.totalSpent)}</p>
+              </Card>
+            </div>
+          )}
+
+          {/* Recent bookings */}
+          {customer.bookings?.length > 0 && (
+            <div>
+              <h3 className="text-heading text-surface-800 mb-3">Recent Bookings</h3>
+              <Card variant="outlined" padding="none">
+                <div className="overflow-x-auto custom-scrollbar">
                   <table className="w-full min-w-[500px]">
                     <thead>
-                      <tr className="border-b border-gray-100">
-                        <th className="text-left py-2 px-3 text-xs text-gray-500">Batch</th>
-                        <th className="text-right py-2 px-3 text-xs text-gray-500">Qty</th>
-                        <th className="text-right py-2 px-3 text-xs text-gray-500">Paid</th>
-                        <th className="text-center py-2 px-3 text-xs text-gray-500">Status</th>
-                        <th className="text-left py-2 px-3 text-xs text-gray-500">Date</th>
+                      <tr className="border-b border-surface-200 bg-surface-50">
+                        <th className="text-overline text-surface-500 text-left py-2 px-3 uppercase tracking-wider">Batch</th>
+                        <th className="text-overline text-surface-500 text-right py-2 px-3 uppercase tracking-wider">Qty</th>
+                        <th className="text-overline text-surface-500 text-right py-2 px-3 uppercase tracking-wider">Paid</th>
+                        <th className="text-overline text-surface-500 text-center py-2 px-3 uppercase tracking-wider">Status</th>
+                        <th className="text-overline text-surface-500 text-left py-2 px-3 uppercase tracking-wider">Date</th>
                       </tr>
                     </thead>
                     <tbody>
                       {customer.bookings.map(b => (
-                        <tr key={b.id} className="border-b border-gray-50 text-sm">
-                          <td className="py-2 px-3 font-medium">{b.batch?.name || '—'}</td>
-                          <td className="py-2 px-3 text-right">{b.quantity}</td>
-                          <td className="py-2 px-3 text-right">{formatCurrency(b.amountPaid)}</td>
+                        <tr key={b.id} className="border-b border-surface-100 text-body">
+                          <td className="py-2 px-3 text-body-medium text-surface-900">{b.batch?.name || '—'}</td>
+                          <td className="py-2 px-3 text-right text-surface-700">{b.quantity}</td>
+                          <td className="py-2 px-3 text-right text-surface-700">{formatCurrency(b.amountPaid)}</td>
                           <td className="py-2 px-3 text-center">
-                            <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${BOOKING_STATUS[b.status]}`}>
+                            <Badge status={b.status}>
                               {b.status.replace('_', ' ')}
-                            </span>
+                            </Badge>
                           </td>
-                          <td className="py-2 px-3 text-gray-500">{formatDate(b.createdAt)}</td>
+                          <td className="py-2 px-3 text-surface-500">{formatDate(b.createdAt)}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-              </div>
-            )}
+              </Card>
+            </div>
+          )}
 
-            {/* Recent sales */}
-            {customer.sales?.length > 0 && (
-              <div className="px-4 sm:px-6 pb-4">
-                <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-2">Recent Sales</h3>
-                <div className="bg-white border border-gray-200 rounded-lg overflow-hidden overflow-x-auto">
+          {/* Recent sales */}
+          {customer.sales?.length > 0 && (
+            <div>
+              <h3 className="text-heading text-surface-800 mb-3">Recent Sales</h3>
+              <Card variant="outlined" padding="none">
+                <div className="overflow-x-auto custom-scrollbar">
                   <table className="w-full min-w-[500px]">
                     <thead>
-                      <tr className="border-b border-gray-100">
-                        <th className="text-left py-2 px-3 text-xs text-gray-500">Receipt</th>
-                        <th className="text-left py-2 px-3 text-xs text-gray-500">Batch</th>
-                        <th className="text-right py-2 px-3 text-xs text-gray-500">Qty</th>
-                        <th className="text-right py-2 px-3 text-xs text-gray-500">Amount</th>
-                        <th className="text-left py-2 px-3 text-xs text-gray-500">Date</th>
+                      <tr className="border-b border-surface-200 bg-surface-50">
+                        <th className="text-overline text-surface-500 text-left py-2 px-3 uppercase tracking-wider">Receipt</th>
+                        <th className="text-overline text-surface-500 text-left py-2 px-3 uppercase tracking-wider">Batch</th>
+                        <th className="text-overline text-surface-500 text-right py-2 px-3 uppercase tracking-wider">Qty</th>
+                        <th className="text-overline text-surface-500 text-right py-2 px-3 uppercase tracking-wider">Amount</th>
+                        <th className="text-overline text-surface-500 text-left py-2 px-3 uppercase tracking-wider">Date</th>
                       </tr>
                     </thead>
                     <tbody>
                       {customer.sales.map(s => (
-                        <tr key={s.id} className="border-b border-gray-50 text-sm">
-                          <td className="py-2 px-3 font-mono text-gray-600">{s.receiptNumber}</td>
-                          <td className="py-2 px-3 font-medium">{s.batch?.name || '—'}</td>
-                          <td className="py-2 px-3 text-right">{s.totalQuantity}</td>
-                          <td className="py-2 px-3 text-right font-medium">{formatCurrency(s.totalAmount)}</td>
-                          <td className="py-2 px-3 text-gray-500">{formatDate(s.saleDate)}</td>
+                        <tr key={s.id} className="border-b border-surface-100 text-body">
+                          <td className="py-2 px-3 font-mono text-surface-600">{s.receiptNumber}</td>
+                          <td className="py-2 px-3 text-body-medium text-surface-900">{s.batch?.name || '—'}</td>
+                          <td className="py-2 px-3 text-right text-surface-700">{s.totalQuantity}</td>
+                          <td className="py-2 px-3 text-right text-body-medium text-surface-900">{formatCurrency(s.totalAmount)}</td>
+                          <td className="py-2 px-3 text-surface-500">{formatDate(s.saleDate)}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-              </div>
-            )}
-
-            <div className="px-4 sm:px-6 py-3 border-t border-gray-100 flex justify-end">
-              <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Close</button>
+              </Card>
             </div>
-          </>
-        )}
-      </div>
+          )}
+
+          {/* Footer */}
+          <div className="flex justify-end pt-2">
+            <Button variant="secondary" onClick={onClose}>
+              Close
+            </Button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

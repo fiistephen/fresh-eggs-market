@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { Button } from '../components/ui';
 
 export default function Login() {
   const [identifier, setIdentifier] = useState('');
@@ -14,7 +15,6 @@ export default function Login() {
     e.preventDefault();
     setError('');
     setLoading(true);
-
     try {
       await login(identifier, password);
       navigate('/');
@@ -26,52 +26,78 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-900 px-4">
-      <div className="w-full max-w-sm">
+    <div className="min-h-screen flex items-center justify-center bg-surface-900 px-4">
+      {/* Subtle warm gradient overlay */}
+      <div className="absolute inset-0 bg-gradient-to-br from-brand-900/20 via-transparent to-surface-900 pointer-events-none" />
+
+      <div className="relative w-full max-w-sm">
+        {/* Logo + branding */}
         <div className="text-center mb-8">
-          <Link to="/" className="inline-block rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500">
-            <img src="/logo.webp" alt="Fresh Eggs Market" className="w-24 h-24 mx-auto object-contain mb-4" />
-            <h1 className="text-2xl font-bold text-white">Fresh Eggs Market</h1>
-            <p className="text-gray-400 mt-1 text-sm">Operations Management System</p>
+          <Link to="/" className="inline-block rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/30">
+            <img src="/logo.webp" alt="Fresh Eggs Market" className="w-20 h-20 mx-auto object-contain mb-4" />
+            <h1 className="text-title text-white">Fresh Eggs Market</h1>
+            <p className="text-caption text-surface-400 mt-1">Operations Management</p>
           </Link>
         </div>
 
-        <form onSubmit={handleSubmit} className="bg-white shadow-xl rounded-2xl p-6 space-y-4">
+        {/* Login card — Apple-style depth */}
+        <form
+          onSubmit={handleSubmit}
+          className="bg-surface-0 shadow-xl rounded-lg p-6 space-y-5"
+        >
+          <div>
+            <h2 className="text-heading text-surface-800">Sign in</h2>
+            <p className="text-caption text-surface-500 mt-0.5">Enter your credentials to continue</p>
+          </div>
+
           {error && (
-            <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg">{error}</div>
+            <div className="flex items-start gap-2 bg-error-50 text-error-700 text-body p-3 rounded-md border border-error-100">
+              <svg className="w-4 h-4 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" />
+              </svg>
+              <span>{error}</span>
+            </div>
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Phone number or email</label>
+            <label className="block text-body-medium text-surface-700 mb-1">
+              Phone number or email
+            </label>
             <input
               type="text"
               required
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
+              className="w-full h-10 px-3 bg-surface-0 border border-surface-200 rounded-md text-body text-surface-800 placeholder:text-surface-400 hover:border-surface-300 focus:ring-2 focus:ring-brand-500/15 focus:border-brand-500 focus:outline-none transition-all duration-fast"
               placeholder="08012345678 or you@fresheggs.com"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <label className="block text-body-medium text-surface-700 mb-1">Password</label>
             <input
               type="password"
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
+              className="w-full h-10 px-3 bg-surface-0 border border-surface-200 rounded-md text-body text-surface-800 placeholder:text-surface-400 hover:border-surface-300 focus:ring-2 focus:ring-brand-500/15 focus:border-brand-500 focus:outline-none transition-all duration-fast"
             />
           </div>
 
-          <button
+          <Button
             type="submit"
-            disabled={loading}
-            className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2.5 rounded-lg text-sm transition-colors disabled:opacity-50"
+            loading={loading}
+            size="lg"
+            className="w-full"
           >
-            {loading ? 'Signing in...' : 'Sign In'}
-          </button>
+            Sign in
+          </Button>
         </form>
+
+        {/* Footer */}
+        <p className="text-center text-caption text-surface-500 mt-6">
+          Fresh Eggs Market &copy; {new Date().getFullYear()}
+        </p>
       </div>
     </div>
   );

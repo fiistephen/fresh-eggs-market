@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import { Button, Input, Select, Modal, Card, Badge, EmptyState, useToast } from '../components/ui';
 
 const PAYMENT_LABELS = { CASH: 'Cash', TRANSFER: 'Transfer', POS_CARD: 'POS/Card', PRE_ORDER: 'Pre-order' };
 const SALE_TYPE_LABELS = { WHOLESALE: 'Wholesale', RETAIL: 'Retail', CRACKED: 'Cracked', WRITE_OFF: 'Write-off' };
-const SALE_TYPE_COLORS = {
-  WHOLESALE: 'bg-blue-100 text-blue-700',
-  RETAIL: 'bg-green-100 text-green-700',
-  CRACKED: 'bg-yellow-100 text-yellow-700',
-  WRITE_OFF: 'bg-red-100 text-red-700',
+const SALE_TYPE_BADGE_COLORS = {
+  WHOLESALE: 'success',
+  RETAIL: 'info',
+  CRACKED: 'warning',
+  WRITE_OFF: 'error',
 };
 const SOURCE_LABELS = { BOOKING: 'Booking pickup', DIRECT: 'Direct sale' };
 const DIRECT_PAYMENT_TRAIL_HINTS = {
@@ -71,8 +72,50 @@ function orderLimitMessage(orderLimitProfile) {
   return `This customer can buy up to ${orderLimitProfile.currentPerOrderLimit} crates in one order.`;
 }
 
+// SVG icon components
+function CheckIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75" className="w-5 h-5">
+      <path d="m4 10 3 3L16 6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function XIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75" className="w-5 h-5">
+      <path d="m15 5-10 10M5 5l10 10" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ChevronLeftIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75" className="w-5 h-5">
+      <path d="m12 17-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function PrintIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75" className="w-5 h-5">
+      <path d="M4 7h12M5 7v-1a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1m-2 10H5a2 2 0 0 1-2-2v-6h14v6a2 2 0 0 1-2 2h-6m-4-6h10v4H7v-4z" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75" className="w-5 h-5">
+      <path d="M10 4v12M4 10h12" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export default function Sales() {
   const { user } = useAuth();
+  const toast = useToast();
   const [sales, setSales] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -127,134 +170,141 @@ export default function Sales() {
 
   return (
     <div>
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8 gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Sales</h1>
-          <p className="text-xs sm:text-sm text-gray-500 mt-1">
+          <h1 className="text-display text-surface-900">Sales</h1>
+          <p className="text-body text-surface-600 mt-2">
             Finish paid bookings, record walk-in sales, and review what was sold today.
           </p>
         </div>
         {canRecord && (
-          <button
+          <Button
+            variant="primary"
+            size="md"
             onClick={() => setShowRecordSale(true)}
-            className="bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+            icon={<PlusIcon />}
           >
-            <span className="text-lg leading-none">+</span> Record or Fulfill Sale
-          </button>
+            Record Sale
+          </Button>
         )}
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6">
-        <p className="text-sm font-medium text-gray-900">How to use this page</p>
-        <p className="text-sm text-gray-600 mt-1">
+      <Card variant="outlined" padding="comfortable" className="mb-6">
+        <p className="text-heading text-surface-900">How to use this page</p>
+        <p className="text-body text-surface-600 mt-2">
           Start with the customer. If they already have a paid booking, finish the pickup here. If not, record a direct sale.
         </p>
-      </div>
+      </Card>
 
       <div className="flex flex-wrap items-end gap-4 mb-6">
-        <div>
-          <label className="block text-xs text-gray-500 mb-1">Date</label>
-          <input
+        <div className="flex-1 min-w-[150px]">
+          <Input
+            label="Date"
             type="date"
             value={dateFilter}
             onChange={(e) => setDateFilter(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+            size="md"
           />
         </div>
-        <div>
-          <label className="block text-xs text-gray-500 mb-1">Payment Method</label>
-          <select
+        <div className="flex-1 min-w-[150px]">
+          <Select
+            label="Payment Method"
             value={paymentFilter}
             onChange={(e) => setPaymentFilter(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+            size="md"
           >
             <option value="">All methods</option>
             {Object.entries(PAYMENT_LABELS).map(([key, label]) => (
               <option key={key} value={key}>{label}</option>
             ))}
-          </select>
+          </Select>
         </div>
-        <button
+        <Button
+          variant="ghost"
+          size="md"
           onClick={() => setDateFilter(todayStr())}
-          className="text-sm text-brand-500 hover:text-brand-600 font-medium"
         >
           Today
-        </button>
+        </Button>
       </div>
 
       {canViewReports && summary && !loadingSummary && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <p className="text-xs text-gray-400 uppercase tracking-wider">Total Sales</p>
-            <p className="text-xl font-bold text-gray-900 mt-1">{formatCurrency(summary.summary.totalSales)}</p>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <p className="text-xs text-gray-400 uppercase tracking-wider">Total Cost</p>
-            <p className="text-xl font-bold text-gray-900 mt-1">{formatCurrency(summary.summary.totalCost)}</p>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <p className="text-xs text-gray-400 uppercase tracking-wider">Gross Profit</p>
-            <p className={`text-xl font-bold mt-1 ${summary.summary.grossProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+          <Card variant="default" padding="comfortable">
+            <p className="text-overline text-surface-500">Total Sales</p>
+            <p className="text-metric-lg text-surface-900 mt-2">{formatCurrency(summary.summary.totalSales)}</p>
+          </Card>
+          <Card variant="default" padding="comfortable">
+            <p className="text-overline text-surface-500">Total Cost</p>
+            <p className="text-metric-lg text-surface-900 mt-2">{formatCurrency(summary.summary.totalCost)}</p>
+          </Card>
+          <Card variant="default" padding="comfortable">
+            <p className="text-overline text-surface-500">Gross Profit</p>
+            <p className={`text-metric-lg mt-2 ${summary.summary.grossProfit >= 0 ? 'text-success-600' : 'text-error-600'}`}>
               {formatCurrency(summary.summary.grossProfit)}
             </p>
-            <p className="text-xs text-gray-400">{summary.summary.margin}% margin</p>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <p className="text-xs text-gray-400 uppercase tracking-wider">Transactions</p>
-            <p className="text-xl font-bold text-gray-900 mt-1">{summary.summary.transactionCount}</p>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <p className="text-xs text-gray-400 uppercase tracking-wider">Crates Sold</p>
-            <p className="text-xl font-bold text-gray-900 mt-1">{summary.summary.totalQuantity.toLocaleString()}</p>
-          </div>
+            <p className="text-caption text-surface-500 mt-1">{summary.summary.margin}% margin</p>
+          </Card>
+          <Card variant="default" padding="comfortable">
+            <p className="text-overline text-surface-500">Transactions</p>
+            <p className="text-metric-lg text-surface-900 mt-2">{summary.summary.transactionCount}</p>
+          </Card>
+          <Card variant="default" padding="comfortable">
+            <p className="text-overline text-surface-500">Crates Sold</p>
+            <p className="text-metric-lg text-surface-900 mt-2">{summary.summary.totalQuantity.toLocaleString()}</p>
+          </Card>
         </div>
       )}
 
       {canViewReports && summary && Object.keys(summary.byPaymentMethod).length > 0 && (
         <div className="flex flex-wrap gap-3 mb-6">
           {Object.entries(summary.byPaymentMethod).map(([method, data]) => (
-            <div key={method} className="bg-white rounded-lg border border-gray-200 px-4 py-2 flex items-center gap-3">
-              <span className="text-sm text-gray-500">{PAYMENT_LABELS[method] || method}</span>
-              <span className="font-semibold text-gray-900">{formatCurrency(data.total)}</span>
-              <span className="text-xs text-gray-400">({data.count})</span>
+            <div key={method} className="bg-surface-50 border border-surface-200 rounded-lg px-4 py-2 flex items-center gap-3">
+              <span className="text-body text-surface-600">{PAYMENT_LABELS[method] || method}</span>
+              <span className="text-body-medium font-semibold text-surface-900">{formatCurrency(data.total)}</span>
+              <span className="text-caption text-surface-500">({data.count})</span>
             </div>
           ))}
         </div>
       )}
 
       {error && (
-        <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg mb-4 text-sm">{error}</div>
+        <Card variant="outlined" padding="comfortable" className="mb-4 border-error-200 bg-error-50">
+          <p className="text-body text-error-700">{error}</p>
+        </Card>
       )}
 
       {loading ? (
-        <div className="text-center py-12 text-gray-400">Loading sales...</div>
+        <div className="text-center py-12 text-surface-400">Loading sales...</div>
       ) : sales.length === 0 ? (
-        <div className="text-center py-16">
-          <div className="text-4xl mb-3">💰</div>
-          <p className="text-gray-500">No sales recorded for {formatDate(dateFilter)}</p>
-          {canRecord && (
-            <button
-              onClick={() => setShowRecordSale(true)}
-              className="mt-4 text-brand-500 hover:text-brand-600 text-sm font-medium"
-            >
-              Record or fulfill a sale
-            </button>
-          )}
-        </div>
+        <EmptyState
+          icon={
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" className="w-12 h-12">
+              <circle cx="9" cy="21" r="1" strokeLinecap="round" strokeLinejoin="round" />
+              <circle cx="20" cy="21" r="1" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          }
+          title={`No sales for ${formatDate(dateFilter)}`}
+          description="Start recording sales to see them here"
+          action={canRecord}
+          actionLabel="Record a sale"
+          onAction={() => setShowRecordSale(true)}
+        />
       ) : (
-        <div className="overflow-x-auto">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <table className="w-full min-w-[760px]">
+        <div className="overflow-x-auto custom-scrollbar">
+          <Card variant="default" padding="compact">
+            <table className="w-full min-w-[900px]">
               <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Receipt #</th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Source</th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Batch</th>
-                  <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Qty</th>
-                  <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-                  <th className="text-center py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Payment</th>
-                  <th className="text-center py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                <tr className="border-b border-surface-200">
+                  <th className="text-left py-3 px-4 text-overline text-surface-500">Receipt #</th>
+                  <th className="text-left py-3 px-4 text-overline text-surface-500">Customer</th>
+                  <th className="text-left py-3 px-4 text-overline text-surface-500">Source</th>
+                  <th className="text-left py-3 px-4 text-overline text-surface-500">Batch</th>
+                  <th className="text-right py-3 px-4 text-overline text-surface-500">Qty</th>
+                  <th className="text-right py-3 px-4 text-overline text-surface-500">Amount</th>
+                  <th className="text-center py-3 px-4 text-overline text-surface-500">Payment</th>
+                  <th className="text-center py-3 px-4 text-overline text-surface-500">Type</th>
                 </tr>
               </thead>
               <tbody>
@@ -264,35 +314,37 @@ export default function Sales() {
                     <tr
                       key={sale.id}
                       onClick={() => setSelectedSale(sale)}
-                      className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors"
+                      className="border-b border-surface-100 hover:bg-surface-50 cursor-pointer transition-colors"
                     >
-                      <td className="py-3 px-4 font-mono text-sm text-gray-600">{sale.receiptNumber}</td>
+                      <td className="py-3 px-4 font-mono text-body text-surface-700">{sale.receiptNumber}</td>
                       <td className="py-3 px-4">
-                        <span className="font-medium text-gray-900 text-sm">{sale.customer?.name || '—'}</span>
+                        <span className="text-body-medium font-semibold text-surface-900">{sale.customer?.name || '—'}</span>
                       </td>
-                      <td className="py-3 px-4 text-sm">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          sale.sourceType === 'BOOKING' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-700'
-                        }`}>
+                      <td className="py-3 px-4 text-body">
+                        <Badge
+                          color={sale.sourceType === 'BOOKING' ? 'success' : 'neutral'}
+                          status={sale.sourceType}
+                          dot
+                        >
                           {SOURCE_LABELS[sale.sourceType] || 'Direct sale'}
-                        </span>
+                        </Badge>
                       </td>
-                      <td className="py-3 px-4 text-sm font-medium text-gray-700">{saleBatchLabel(sale)}</td>
-                      <td className="py-3 px-4 text-sm text-right">{sale.totalQuantity.toLocaleString()}</td>
-                      <td className="py-3 px-4 text-sm text-right font-medium">{formatCurrency(sale.totalAmount)}</td>
-                      <td className="py-3 px-4 text-sm text-center">{PAYMENT_LABELS[sale.paymentMethod] || sale.paymentMethod}</td>
+                      <td className="py-3 px-4 text-body-medium font-semibold text-surface-800">{saleBatchLabel(sale)}</td>
+                      <td className="py-3 px-4 text-body text-right text-surface-700">{sale.totalQuantity.toLocaleString()}</td>
+                      <td className="py-3 px-4 text-body-medium text-right font-semibold text-surface-900">{formatCurrency(sale.totalAmount)}</td>
+                      <td className="py-3 px-4 text-body text-center text-surface-700">{PAYMENT_LABELS[sale.paymentMethod] || sale.paymentMethod}</td>
                       <td className="py-3 px-4 text-center">
-                        <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium ${SALE_TYPE_COLORS[mainType]}`}>
+                        <Badge color={SALE_TYPE_BADGE_COLORS[mainType]} dot>
                           {SALE_TYPE_LABELS[mainType]}
-                        </span>
+                        </Badge>
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
-          </div>
-          <p className="text-xs text-gray-400 mt-3">{total} sale record(s) shown.</p>
+          </Card>
+          <p className="text-caption text-surface-500 mt-3">{total} sale record(s) shown.</p>
         </div>
       )}
 
@@ -315,6 +367,7 @@ export default function Sales() {
 }
 
 function RecordSaleModal({ onClose, onRecorded }) {
+  const toast = useToast();
   const [step, setStep] = useState(1);
   const [customerSearch, setCustomerSearch] = useState('');
   const [customers, setCustomers] = useState([]);
@@ -388,7 +441,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
         mixedDirectSaleStock: data.mixedDirectSaleStock || [],
       });
     } catch {
-      setWorkspaceError('Failed to load this customer’s sales options');
+      setWorkspaceError('Failed to load this customer\'s sales options');
       setCustomerWorkspace({ customer: null, bookings: [], directSaleBatches: [], mixedDirectSaleStock: [] });
     } finally {
       setLoadingWorkspace(false);
@@ -586,585 +639,588 @@ function RecordSaleModal({ onClose, onRecorded }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-3 sm:p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="px-4 sm:px-6 py-4 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-900">Record or Fulfill Sale</h2>
-          <div className="flex gap-2 mt-2 flex-wrap">
-            {['1. Customer', '2. Choose sale path', '3. Confirm items'].map((label, index) => (
-              <span
-                key={label}
-                className={`text-xs font-medium px-2 py-0.5 rounded ${
-                  step >= index + 1 ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-400'
-                }`}
+    <Modal open={true} onClose={onClose} title="Record or Fulfill Sale" size="xl" footer={false}>
+      <div className="flex gap-2 mb-4 flex-wrap">
+        {['1. Customer', '2. Choose sale path', '3. Confirm items'].map((label, index) => (
+          <span
+            key={label}
+            className={`text-caption font-semibold px-2 py-1 rounded-md ${
+              step >= index + 1 ? 'bg-brand-100 text-brand-700' : 'bg-surface-100 text-surface-400'
+            }`}
+          >
+            {label}
+          </span>
+        ))}
+      </div>
+
+      {(error || workspaceError) && (
+        <Card variant="outlined" padding="compact" className="mb-4 border-error-200 bg-error-50">
+          <p className="text-body text-error-700">{error || workspaceError}</p>
+        </Card>
+      )}
+
+      {step === 1 && (
+        <div className="space-y-4">
+          <div>
+            <Input
+              label="Search Customer"
+              placeholder="Type the customer name or phone number"
+              value={customerSearch}
+              onChange={(e) => setCustomerSearch(e.target.value)}
+              autoFocus
+              size="md"
+            />
+            <p className="text-caption text-surface-600 mt-2">
+              Start here so the app can show existing bookings before you record a new sale.
+            </p>
+          </div>
+
+          <Card variant="outlined" padding="comfortable" className="border-dashed">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <p className="text-heading text-surface-900">Need a new customer?</p>
+                <p className="text-body text-surface-600 mt-1">
+                  Create the customer here first, then continue with the sale.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                size="md"
+                onClick={() => {
+                  setShowCreateCustomer((current) => !current);
+                  setError('');
+                }}
               >
-                {label}
-              </span>
-            ))}
+                {showCreateCustomer ? 'Hide form' : 'Create customer'}
+              </Button>
+            </div>
+
+            {showCreateCustomer && (
+              <form onSubmit={handleCreateCustomer} className="mt-4 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Input
+                    label="Customer name"
+                    value={newCustomerForm.name}
+                    onChange={(e) => setNewCustomerForm((current) => ({ ...current, name: e.target.value }))}
+                    required
+                    size="md"
+                  />
+                  <Input
+                    label="Phone number"
+                    type="tel"
+                    value={newCustomerForm.phone}
+                    onChange={(e) => setNewCustomerForm((current) => ({ ...current, phone: e.target.value }))}
+                    required
+                    size="md"
+                  />
+                  <Input
+                    label="Email address"
+                    type="email"
+                    value={newCustomerForm.email}
+                    onChange={(e) => setNewCustomerForm((current) => ({ ...current, email: e.target.value }))}
+                    size="md"
+                  />
+                  <Input
+                    label="Notes"
+                    value={newCustomerForm.notes}
+                    onChange={(e) => setNewCustomerForm((current) => ({ ...current, notes: e.target.value }))}
+                    size="md"
+                  />
+                </div>
+                <Card variant="outlined" padding="comfortable" className="border-warning-200 bg-warning-50">
+                  <p className="text-body text-warning-900">
+                    New customers start under the early-order limit. If this sale goes above that limit later, a staff note will be required and saved with the sale.
+                  </p>
+                </Card>
+                <div className="flex justify-end">
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    size="md"
+                    loading={creatingCustomer}
+                  >
+                    Save customer and continue
+                  </Button>
+                </div>
+              </form>
+            )}
+          </Card>
+
+          {searchingCustomers && <p className="text-body text-surface-500">Searching...</p>}
+
+          {customers.length > 0 && (
+            <Card variant="outlined" padding="compact" className="max-h-72 overflow-y-auto custom-scrollbar">
+              <div className="divide-y divide-surface-100">
+                {customers.map((customer) => (
+                  <button
+                    key={customer.id}
+                    onClick={() => chooseCustomer(customer)}
+                    className="w-full text-left px-4 py-3 hover:bg-surface-50 transition-colors"
+                  >
+                    <span className="text-body-medium font-semibold text-surface-900">{customer.name}</span>
+                    <span className="text-body text-surface-500 ml-2">{customer.phone}</span>
+                  </button>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          {customerSearch && !searchingCustomers && customers.length === 0 && (
+            <p className="text-body text-surface-500">No customers found</p>
+          )}
+
+          <div className="flex justify-end pt-2 gap-3">
+            <Button onClick={onClose} variant="ghost" size="md">Cancel</Button>
           </div>
         </div>
+      )}
 
-        <div className="p-4 sm:p-6">
-          {(error || workspaceError) && (
-            <div className="bg-red-50 text-red-600 px-3 py-2 rounded-lg text-sm mb-4">{error || workspaceError}</div>
+      {step === 2 && (
+        <div className="space-y-5">
+          <Card variant="outlined" padding="comfortable" className="bg-surface-50">
+            <div className="flex items-center gap-3">
+              <span className="text-body text-surface-600">Customer:</span>
+              <span className="text-body-medium font-semibold text-surface-900">{selectedCustomer?.name}</span>
+              {selectedCustomer?.phone && <span className="text-body text-surface-500">{selectedCustomer.phone}</span>}
+              <button
+                onClick={() => {
+                  setStep(1);
+                  setSelectedBatch(null);
+                  setSelectedBooking(null);
+                  setWorkflow('');
+                  setLineItems([]);
+                }}
+                className="ml-auto text-caption text-surface-500 hover:text-surface-700"
+              >
+                Change
+              </button>
+            </div>
+          </Card>
+
+          {orderLimitProfile && (
+            <Card
+              variant="outlined"
+              padding="comfortable"
+              className={orderLimitProfile.isUsingEarlyOrderLimit ? 'border-warning-200 bg-warning-50' : 'border-surface-200 bg-surface-50'}
+            >
+              <p className={`text-heading ${orderLimitProfile.isUsingEarlyOrderLimit ? 'text-warning-900' : 'text-surface-900'}`}>
+                {orderLimitProfile.isUsingEarlyOrderLimit ? 'Early-order limit still applies' : 'Standard order limit'}
+              </p>
+              <p className={`text-body mt-1 ${orderLimitProfile.isUsingEarlyOrderLimit ? 'text-warning-800' : 'text-surface-700'}`}>
+                {orderLimitMessage(orderLimitProfile)}
+              </p>
+              {orderLimitProfile.isUsingEarlyOrderLimit && (
+                <p className="text-caption text-warning-800 mt-2">
+                  This lighter cap stays active for the first {orderLimitProfile.earlyOrderLimitCount} orders.
+                </p>
+              )}
+            </Card>
           )}
 
-          {step === 1 && (
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Search Customer</label>
-                <input
-                  type="text"
-                  placeholder="Type the customer name or phone number"
-                  value={customerSearch}
-                  onChange={(e) => setCustomerSearch(e.target.value)}
-                  autoFocus
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Start here so the app can show existing bookings before you record a new sale.
-                </p>
-              </div>
+          <Card variant="outlined" padding="comfortable">
+            <p className="text-heading text-surface-900">Choose what you want to do</p>
+            <p className="text-body text-surface-600 mt-1">
+              If this customer already paid for a booking, finish the pickup. If not, record a direct sale.
+            </p>
+          </Card>
 
-              <div className="rounded-xl border border-dashed border-gray-300 p-4">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-gray-900">Need a new customer?</p>
-                    <p className="text-sm text-gray-600 mt-1">
-                      Create the customer here first, then continue with the sale.
-                    </p>
+          {loadingWorkspace ? (
+            <p className="text-body text-surface-500">Loading customer options...</p>
+          ) : (
+            <>
+              <section className="space-y-3">
+                <div>
+                  <h3 className="text-heading text-surface-900">1. Complete a paid booking</h3>
+                  <p className="text-body text-surface-600 mt-1">
+                    Use this when the customer already booked eggs and the payment is complete.
+                  </p>
+                </div>
+
+                {customerWorkspace.bookings.length === 0 ? (
+                  <Card variant="outlined" padding="comfortable" className="border-dashed text-center">
+                    <p className="text-body text-surface-600">This customer has no open bookings right now.</p>
+                  </Card>
+                ) : (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                    {customerWorkspace.bookings.map((booking) => (
+                      <Card key={booking.id} variant="outlined" padding="comfortable">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-heading text-surface-900">{booking.batch?.name || 'Batch'}</p>
+                            <p className="text-body-medium font-semibold text-surface-800 mt-1">{booking.batch?.eggTypeLabel || 'Regular Size Eggs'}</p>
+                            <p className="text-body text-surface-600 mt-1">
+                              {booking.quantity} crates{booking.batchEggCode?.code ? ` of ${booking.batchEggCode.code}` : ''} booked on {formatDate(booking.createdAt)}
+                            </p>
+                          </div>
+                          <Badge
+                            color={booking.isFullyPaid ? 'success' : 'warning'}
+                            status={booking.isFullyPaid ? 'ready' : 'pending'}
+                            dot
+                          >
+                            {booking.isFullyPaid ? 'Ready' : 'Needs payment'}
+                          </Badge>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-3 mt-4 text-sm">
+                          <div>
+                            <p className="text-surface-500">Booking value</p>
+                            <p className="text-body-medium font-semibold text-surface-900">{formatCurrency(booking.orderValue)}</p>
+                          </div>
+                          <div>
+                            <p className="text-surface-500">Paid</p>
+                            <p className="text-body-medium font-semibold text-surface-900">{formatCurrency(booking.amountPaid)}</p>
+                          </div>
+                          <div>
+                            <p className="text-surface-500">Balance</p>
+                            <p className={`text-body-medium font-semibold ${booking.balance > 0 ? 'text-warning-700' : 'text-success-700'}`}>
+                              {formatCurrency(booking.balance)}
+                            </p>
+                          </div>
+                        </div>
+
+                        <Button
+                          type="button"
+                          variant={booking.isFullyPaid ? 'primary' : 'secondary'}
+                          disabled={!booking.isFullyPaid}
+                          onClick={() => chooseBooking(booking)}
+                          size="md"
+                          className="w-full mt-4"
+                        >
+                          {booking.isFullyPaid ? 'Use this booking' : 'Record payment first'}
+                        </Button>
+                      </Card>
+                    ))}
                   </div>
+                )}
+              </section>
+
+              <section className="space-y-3">
+                <div>
+                  <h3 className="text-heading text-surface-900">2. Record a direct sale</h3>
+                  <p className="text-body text-surface-600 mt-1">
+                    Use this for walk-in sales or any sale that is not tied to an existing booking.
+                  </p>
+                </div>
+
+                {customerWorkspace.mixedDirectSaleStock?.length > 0 && (
                   <button
                     type="button"
-                    onClick={() => {
-                      setShowCreateCustomer((current) => !current);
-                      setError('');
-                    }}
-                    className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-sm font-medium text-gray-700"
+                    onClick={() => chooseMixedDirectSale()}
+                    className="w-full text-left rounded-lg border border-brand-200 bg-brand-50/50 px-4 py-4 hover:bg-brand-50 transition-colors"
                   >
-                    {showCreateCustomer ? 'Hide new customer form' : 'Create new customer'}
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-heading text-surface-900">Use stock from multiple batches</p>
+                        <p className="text-body text-surface-600 mt-1">
+                          Choose this when one receipt needs items from more than one received batch.
+                        </p>
+                      </div>
+                      <span className="text-caption text-brand-600 font-semibold">Recommended</span>
+                    </div>
                   </button>
-                </div>
-
-                {showCreateCustomer && (
-                  <form onSubmit={handleCreateCustomer} className="mt-4 space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Customer name</label>
-                        <input
-                          type="text"
-                          value={newCustomerForm.name}
-                          onChange={(e) => setNewCustomerForm((current) => ({ ...current, name: e.target.value }))}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Phone number</label>
-                        <input
-                          type="tel"
-                          value={newCustomerForm.phone}
-                          onChange={(e) => setNewCustomerForm((current) => ({ ...current, phone: e.target.value }))}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Email address</label>
-                        <input
-                          type="email"
-                          value={newCustomerForm.email}
-                          onChange={(e) => setNewCustomerForm((current) => ({ ...current, email: e.target.value }))}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-                        <input
-                          type="text"
-                          value={newCustomerForm.notes}
-                          onChange={(e) => setNewCustomerForm((current) => ({ ...current, notes: e.target.value }))}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-                        />
-                      </div>
-                    </div>
-                    <div className="rounded-lg bg-amber-50 px-3 py-3 text-sm text-amber-800">
-                      New customers start under the early-order limit. If this sale goes above that limit later, a staff note will be required and saved with the sale.
-                    </div>
-                    <div className="flex justify-end">
-                      <button
-                        type="submit"
-                        disabled={creatingCustomer}
-                        className="px-4 py-2 rounded-lg bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white text-sm font-medium"
-                      >
-                        {creatingCustomer ? 'Creating customer...' : 'Save customer and continue'}
-                      </button>
-                    </div>
-                  </form>
                 )}
-              </div>
 
-              {searchingCustomers && <p className="text-sm text-gray-400">Searching...</p>}
-
-              {customers.length > 0 && (
-                <div className="border border-gray-200 rounded-lg overflow-hidden max-h-72 overflow-y-auto">
-                  {customers.map((customer) => (
-                    <button
-                      key={customer.id}
-                      onClick={() => chooseCustomer(customer)}
-                      className="w-full text-left px-4 py-3 hover:bg-gray-50 border-b border-gray-50 last:border-0 transition-colors"
-                    >
-                      <span className="font-medium text-gray-900">{customer.name}</span>
-                      <span className="text-sm text-gray-400 ml-2">{customer.phone}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {customerSearch && !searchingCustomers && customers.length === 0 && (
-                <p className="text-sm text-gray-400">No customers found</p>
-              )}
-
-              <div className="flex justify-end pt-2">
-                <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Cancel</button>
-              </div>
-            </div>
-          )}
-
-          {step === 2 && (
-            <div className="space-y-5">
-              <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 text-sm">
-                <span className="text-gray-500">Customer:</span>
-                <span className="font-medium text-gray-900">{selectedCustomer?.name}</span>
-                {selectedCustomer?.phone && <span className="text-gray-400">{selectedCustomer.phone}</span>}
-                <button
-                  onClick={() => {
-                    setStep(1);
-                    setSelectedBatch(null);
-                    setSelectedBooking(null);
-                    setWorkflow('');
-                    setLineItems([]);
-                  }}
-                  className="ml-auto text-xs text-gray-400 hover:text-gray-600"
-                >
-                  Change
-                </button>
-              </div>
-
-              {orderLimitProfile && (
-                <div className={`rounded-xl p-4 ${orderLimitProfile.isUsingEarlyOrderLimit ? 'bg-amber-50' : 'bg-gray-50'}`}>
-                  <p className={`text-sm font-semibold ${orderLimitProfile.isUsingEarlyOrderLimit ? 'text-amber-800' : 'text-gray-800'}`}>
-                    {orderLimitProfile.isUsingEarlyOrderLimit ? 'Early-order limit still applies' : 'Standard order limit'}
-                  </p>
-                  <p className={`text-sm mt-1 ${orderLimitProfile.isUsingEarlyOrderLimit ? 'text-amber-700' : 'text-gray-600'}`}>
-                    {orderLimitMessage(orderLimitProfile)}
-                  </p>
-                  {orderLimitProfile.isUsingEarlyOrderLimit && (
-                    <p className="text-xs text-amber-700 mt-2">
-                      This lighter cap stays active for the first {orderLimitProfile.earlyOrderLimitCount} orders.
-                    </p>
-                  )}
-                </div>
-              )}
-
-              <div className="bg-white border border-gray-200 rounded-xl p-4">
-                <p className="text-base font-semibold text-gray-900">Choose what you want to do</p>
-                <p className="text-sm text-gray-600 mt-1">
-                  If this customer already paid for a booking, finish the pickup. If not, record a direct sale.
-                </p>
-              </div>
-
-              {loadingWorkspace ? (
-                <p className="text-sm text-gray-400">Loading customer options...</p>
-              ) : (
-                <>
-                  <section className="space-y-3">
-                    <div>
-                      <h3 className="text-sm font-semibold text-gray-900">1. Complete a paid booking</h3>
-                      <p className="text-sm text-gray-600 mt-1">
-                        Use this when the customer already booked eggs and the payment is complete.
-                      </p>
-                    </div>
-
-                    {customerWorkspace.bookings.length === 0 ? (
-                      <div className="border border-dashed border-gray-300 rounded-xl p-4 text-sm text-gray-500">
-                        This customer has no open bookings right now.
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                        {customerWorkspace.bookings.map((booking) => (
-                          <div key={booking.id} className="border border-gray-200 rounded-xl p-4">
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <p className="font-semibold text-gray-900">{booking.batch?.name || 'Batch'}</p>
-                                <p className="text-sm font-medium text-gray-700 mt-1">{booking.batch?.eggTypeLabel || 'Regular Size Eggs'}</p>
-                                <p className="text-sm text-gray-500 mt-1">
-                                  {booking.quantity} crates{booking.batchEggCode?.code ? ` of ${booking.batchEggCode.code}` : ''} booked on {formatDate(booking.createdAt)}
-                                </p>
-                              </div>
-                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                booking.isFullyPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-                              }`}>
-                                {booking.isFullyPaid ? 'Ready for pickup' : 'Needs full payment'}
-                              </span>
-                            </div>
-
-                            <div className="grid grid-cols-3 gap-3 mt-4 text-sm">
-                              <div>
-                                <p className="text-gray-400">Booking value</p>
-                                <p className="font-medium text-gray-900">{formatCurrency(booking.orderValue)}</p>
-                              </div>
-                              <div>
-                                <p className="text-gray-400">Paid</p>
-                                <p className="font-medium text-gray-900">{formatCurrency(booking.amountPaid)}</p>
-                              </div>
-                              <div>
-                                <p className="text-gray-400">Balance</p>
-                                <p className={`font-medium ${booking.balance > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>
-                                  {formatCurrency(booking.balance)}
-                                </p>
-                              </div>
-                            </div>
-
-                            <button
-                              type="button"
-                              disabled={!booking.isFullyPaid}
-                              onClick={() => chooseBooking(booking)}
-                              className={`mt-4 w-full px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                                booking.isFullyPaid
-                                  ? 'bg-brand-500 hover:bg-brand-600 text-white'
-                                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                              }`}
-                            >
-                              {booking.isFullyPaid ? 'Use this booking' : 'Record remaining payment first'}
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </section>
-
-                  <section className="space-y-3">
-                    <div>
-                      <h3 className="text-sm font-semibold text-gray-900">2. Record a direct sale</h3>
-                      <p className="text-sm text-gray-600 mt-1">
-                        Use this for walk-in sales or any sale that is not tied to an existing booking.
-                      </p>
-                    </div>
-
-                    {customerWorkspace.mixedDirectSaleStock?.length > 0 && (
+                {customerWorkspace.directSaleBatches.length === 0 ? (
+                  <Card variant="outlined" padding="comfortable" className="border-dashed text-center">
+                    <p className="text-body text-surface-600">No received batches are available for direct sale right now.</p>
+                  </Card>
+                ) : (
+                  <div className="space-y-3">
+                    {customerWorkspace.directSaleBatches.map((batch) => (
                       <button
+                        key={batch.id}
                         type="button"
-                        onClick={() => chooseMixedDirectSale()}
-                        className="w-full text-left rounded-xl border border-brand-200 bg-brand-50/60 px-4 py-4 hover:bg-brand-50 transition-colors"
+                        onClick={() => chooseDirectSale(batch)}
+                        className="w-full text-left border border-surface-200 rounded-lg px-4 py-4 hover:border-surface-300 hover:bg-surface-50 transition-colors"
                       >
                         <div className="flex items-center justify-between gap-3">
                           <div>
-                            <p className="font-semibold text-gray-900">Use stock from multiple batches</p>
-                            <p className="text-sm text-gray-600 mt-1">
-                              Choose this when one receipt needs items from more than one received batch.
+                            <p className="text-heading text-surface-900">{batch.name}</p>
+                            <p className="text-body-medium font-semibold text-surface-800 mt-1">{batch.eggTypeLabel || 'Regular Size Eggs'}</p>
+                            <p className="text-body text-surface-600 mt-1">
+                              Wholesale {formatCurrency(batch.wholesalePrice)} · Retail {formatCurrency(batch.retailPrice)}
+                            </p>
+                            <p className="text-caption text-surface-500 mt-1">
+                              {batch.availableForSale?.toLocaleString?.() || 0} crates available for direct sale
                             </p>
                           </div>
-                          <span className="text-xs text-brand-600 font-medium">Recommended when mixing stock</span>
+                          <span className="text-caption text-surface-500">{batch.eggCodes.length} code(s)</span>
+                        </div>
+                        <div className="flex gap-2 mt-3 flex-wrap">
+                          {batch.eggCodes.map((eggCode) => (
+                            <span key={eggCode.id} className="text-caption font-mono bg-surface-100 text-surface-700 px-2 py-1 rounded">
+                              {eggCode.code}
+                            </span>
+                          ))}
                         </div>
                       </button>
-                    )}
-
-                    {customerWorkspace.directSaleBatches.length === 0 ? (
-                      <div className="border border-dashed border-gray-300 rounded-xl p-4 text-sm text-gray-500">
-                        No received batches are available for direct sale right now.
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {customerWorkspace.directSaleBatches.map((batch) => (
-                          <button
-                            key={batch.id}
-                            type="button"
-                            onClick={() => chooseDirectSale(batch)}
-                            className="w-full text-left border border-gray-200 rounded-xl px-4 py-4 hover:border-gray-300 hover:bg-gray-50 transition-colors"
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <div>
-                                <p className="font-semibold text-gray-900">{batch.name}</p>
-                                <p className="text-sm font-medium text-gray-700 mt-1">{batch.eggTypeLabel || 'Regular Size Eggs'}</p>
-                                <p className="text-sm text-gray-500 mt-1">
-                                  Wholesale {formatCurrency(batch.wholesalePrice)} · Retail {formatCurrency(batch.retailPrice)}
-                                </p>
-                                <p className="text-xs text-gray-400 mt-1">
-                                  {batch.availableForSale?.toLocaleString?.() || 0} crates available for direct sale
-                                </p>
-                              </div>
-                              <span className="text-xs text-gray-400">{batch.eggCodes.length} egg code(s)</span>
-                            </div>
-                            <div className="flex gap-2 mt-3 flex-wrap">
-                              {batch.eggCodes.map((eggCode) => (
-                                <span key={eggCode.id} className="text-xs font-mono bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
-                                  {eggCode.code}
-                                </span>
-                              ))}
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </section>
-                </>
-              )}
-
-              <div className="flex justify-between pt-2">
-                <button onClick={() => setStep(1)} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">&larr; Back</button>
-                <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Cancel</button>
-              </div>
-            </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </>
           )}
 
-          {step === 3 && (
-            <form onSubmit={handleSubmit} className="space-y-5">
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 text-sm">
-                  <div className="bg-gray-50 rounded-lg px-3 py-3">
-                    <p className="text-gray-500">Customer</p>
-                  <p className="font-medium text-gray-900">{selectedCustomer?.name}</p>
-                </div>
-                <div className="bg-gray-50 rounded-lg px-3 py-3">
-                  <p className="text-gray-500">Sale path</p>
-                  <p className="font-medium text-gray-900">{workflow === 'BOOKING' ? 'Booking pickup' : 'Direct sale'}</p>
-                </div>
-                <div className="bg-gray-50 rounded-lg px-3 py-3">
-                  <p className="text-gray-500">Batch</p>
-                  <p className="font-medium text-gray-900">{saleScopeLabel || selectedBatch?.name || '—'}</p>
-                </div>
-              </div>
+          <div className="flex justify-between pt-2 gap-3">
+            <Button onClick={() => setStep(1)} variant="ghost" size="md" icon={<ChevronLeftIcon />}>Back</Button>
+            <Button onClick={onClose} variant="ghost" size="md">Cancel</Button>
+          </div>
+        </div>
+      )}
 
-              {workflow === 'BOOKING' ? (
-                <div className={`rounded-xl p-4 ${selectedBooking?.isFullyPaid ? 'bg-emerald-50' : 'bg-amber-50'}`}>
-                  <p className={`text-sm font-semibold ${selectedBooking?.isFullyPaid ? 'text-emerald-800' : 'text-amber-800'}`}>
-                    {selectedBooking?.isFullyPaid ? 'Complete this booking pickup' : 'This booking still has a balance'}
-                  </p>
-                  <p className={`text-sm mt-1 ${selectedBooking?.isFullyPaid ? 'text-emerald-700' : 'text-amber-700'}`}>
-                    {selectedBooking?.isFullyPaid
-                      ? `Enter the egg codes collected. The total must stay at ${selectedBooking?.quantity} crates.`
-                      : 'Record the remaining payment in Banking and update the booking before pickup.'}
-                  </p>
-                </div>
-              ) : (
-                <div className="rounded-xl p-4 bg-blue-50">
-                  <p className="text-sm font-semibold text-blue-800">Record a direct sale</p>
-                  <p className="text-sm text-blue-700 mt-1">
-                    Enter what the customer bought and choose how they paid.
+      {step === 3 && (
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+            <Card variant="outlined" padding="compact" className="bg-surface-50">
+              <p className="text-body text-surface-600">Customer</p>
+              <p className="text-body-medium font-semibold text-surface-900 mt-1">{selectedCustomer?.name}</p>
+            </Card>
+            <Card variant="outlined" padding="compact" className="bg-surface-50">
+              <p className="text-body text-surface-600">Sale path</p>
+              <p className="text-body-medium font-semibold text-surface-900 mt-1">{workflow === 'BOOKING' ? 'Booking pickup' : 'Direct sale'}</p>
+            </Card>
+            <Card variant="outlined" padding="compact" className="bg-surface-50">
+              <p className="text-body text-surface-600">Batch</p>
+              <p className="text-body-medium font-semibold text-surface-900 mt-1">{saleScopeLabel || selectedBatch?.name || '—'}</p>
+            </Card>
+          </div>
+
+          {workflow === 'BOOKING' ? (
+            <Card
+              variant="outlined"
+              padding="comfortable"
+              className={selectedBooking?.isFullyPaid ? 'border-success-200 bg-success-50' : 'border-warning-200 bg-warning-50'}
+            >
+              <p className={`text-heading ${selectedBooking?.isFullyPaid ? 'text-success-900' : 'text-warning-900'}`}>
+                {selectedBooking?.isFullyPaid ? 'Complete this booking pickup' : 'This booking still has a balance'}
+              </p>
+              <p className={`text-body mt-1 ${selectedBooking?.isFullyPaid ? 'text-success-800' : 'text-warning-800'}`}>
+                {selectedBooking?.isFullyPaid
+                  ? `Enter the egg codes collected. The total must stay at ${selectedBooking?.quantity} crates.`
+                  : 'Record the remaining payment in Banking and update the booking before pickup.'}
+              </p>
+            </Card>
+          ) : (
+            <Card variant="outlined" padding="comfortable" className="border-info-200 bg-info-50">
+              <p className="text-heading text-info-900">Record a direct sale</p>
+              <p className="text-body text-info-800 mt-1">
+                Enter what the customer bought and choose how they paid.
+              </p>
+            </Card>
+          )}
+
+          {workflow === 'DIRECT' && orderLimitProfile && (
+            <Card
+              variant="outlined"
+              padding="comfortable"
+              className={needsLimitOverride ? 'border-error-200 bg-error-50' : orderLimitProfile.isUsingEarlyOrderLimit ? 'border-warning-200 bg-warning-50' : 'border-surface-200 bg-surface-50'}
+            >
+              <p className={`text-heading ${needsLimitOverride ? 'text-error-900' : orderLimitProfile.isUsingEarlyOrderLimit ? 'text-warning-900' : 'text-surface-900'}`}>
+                {needsLimitOverride ? 'This sale is above the customer limit' : 'Customer sale limit'}
+              </p>
+              <p className={`text-body mt-1 ${needsLimitOverride ? 'text-error-800' : orderLimitProfile.isUsingEarlyOrderLimit ? 'text-warning-800' : 'text-surface-700'}`}>
+                {orderLimitMessage(orderLimitProfile)}
+              </p>
+              {needsLimitOverride && (
+                <div className="mt-3 space-y-2">
+                  <label className="block text-body-medium font-semibold text-error-900">
+                    Why are you overriding this limit?
+                  </label>
+                  <textarea
+                    value={limitOverrideNote}
+                    onChange={(e) => setLimitOverrideNote(e.target.value)}
+                    rows={3}
+                    placeholder="Explain why this sale is going above the customer limit."
+                    className="w-full border border-error-300 rounded-lg px-3 py-2 text-body focus:ring-2 focus:ring-error-500 focus:border-error-500 outline-none"
+                  />
+                  <p className="text-caption text-error-800">
+                    Your note and your staff name will be saved with this sale.
                   </p>
                 </div>
               )}
+            </Card>
+          )}
 
-              {workflow === 'DIRECT' && orderLimitProfile && (
-                <div className={`rounded-xl p-4 ${needsLimitOverride ? 'bg-red-50 border border-red-200' : orderLimitProfile.isUsingEarlyOrderLimit ? 'bg-amber-50' : 'bg-gray-50'}`}>
-                  <p className={`text-sm font-semibold ${needsLimitOverride ? 'text-red-800' : orderLimitProfile.isUsingEarlyOrderLimit ? 'text-amber-800' : 'text-gray-800'}`}>
-                    {needsLimitOverride ? 'This sale is above the customer limit' : 'Customer sale limit'}
-                  </p>
-                  <p className={`text-sm mt-1 ${needsLimitOverride ? 'text-red-700' : orderLimitProfile.isUsingEarlyOrderLimit ? 'text-amber-700' : 'text-gray-600'}`}>
-                    {orderLimitMessage(orderLimitProfile)}
-                  </p>
-                  {needsLimitOverride && (
-                    <div className="mt-3 space-y-2">
-                      <label className="block text-sm font-medium text-red-900">
-                        Why are you overriding this limit?
-                      </label>
-                      <textarea
-                        value={limitOverrideNote}
-                        onChange={(e) => setLimitOverrideNote(e.target.value)}
-                        rows={3}
-                        placeholder="Explain why this sale is going above the customer limit."
-                        className="w-full border border-red-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-400 focus:border-red-400 outline-none"
+          <div>
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <label className="block text-body-medium font-semibold text-surface-900">Line Items</label>
+              {workflow === 'BOOKING' && (
+                <p className="text-caption text-surface-600">
+                  Tip: if the customer picked different egg codes, split the quantity across the rows below.
+                </p>
+              )}
+            </div>
+            <div className="space-y-3 overflow-x-auto custom-scrollbar">
+              {lineItems.map((lineItem, index) => (
+                <div key={lineItem.batchEggCodeId} className="grid grid-cols-12 gap-1 sm:gap-2 items-end min-w-[320px]">
+                  <div className="col-span-2">
+                    {index === 0 && <label className="block text-caption text-surface-600 mb-1">Egg Code</label>}
+                    <div className="border border-surface-200 bg-surface-50 rounded-lg px-3 py-2">
+                      <p className="text-body-medium font-mono font-semibold text-brand-600">{lineItem.code}</p>
+                      <p className="text-caption text-surface-500 mt-1 truncate">{lineItem.batchName}</p>
+                    </div>
+                  </div>
+                  <div className="col-span-3">
+                    {index === 0 && <label className="block text-caption text-surface-600 mb-1">Sale Type</label>}
+                    <Select
+                      value={lineItem.saleType}
+                      onChange={(e) => updateLineItem(index, 'saleType', e.target.value)}
+                      size="md"
+                    >
+                      {Object.entries(SALE_TYPE_LABELS).map(([key, label]) => (
+                        <option key={key} value={key}>{label}</option>
+                      ))}
+                    </Select>
+                  </div>
+                  <div className="col-span-2">
+                    {index === 0 && <label className="block text-caption text-surface-600 mb-1">Quantity</label>}
+                    <div>
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="0"
+                        value={lineItem.quantity}
+                        onChange={(e) => updateLineItem(index, 'quantity', e.target.value)}
+                        className="w-full border border-surface-300 rounded-lg px-2 py-2 text-body focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
                       />
-                      <p className="text-xs text-red-700">
-                        Your note and your staff name will be saved with this sale.
+                      <p className="text-caption text-surface-500 mt-1">
+                        Remain {Number(lineItem.remainingQuantity || 0).toLocaleString()}
                       </p>
                     </div>
-                  )}
-                </div>
-              )}
-
-              <div>
-                <div className="flex items-center justify-between gap-3 mb-2">
-                  <label className="block text-sm font-medium text-gray-700">Line Items</label>
-                  {workflow === 'BOOKING' && (
-                    <p className="text-xs text-gray-500">
-                      Tip: if the customer picked different egg codes, split the quantity across the rows below.
+                  </div>
+                  <div className="col-span-3">
+                    {index === 0 && <label className="block text-caption text-surface-600 mb-1">Unit Price (₦)</label>}
+                    <input
+                      type="number"
+                      min="0"
+                      value={lineItem.unitPrice}
+                      onChange={(e) => updateLineItem(index, 'unitPrice', e.target.value)}
+                      className="w-full border border-surface-300 rounded-lg px-2 py-2 text-body focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+                    />
+                  </div>
+                  <div className="col-span-2 text-right">
+                    {index === 0 && <label className="block text-caption text-surface-600 mb-1">Line Total</label>}
+                    <p className="py-2 text-body-medium font-semibold text-surface-800">
+                      {lineItem.quantity && Number(lineItem.quantity) > 0
+                        ? formatCurrency(Number(lineItem.quantity) * Number(lineItem.unitPrice))
+                        : '—'}
                     </p>
-                  )}
+                  </div>
                 </div>
-                <div className="space-y-3 overflow-x-auto">
-                  {lineItems.map((lineItem, index) => (
-                    <div key={lineItem.batchEggCodeId} className="grid grid-cols-12 gap-1 sm:gap-2 items-end min-w-[320px]">
-                      <div className="col-span-2">
-                        {index === 0 && <label className="block text-xs text-gray-500 mb-1">Egg Code</label>}
-                        <div className="border border-gray-200 bg-gray-50 rounded-lg px-3 py-2">
-                          <p className="text-sm font-mono font-semibold text-brand-600">{lineItem.code}</p>
-                          <p className="text-[11px] text-gray-500 mt-1 truncate">{lineItem.batchName}</p>
-                        </div>
-                      </div>
-                      <div className="col-span-3">
-                        {index === 0 && <label className="block text-xs text-gray-500 mb-1">Sale Type</label>}
-                        <select
-                          value={lineItem.saleType}
-                          onChange={(e) => updateLineItem(index, 'saleType', e.target.value)}
-                          className="w-full border border-gray-300 rounded-lg px-2 py-2 text-sm focus:ring-2 focus:ring-brand-500 outline-none"
-                        >
-                          {Object.entries(SALE_TYPE_LABELS).map(([key, label]) => (
-                            <option key={key} value={key}>{label}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="col-span-2">
-                        {index === 0 && <label className="block text-xs text-gray-500 mb-1">Quantity</label>}
-                        <div>
-                          <input
-                            type="number"
-                            min="0"
-                            placeholder="0"
-                            value={lineItem.quantity}
-                            onChange={(e) => updateLineItem(index, 'quantity', e.target.value)}
-                            className="w-full border border-gray-300 rounded-lg px-2 py-2 text-sm focus:ring-2 focus:ring-brand-500 outline-none"
-                          />
-                          <p className="text-[11px] text-gray-400 mt-1">
-                            Remain {Number(lineItem.remainingQuantity || 0).toLocaleString()}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="col-span-3">
-                        {index === 0 && <label className="block text-xs text-gray-500 mb-1">Unit Price (₦)</label>}
-                        <input
-                          type="number"
-                          min="0"
-                          value={lineItem.unitPrice}
-                          onChange={(e) => updateLineItem(index, 'unitPrice', e.target.value)}
-                          className="w-full border border-gray-300 rounded-lg px-2 py-2 text-sm focus:ring-2 focus:ring-brand-500 outline-none"
-                        />
-                      </div>
-                      <div className="col-span-2 text-right">
-                        {index === 0 && <label className="block text-xs text-gray-500 mb-1">Line Total</label>}
-                        <p className="py-2 text-sm font-medium text-gray-700">
-                          {lineItem.quantity && Number(lineItem.quantity) > 0
-                            ? formatCurrency(Number(lineItem.quantity) * Number(lineItem.unitPrice))
-                            : '—'}
-                        </p>
-                      </div>
-                    </div>
+              ))}
+            </div>
+          </div>
+
+          {workflow === 'DIRECT' ? (
+            <div>
+              <label className="block text-body-medium font-semibold text-surface-900 mb-3">Payment Method</label>
+              <div className="flex flex-wrap gap-2">
+                {Object.entries(PAYMENT_LABELS)
+                  .filter(([key]) => key !== 'PRE_ORDER')
+                  .map(([key, label]) => (
+                    <Button
+                      key={key}
+                      type="button"
+                      variant={paymentMethod === key ? 'primary' : 'secondary'}
+                      size="md"
+                      onClick={() => setPaymentMethod(key)}
+                    >
+                      {label}
+                    </Button>
                   ))}
-                </div>
               </div>
+              <Card variant="outlined" padding="comfortable" className="mt-3 bg-surface-50">
+                <p className="text-body-medium font-semibold text-surface-900">What happens when you save</p>
+                <p className="text-body text-surface-700 mt-1">{DIRECT_PAYMENT_TRAIL_HINTS[paymentMethod]}</p>
+                <p className="text-caption text-surface-600 mt-2">
+                  You do not need to enter this same direct sale again in Banking.
+                </p>
+              </Card>
+            </div>
+          ) : (
+            <Card variant="outlined" padding="comfortable" className="bg-surface-50">
+              <p className="text-body text-surface-600">Payment method</p>
+              <p className="text-body-medium font-semibold text-surface-900 mt-1">Pre-order</p>
+              <p className="text-caption text-surface-600 mt-1">This pickup will be saved as a booking sale that was already paid for.</p>
+            </Card>
+          )}
 
-              {workflow === 'DIRECT' ? (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>
-                  <div className="flex flex-wrap gap-2">
-                    {Object.entries(PAYMENT_LABELS)
-                      .filter(([key]) => key !== 'PRE_ORDER')
-                      .map(([key, label]) => (
-                        <button
-                          key={key}
-                          type="button"
-                          onClick={() => setPaymentMethod(key)}
-                          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                            paymentMethod === key
-                              ? 'bg-brand-500 text-white'
-                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                          }`}
-                        >
-                          {label}
-                        </button>
-                      ))}
+          {totalQty > 0 && (
+            <Card variant="outlined" padding="comfortable" className="bg-surface-50 space-y-2">
+              {workflow === 'BOOKING' && selectedBooking && (
+                <>
+                  <div className="flex justify-between text-body">
+                    <span className="text-surface-600">Booking target</span>
+                    <span className="text-body-medium font-semibold text-surface-900">{selectedBooking.quantity.toLocaleString()} crates</span>
                   </div>
-                  <div className="mt-3 rounded-lg bg-gray-50 px-3 py-3 text-sm">
-                    <p className="font-medium text-gray-900">What happens when you save</p>
-                    <p className="text-gray-600 mt-1">{DIRECT_PAYMENT_TRAIL_HINTS[paymentMethod]}</p>
-                    <p className="text-xs text-gray-500 mt-2">
-                      You do not need to enter this same direct sale again in Banking.
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="bg-gray-50 rounded-lg p-4 text-sm">
-                  <p className="text-gray-500">Payment method</p>
-                  <p className="font-medium text-gray-900 mt-1">Pre-order</p>
-                  <p className="text-xs text-gray-500 mt-1">This pickup will be saved as a booking sale that was already paid for.</p>
-                </div>
-              )}
-
-              {totalQty > 0 && (
-                <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-                  {workflow === 'BOOKING' && selectedBooking && (
-                    <>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-500">Booking target</span>
-                        <span className="font-medium">{selectedBooking.quantity.toLocaleString()} crates</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-500">Remaining to enter</span>
-                        <span className={`font-medium ${bookingQuantityGap === 0 ? 'text-emerald-700' : bookingQuantityGap > 0 ? 'text-amber-700' : 'text-red-700'}`}>
-                          {bookingQuantityGap === 0
-                            ? 'Complete'
-                            : bookingQuantityGap > 0
-                              ? `${bookingQuantityGap.toLocaleString()} crates left`
-                              : `${Math.abs(bookingQuantityGap).toLocaleString()} crates too many`}
-                        </span>
-                      </div>
-                    </>
-                  )}
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Total Quantity</span>
-                    <span className="font-medium">{totalQty.toLocaleString()} crates</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Total Amount</span>
-                    <span className="font-bold text-gray-900">{formatCurrency(totalAmount)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Total Cost</span>
-                    <span className="font-medium text-gray-600">{formatCurrency(totalCost)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm border-t border-gray-200 pt-2">
-                    <span className="text-gray-500">Gross Profit</span>
-                    <span className={`font-bold ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {formatCurrency(profit)}
+                  <div className="flex justify-between text-body">
+                    <span className="text-surface-600">Remaining to enter</span>
+                    <span className={`text-body-medium font-semibold ${bookingQuantityGap === 0 ? 'text-success-700' : bookingQuantityGap > 0 ? 'text-warning-700' : 'text-error-700'}`}>
+                      {bookingQuantityGap === 0
+                        ? 'Complete'
+                        : bookingQuantityGap > 0
+                          ? `${bookingQuantityGap.toLocaleString()} crates left`
+                          : `${Math.abs(bookingQuantityGap).toLocaleString()} crates too many`}
                     </span>
                   </div>
-                </div>
+                </>
               )}
-
-              <div className="flex flex-col sm:flex-row sm:justify-between gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStep(2);
-                    setError('');
-                  }}
-                  className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
-                >
-                  &larr; Back
-                </button>
-
-                <div className="flex flex-col-reverse sm:flex-row gap-3">
-                  <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={submitting || !canSubmit}
-                    className="bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors"
-                  >
-                    {submitting
-                      ? 'Saving...'
-                      : workflow === 'BOOKING'
-                        ? 'Complete booking pickup'
-                        : `Record direct sale — ${formatCurrency(totalAmount)}`}
-                  </button>
-                </div>
+              <div className="flex justify-between text-body">
+                <span className="text-surface-600">Total Quantity</span>
+                <span className="text-body-medium font-semibold text-surface-900">{totalQty.toLocaleString()} crates</span>
               </div>
-            </form>
+              <div className="flex justify-between text-body">
+                <span className="text-surface-600">Total Amount</span>
+                <span className="text-metric font-bold text-surface-900">{formatCurrency(totalAmount)}</span>
+              </div>
+              <div className="flex justify-between text-body">
+                <span className="text-surface-600">Total Cost</span>
+                <span className="text-body-medium font-semibold text-surface-700">{formatCurrency(totalCost)}</span>
+              </div>
+              <div className="flex justify-between text-body border-t border-surface-200 pt-2">
+                <span className="text-surface-600">Gross Profit</span>
+                <span className={`text-metric font-bold ${profit >= 0 ? 'text-success-600' : 'text-error-600'}`}>
+                  {formatCurrency(profit)}
+                </span>
+              </div>
+            </Card>
           )}
-        </div>
-      </div>
-    </div>
+
+          <div className="flex flex-col sm:flex-row sm:justify-between gap-3 pt-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="md"
+              icon={<ChevronLeftIcon />}
+              onClick={() => {
+                setStep(2);
+                setError('');
+              }}
+            >
+              Back
+            </Button>
+
+            <div className="flex flex-col-reverse sm:flex-row gap-3">
+              <Button type="button" variant="ghost" size="md" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                size="md"
+                disabled={submitting || !canSubmit}
+                loading={submitting}
+              >
+                {workflow === 'BOOKING'
+                  ? 'Complete booking pickup'
+                  : `Record sale — ${formatCurrency(totalAmount)}`}
+              </Button>
+            </div>
+          </div>
+        </form>
+      )}
+    </Modal>
   );
 }
 
@@ -1311,7 +1367,7 @@ function SaleDetailModal({ sale, onClose }) {
               <div class="meta-stack-label">Employee: ${sale.recordedBy ? `${sale.recordedBy.firstName} ${sale.recordedBy.lastName}` : '—'}</div>
               <div class="meta-stack-value">POS: Shop Floor POS</div>
             </div>
-            
+
             <div class="rule"></div>
 
             <div class="meta-stack">
@@ -1368,137 +1424,137 @@ function SaleDetailModal({ sale, onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-3 sm:p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="px-4 sm:px-6 py-4 border-b border-gray-100">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">Receipt {sale.receiptNumber}</h2>
-              <span className="text-sm text-gray-400">{formatDate(sale.saleDate)}</span>
-            </div>
-            <button
-              type="button"
-              onClick={handleCustomerPrint}
-              className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700"
-            >
-              Print customer receipt
-            </button>
+    <Modal open={true} onClose={onClose} title={`Receipt ${sale.receiptNumber}`} size="lg" footer={false}>
+      <div className="space-y-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-heading text-surface-900">Receipt {sale.receiptNumber}</p>
+            <span className="text-body text-surface-500">{formatDate(sale.saleDate)}</span>
           </div>
+          <Button
+            type="button"
+            variant="primary"
+            size="md"
+            onClick={handleCustomerPrint}
+            icon={<PrintIcon />}
+          >
+            Print receipt
+          </Button>
         </div>
 
-        <div className="p-4 sm:p-6 space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-            <div>
-              <p className="text-gray-400">Customer</p>
-              <p className="font-medium text-gray-900">{sale.customer?.name}</p>
-              {sale.customer?.phone && <p className="text-gray-500 text-xs">{sale.customer.phone}</p>}
-            </div>
-            <div>
-              <p className="text-gray-400">Batch</p>
-              <p className="font-medium text-gray-900">{saleBatchLabel(sale)}</p>
-            </div>
-            <div>
-              <p className="text-gray-400">Sale source</p>
-              <p className="font-medium text-gray-900">{SOURCE_LABELS[sale.sourceType] || 'Direct sale'}</p>
-            </div>
-            <div>
-              <p className="text-gray-400">Payment</p>
-              <p className="font-medium text-gray-900">{PAYMENT_LABELS[sale.paymentMethod]}</p>
-            </div>
-            <div>
-              <p className="text-gray-400">Recorded By</p>
-              <p className="font-medium text-gray-900">
-                {sale.recordedBy ? `${sale.recordedBy.firstName} ${sale.recordedBy.lastName}` : '—'}
-              </p>
-            </div>
-            {sale.limitOverride && (
-              <div>
-                <p className="text-gray-400">Limit override</p>
-                <p className="font-medium text-gray-900">{sale.limitOverride.by || 'Recorded override'}</p>
-                {sale.limitOverride.at && <p className="text-xs text-gray-500">{formatDate(sale.limitOverride.at)}</p>}
-              </div>
-            )}
-            {sale.booking && (
-              <div>
-                <p className="text-gray-400">Booking</p>
-                <p className="font-medium text-gray-900">{sale.booking.quantity} crates</p>
-                <p className="text-xs text-gray-500">Paid {formatCurrency(sale.booking.amountPaid)}</p>
-              </div>
-            )}
-            {sale.paymentTransaction && (
-              <div>
-                <p className="text-gray-400">Money trail</p>
-                <p className="font-medium text-gray-900">{paymentAccountLabel(sale.paymentTransaction)}</p>
-                <p className="text-xs text-gray-500">
-                  {formatCurrency(sale.paymentTransaction.amount)} recorded automatically
-                </p>
-              </div>
-            )}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-body">
+          <div>
+            <p className="text-surface-600">Customer</p>
+            <p className="text-body-medium font-semibold text-surface-900 mt-1">{sale.customer?.name}</p>
+            {sale.customer?.phone && <p className="text-body text-surface-600 text-xs mt-1">{sale.customer.phone}</p>}
           </div>
-
-          {sale.limitOverride?.note && (
-            <div className="bg-amber-50 rounded-lg p-3">
-              <p className="text-xs font-semibold uppercase tracking-wider text-amber-800">Limit Override Note</p>
-              <p className="text-sm text-amber-900 mt-1 whitespace-pre-wrap">{sale.limitOverride.note}</p>
+          <div>
+            <p className="text-surface-600">Batch</p>
+            <p className="text-body-medium font-semibold text-surface-900 mt-1">{saleBatchLabel(sale)}</p>
+          </div>
+          <div>
+            <p className="text-surface-600">Sale source</p>
+            <p className="text-body-medium font-semibold text-surface-900 mt-1">{SOURCE_LABELS[sale.sourceType] || 'Direct sale'}</p>
+          </div>
+          <div>
+            <p className="text-surface-600">Payment</p>
+            <p className="text-body-medium font-semibold text-surface-900 mt-1">{PAYMENT_LABELS[sale.paymentMethod]}</p>
+          </div>
+          <div>
+            <p className="text-surface-600">Recorded By</p>
+            <p className="text-body-medium font-semibold text-surface-900 mt-1">
+              {sale.recordedBy ? `${sale.recordedBy.firstName} ${sale.recordedBy.lastName}` : '—'}
+            </p>
+          </div>
+          {sale.limitOverride && (
+            <div>
+              <p className="text-surface-600">Limit override</p>
+              <p className="text-body-medium font-semibold text-surface-900 mt-1">{sale.limitOverride.by || 'Recorded override'}</p>
+              {sale.limitOverride.at && <p className="text-caption text-surface-600 mt-1">{formatDate(sale.limitOverride.at)}</p>}
             </div>
           )}
-
-          {sale.lineItems && sale.lineItems.length > 0 && (
+          {sale.booking && (
             <div>
-              <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-2">Line Items</h3>
-              <div className="border border-gray-200 rounded-lg overflow-x-auto">
+              <p className="text-surface-600">Booking</p>
+              <p className="text-body-medium font-semibold text-surface-900 mt-1">{sale.booking.quantity} crates</p>
+              <p className="text-caption text-surface-600 mt-1">Paid {formatCurrency(sale.booking.amountPaid)}</p>
+            </div>
+          )}
+          {sale.paymentTransaction && (
+            <div>
+              <p className="text-surface-600">Money trail</p>
+              <p className="text-body-medium font-semibold text-surface-900 mt-1">{paymentAccountLabel(sale.paymentTransaction)}</p>
+              <p className="text-caption text-surface-600 mt-1">
+                {formatCurrency(sale.paymentTransaction.amount)} recorded automatically
+              </p>
+            </div>
+          )}
+        </div>
+
+        {sale.limitOverride?.note && (
+          <Card variant="outlined" padding="comfortable" className="border-warning-200 bg-warning-50">
+            <p className="text-overline text-warning-800">Limit Override Note</p>
+            <p className="text-body text-warning-900 mt-2 whitespace-pre-wrap">{sale.limitOverride.note}</p>
+          </Card>
+        )}
+
+        {sale.lineItems && sale.lineItems.length > 0 && (
+          <div>
+            <h3 className="text-overline text-surface-600 mb-3">Line Items</h3>
+            <div className="overflow-x-auto custom-scrollbar">
+              <Card variant="outlined" padding="compact">
                 <table className="w-full min-w-[320px]">
                   <thead>
-                    <tr className="border-b border-gray-100 bg-gray-50">
-                      <th className="text-left py-2 px-3 text-xs text-gray-500">Code</th>
-                      <th className="text-left py-2 px-3 text-xs text-gray-500">Batch</th>
-                      <th className="text-center py-2 px-3 text-xs text-gray-500">Type</th>
-                      <th className="text-right py-2 px-3 text-xs text-gray-500">Qty</th>
-                      <th className="text-right py-2 px-3 text-xs text-gray-500">Price</th>
-                      <th className="text-right py-2 px-3 text-xs text-gray-500">Total</th>
+                    <tr className="border-b border-surface-200 bg-surface-50">
+                      <th className="text-left py-3 px-4 text-overline text-surface-600">Code</th>
+                      <th className="text-left py-3 px-4 text-overline text-surface-600">Batch</th>
+                      <th className="text-center py-3 px-4 text-overline text-surface-600">Type</th>
+                      <th className="text-right py-3 px-4 text-overline text-surface-600">Qty</th>
+                      <th className="text-right py-3 px-4 text-overline text-surface-600">Price</th>
+                      <th className="text-right py-3 px-4 text-overline text-surface-600">Total</th>
                     </tr>
                   </thead>
                   <tbody>
                     {sale.lineItems.map((lineItem) => (
-                      <tr key={lineItem.id || lineItem.batchEggCodeId} className="border-b border-gray-50 text-sm">
-                        <td className="py-2 px-3 font-mono font-semibold text-brand-600">{lineItem.batchEggCode?.code || '—'}</td>
-                        <td className="py-2 px-3 text-gray-600">{lineItem.batchEggCode?.batch?.name || saleBatchLabel(sale)}</td>
-                        <td className="py-2 px-3 text-center">
-                          <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${SALE_TYPE_COLORS[lineItem.saleType]}`}>
+                      <tr key={lineItem.id || lineItem.batchEggCodeId} className="border-b border-surface-100 text-body">
+                        <td className="py-3 px-4 font-mono font-semibold text-brand-600">{lineItem.batchEggCode?.code || '—'}</td>
+                        <td className="py-3 px-4 text-surface-700">{lineItem.batchEggCode?.batch?.name || saleBatchLabel(sale)}</td>
+                        <td className="py-3 px-4 text-center">
+                          <Badge color={SALE_TYPE_BADGE_COLORS[lineItem.saleType]} dot>
                             {SALE_TYPE_LABELS[lineItem.saleType]}
-                          </span>
+                          </Badge>
                         </td>
-                        <td className="py-2 px-3 text-right">{lineItem.quantity}</td>
-                        <td className="py-2 px-3 text-right">{formatCurrency(lineItem.unitPrice)}</td>
-                        <td className="py-2 px-3 text-right font-medium">{formatCurrency(lineItem.lineTotal)}</td>
+                        <td className="py-3 px-4 text-right">{lineItem.quantity}</td>
+                        <td className="py-3 px-4 text-right">{formatCurrency(lineItem.unitPrice)}</td>
+                        <td className="py-3 px-4 text-right text-body-medium font-semibold text-surface-900">{formatCurrency(lineItem.lineTotal)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-              </div>
-            </div>
-          )}
-
-          <div className="bg-gray-50 rounded-lg p-3 space-y-1">
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-500">Total ({sale.totalQuantity} crates)</span>
-              <span className="font-bold text-gray-900">{formatCurrency(sale.totalAmount)}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-500">Cost</span>
-              <span className="text-gray-600">{formatCurrency(sale.totalCost)}</span>
-            </div>
-            <div className="flex justify-between text-sm border-t border-gray-200 pt-1">
-              <span className="text-gray-500">Gross Profit</span>
-              <span className={`font-bold ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(profit)}</span>
+              </Card>
             </div>
           </div>
+        )}
 
-          <div className="flex justify-end pt-2">
-            <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Close</button>
+        <Card variant="outlined" padding="comfortable" className="bg-surface-50 space-y-1">
+          <div className="flex justify-between text-body">
+            <span className="text-surface-600">Total ({sale.totalQuantity} crates)</span>
+            <span className="text-metric font-bold text-surface-900">{formatCurrency(sale.totalAmount)}</span>
           </div>
+          <div className="flex justify-between text-body">
+            <span className="text-surface-600">Cost</span>
+            <span className="text-body-medium font-semibold text-surface-700">{formatCurrency(sale.totalCost)}</span>
+          </div>
+          <div className="flex justify-between text-body border-t border-surface-200 pt-1">
+            <span className="text-surface-600">Gross Profit</span>
+            <span className={`text-metric font-bold ${profit >= 0 ? 'text-success-600' : 'text-error-600'}`}>{formatCurrency(profit)}</span>
+          </div>
+        </Card>
+
+        <div className="flex justify-end pt-2">
+          <Button onClick={onClose} variant="ghost" size="md">Close</Button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

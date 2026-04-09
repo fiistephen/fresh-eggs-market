@@ -99,25 +99,25 @@ export default function RecordTransactionModal({ accounts, transactionCategories
   return (
     <ModalShell title="Record transaction" onClose={handleDone}>
       <form onSubmit={handleSubmit} className="space-y-4">
-        {error && <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+        {error && <div className="rounded-lg border border-error-100 bg-error-50 px-3 py-2 text-body text-error-700">{error}</div>}
 
         {lastSavedMsg && (
-          <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+          <div className="rounded-lg border border-success-100 bg-success-50 px-4 py-3 text-body text-success-700">
             {lastSavedMsg}
           </div>
         )}
 
         {savedCount > 0 && (
-          <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+          <div className="rounded-lg border border-surface-200 bg-surface-50 px-4 py-3 text-body text-surface-700">
             {savedCount} {savedCount === 1 ? 'entry' : 'entries'} saved this session · {fmtMoney(savedTotal)} total
           </div>
         )}
 
         <div>
-          <label className="mb-2 block text-sm font-medium text-gray-700">What happened?</label>
+          <label className="mb-2 block text-body-medium text-surface-700">What happened?</label>
           <div className="grid grid-cols-2 gap-2">
-            <button type="button" onClick={() => setDirection('INFLOW')} className={`rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${form.direction === 'INFLOW' ? 'bg-green-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Money received</button>
-            <button type="button" onClick={() => setDirection('OUTFLOW')} className={`rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${form.direction === 'OUTFLOW' ? 'bg-red-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Money spent</button>
+            <button type="button" onClick={() => setDirection('INFLOW')} className={`rounded-md px-3 py-2.5 text-body-medium transition-colors duration-fast ${form.direction === 'INFLOW' ? 'bg-success-700 text-surface-0 shadow-sm' : 'bg-surface-100 text-surface-600 hover:bg-surface-200'}`}>Money received</button>
+            <button type="button" onClick={() => setDirection('OUTFLOW')} className={`rounded-md px-3 py-2.5 text-body-medium transition-colors duration-fast ${form.direction === 'OUTFLOW' ? 'bg-error-700 text-surface-0 shadow-sm' : 'bg-surface-100 text-surface-600 hover:bg-surface-200'}`}>Money spent</button>
           </div>
         </div>
 
@@ -126,7 +126,7 @@ export default function RecordTransactionModal({ accounts, transactionCategories
             <select
               value={form.bankAccountId}
               onChange={(event) => setForm((current) => ({ ...current, bankAccountId: event.target.value }))}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+              className="w-full rounded-md border border-surface-200 px-3 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500"
               required
             >
               {accounts.map((account) => (
@@ -139,7 +139,7 @@ export default function RecordTransactionModal({ accounts, transactionCategories
               type="date"
               value={form.transactionDate}
               onChange={(event) => setForm((current) => ({ ...current, transactionDate: event.target.value }))}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+              className="w-full rounded-md border border-surface-200 px-3 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500"
               required
             />
           </Field>
@@ -150,17 +150,17 @@ export default function RecordTransactionModal({ accounts, transactionCategories
             <select
               value={form.category}
               onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+              className="w-full rounded-md border border-surface-200 px-3 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500"
             >
               {categoryOptions.map((category) => (
                 <option key={category} value={category}>{categoryLabel(category, categoryMap)}</option>
               ))}
             </select>
-            <p className="mt-1 text-xs text-gray-500">{categoryDescription(form.category, categoryMap) || 'Choose the clearest category for this entry.'}</p>
+            <p className="mt-1 text-caption text-surface-500">{categoryDescription(form.category, categoryMap) || 'Choose the clearest category for this entry.'}</p>
             <button
               type="button"
               onClick={() => setShowCategoryCreator((current) => !current)}
-              className="mt-2 text-xs font-medium text-brand-600 hover:text-brand-700"
+              className="mt-2 text-caption-medium font-medium text-brand-600 hover:text-brand-700"
             >
               {showCategoryCreator ? 'Close new category' : 'Add new category'}
             </button>
@@ -172,7 +172,7 @@ export default function RecordTransactionModal({ accounts, transactionCategories
               step="0.01"
               value={form.amount}
               onChange={(event) => setForm((current) => ({ ...current, amount: event.target.value }))}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+              className="w-full rounded-md border border-surface-200 px-3 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500"
               required
               autoFocus
             />
@@ -191,18 +191,18 @@ export default function RecordTransactionModal({ accounts, transactionCategories
         )}
 
         {form.category === 'CUSTOMER_BOOKING' && (
-          <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+          <div className="rounded-lg border border-info-100 bg-info-50 px-4 py-3 text-body text-info-700">
             Save the money here first. After saving, go to <span className="font-semibold">Bookings Queue</span> to link the customer, choose the batch, and allocate the payment.
           </div>
         )}
 
         {needsCustomer && (
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700">Customer</label>
+            <label className="block text-body-medium text-surface-700">Customer</label>
             {selectedCustomer ? (
-              <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
-                <span className="font-medium text-gray-800">{selectedCustomer.name}</span>
-                <button type="button" onClick={() => { setSelectedCustomer(null); setCustomerSearch(''); }} className="text-gray-500 hover:text-gray-700">Change</button>
+              <div className="flex items-center justify-between rounded-md border border-surface-200 bg-surface-50 px-3 py-2 text-body">
+                <span className="font-medium text-surface-800">{selectedCustomer.name}</span>
+                <button type="button" onClick={() => { setSelectedCustomer(null); setCustomerSearch(''); }} className="text-surface-500 hover:text-surface-700">Change</button>
               </div>
             ) : (
               <>
@@ -211,19 +211,19 @@ export default function RecordTransactionModal({ accounts, transactionCategories
                   value={customerSearch}
                   onChange={(event) => setCustomerSearch(event.target.value)}
                   placeholder="Search customer by name or phone"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+                  className="w-full rounded-md border border-surface-200 px-3 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500"
                 />
                 {customers.length > 0 && (
-                  <div className="max-h-40 overflow-y-auto rounded-lg border border-gray-200">
+                  <div className="max-h-40 custom-scrollbar overflow-y-auto rounded-md border border-surface-200">
                     {customers.map((customer) => (
                       <button
                         key={customer.id}
                         type="button"
                         onClick={() => { setSelectedCustomer(customer); setCustomers([]); }}
-                        className="block w-full border-b border-gray-100 px-3 py-2 text-left text-sm hover:bg-gray-50 last:border-b-0"
+                        className="block w-full border-b border-surface-100 px-3 py-2 text-left text-body hover:bg-surface-50 last:border-b-0"
                       >
-                        <span className="font-medium text-gray-900">{customer.name}</span>
-                        <span className="ml-2 text-gray-500">{customer.phone}</span>
+                        <span className="font-medium text-surface-900">{customer.name}</span>
+                        <span className="ml-2 text-surface-500">{customer.phone}</span>
                       </button>
                     ))}
                   </div>
@@ -240,7 +240,7 @@ export default function RecordTransactionModal({ accounts, transactionCategories
               value={form.description}
               onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
               placeholder="e.g. First Bank – Adebayo Oluwaseun"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+              className="w-full rounded-md border border-surface-200 px-3 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500"
             />
           </Field>
           <Field label="Reference">
@@ -248,16 +248,16 @@ export default function RecordTransactionModal({ accounts, transactionCategories
               type="text"
               value={form.reference}
               onChange={(event) => setForm((current) => ({ ...current, reference: event.target.value }))}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+              className="w-full rounded-md border border-surface-200 px-3 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500"
             />
           </Field>
         </div>
 
-        <div className="flex flex-col-reverse gap-2 border-t border-gray-100 pt-4 sm:flex-row sm:justify-end">
-          <button type="button" onClick={handleDone} className="rounded-lg px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100">
+        <div className="flex flex-col-reverse gap-2 border-t border-surface-200 pt-4 sm:flex-row sm:justify-end">
+          <button type="button" onClick={handleDone} className="rounded-md px-4 py-2 text-body-medium text-surface-600 transition-colors duration-fast hover:bg-surface-100">
             Done
           </button>
-          <button type="submit" disabled={submitting} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-gray-300">
+          <button type="submit" disabled={submitting} className="rounded-md bg-brand-600 px-4 py-2 text-body-medium text-surface-0 transition-colors duration-fast hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-surface-300">
             {submitting ? 'Saving…' : 'Save and add next'}
           </button>
         </div>

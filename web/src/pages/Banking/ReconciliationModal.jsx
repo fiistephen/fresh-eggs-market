@@ -41,16 +41,16 @@ export default function ReconciliationModal({ accounts, imports, onClose, onSave
   return (
     <ModalShell title="Reconcile balance" onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-4">
-        {error && <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+        {error && <div className="rounded-lg border border-error-100 bg-error-50 px-3 py-2 text-body text-error-700">{error}</div>}
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Account">
-            <select value={form.bankAccountId} onChange={(e) => setForm((c) => ({ ...c, bankAccountId: e.target.value, statementImportId: '' }))} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500">
+            <select value={form.bankAccountId} onChange={(e) => setForm((c) => ({ ...c, bankAccountId: e.target.value, statementImportId: '' }))} className="w-full rounded-md border border-surface-200 px-3 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500">
               {accounts.map((a) => <option key={a.id} value={a.id}>{displayAccountName(a)}</option>)}
             </select>
           </Field>
           <Field label="Use statement import">
-            <select value={form.statementImportId} onChange={(e) => setForm((c) => ({ ...c, statementImportId: e.target.value }))} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500">
+            <select value={form.statementImportId} onChange={(e) => setForm((c) => ({ ...c, statementImportId: e.target.value }))} className="w-full rounded-md border border-surface-200 px-3 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500">
               <option value="">Manual statement balance</option>
               {availableImports.map((i) => <option key={i.id} value={i.id}>{i.originalFilename} ({fmtDate(i.statementDateTo)})</option>)}
             </select>
@@ -60,19 +60,19 @@ export default function ReconciliationModal({ accounts, imports, onClose, onSave
         {!form.statementImportId && (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <Field label="Statement date">
-              <input type="date" value={form.statementDate} onChange={(e) => setForm((c) => ({ ...c, statementDate: e.target.value }))} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500" required />
+              <input type="date" value={form.statementDate} onChange={(e) => setForm((c) => ({ ...c, statementDate: e.target.value }))} className="w-full rounded-md border border-surface-200 px-3 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500" required />
             </Field>
             <Field label="Opening balance">
-              <input type="number" step="0.01" value={form.openingBalance} onChange={(e) => setForm((c) => ({ ...c, openingBalance: e.target.value }))} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500" />
+              <input type="number" step="0.01" value={form.openingBalance} onChange={(e) => setForm((c) => ({ ...c, openingBalance: e.target.value }))} className="w-full rounded-md border border-surface-200 px-3 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500" />
             </Field>
             <Field label="Closing balance">
-              <input type="number" step="0.01" value={form.closingBalance} onChange={(e) => setForm((c) => ({ ...c, closingBalance: e.target.value }))} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500" required />
+              <input type="number" step="0.01" value={form.closingBalance} onChange={(e) => setForm((c) => ({ ...c, closingBalance: e.target.value }))} className="w-full rounded-md border border-surface-200 px-3 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500" required />
             </Field>
           </div>
         )}
 
         <Field label="Notes (optional)">
-          <textarea value={form.notes} onChange={(e) => setForm((c) => ({ ...c, notes: e.target.value }))} rows={3} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500" placeholder="Optional reconciliation notes" />
+          <textarea value={form.notes} onChange={(e) => setForm((c) => ({ ...c, notes: e.target.value }))} rows={3} className="w-full rounded-md border border-surface-200 px-3 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500" placeholder="Optional reconciliation notes" />
         </Field>
 
         <ModalActions onClose={onClose} submitting={submitting} submitLabel={submitting ? 'Saving…' : 'Save reconciliation'} />

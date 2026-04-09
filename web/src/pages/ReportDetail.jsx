@@ -31,9 +31,9 @@ const ITEM_CATEGORY_LABELS = {
 };
 
 const CRACK_ALERT_STYLES = {
-  OK: 'bg-green-50 text-green-700 border-green-200',
-  WATCH: 'bg-amber-50 text-amber-700 border-amber-200',
-  ALERT: 'bg-red-50 text-red-700 border-red-200',
+  OK: 'bg-success-50 text-success-700 border-success-200',
+  WATCH: 'bg-warning-50 text-warning-700 border-warning-200',
+  ALERT: 'bg-error-50 text-error-700 border-error-200',
 };
 
 function formatCurrency(value) {
@@ -139,51 +139,49 @@ export default function ReportDetail() {
     <div className="space-y-6">
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
         <div>
-          <Link to="/reports" className="text-sm text-brand-500 hover:text-brand-600 font-medium">
+          <Link to="/reports" className="text-body text-brand-500 hover:text-brand-600 font-medium">
             &larr; Back to Reports
           </Link>
-          <div className="flex items-center gap-3 mt-3">
-            <span className="text-3xl" aria-hidden="true">{report.icon}</span>
-            <div>
-              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{report.title}</h1>
-              <p className="text-sm text-gray-500 mt-1">{report.description}</p>
+          <div>
+              <h1 className="text-display text-surface-900">{report.title}</h1>
+              <p className="text-body text-surface-500 mt-1">{report.description}</p>
             </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col sm:flex-row gap-3 sm:items-end">
+        <div className="bg-surface-white rounded-lg border border-surface-200 p-4 shadow-xs flex flex-col sm:flex-row gap-3 sm:items-end">
           <div>
-            <label className="block text-xs text-gray-500 mb-1">From</label>
+            <label className="block text-caption text-surface-500 mb-1">From</label>
             <input
               type="date"
               value={filters.dateFrom}
               onChange={(e) => setFilters((current) => ({ ...current, dateFrom: e.target.value }))}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+              className="border border-surface-300 rounded-md bg-surface-white px-3 py-2 text-body placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
             />
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">To</label>
+            <label className="block text-caption text-surface-500 mb-1">To</label>
             <input
               type="date"
               value={filters.dateTo}
               onChange={(e) => setFilters((current) => ({ ...current, dateTo: e.target.value }))}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+              className="border border-surface-300 rounded-md bg-surface-white px-3 py-2 text-body placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
             />
           </div>
         </div>
       </div>
 
       {error && (
-        <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-sm">{error}</div>
+        <div className="bg-error-50 text-error-600 px-4 py-3 rounded-lg text-body">{error}</div>
       )}
 
       {loading ? (
-        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-400">
-          Loading report...
+        <div className="bg-surface-white rounded-lg border border-surface-200 p-12 text-center text-surface-600 shadow-xs">
+          <div className="animate-pulse text-body">Loading report...</div>
         </div>
       ) : !data ? (
-        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-400">
-          No data available for this report.
+        <div className="bg-surface-white rounded-lg border border-surface-200 p-12 text-center text-surface-600 shadow-xs">
+          <div className="text-body">No data available for this report.</div>
         </div>
       ) : (
         <ReportBody reportType={reportType} data={data} />
@@ -330,14 +328,14 @@ function SalesByItemReport({ data }) {
         <Panel title="Top items" body="These are the items that brought in the most value in this period.">
           <div className="space-y-3">
             {data.byItem.slice(0, 5).map((row) => (
-              <div key={`${row.itemCode}-${row.saleType}`} className="flex items-center justify-between gap-4 rounded-xl border border-gray-200 p-4">
+              <div key={`${row.itemCode}-${row.saleType}`} className="flex items-center justify-between gap-4 rounded-lg border border-surface-200 p-4">
                 <div>
-                  <p className="font-medium text-gray-900">{row.itemLabel || row.itemCode}</p>
-                  <p className="text-sm text-gray-500">
+                  <p className="font-medium text-surface-900">{row.itemLabel || row.itemCode}</p>
+                  <p className="text-body text-surface-500">
                     {SALE_TYPE_LABELS[row.saleType] || row.saleType} · {ITEM_CATEGORY_LABELS[row.category] || row.category}
                   </p>
                 </div>
-                <p className="font-semibold text-gray-900">{formatCurrency(row.totalAmount)}</p>
+                <p className="font-semibold text-surface-900">{formatCurrency(row.totalAmount)}</p>
               </div>
             ))}
           </div>
@@ -537,12 +535,12 @@ function ReceiptsReport({ data }) {
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search by receipt number, customer, phone, or batch"
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500"
+            className="rounded-lg border border-surface-300 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500"
           />
           <select
             value={paymentFilter}
             onChange={(event) => setPaymentFilter(event.target.value)}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500"
+            className="rounded-lg border border-surface-300 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500"
           >
             <option value="">All payment methods</option>
             {Object.entries(PAYMENT_LABELS).map(([value, label]) => (
@@ -552,7 +550,7 @@ function ReceiptsReport({ data }) {
           <select
             value={sourceFilter}
             onChange={(event) => setSourceFilter(event.target.value)}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500"
+            className="rounded-lg border border-surface-300 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500"
           >
             <option value="">All receipt types</option>
             <option value="DIRECT">Direct sale</option>
@@ -568,42 +566,42 @@ function ReceiptsReport({ data }) {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1080px]">
               <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Receipt no.</th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Payment</th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Money trail</th>
-                  <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
-                  <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Detail</th>
+                <tr className="border-b border-surface-100">
+                  <th className="text-left py-3 px-4 text-caption font-medium text-surface-500 uppercase tracking-wider">Receipt no.</th>
+                  <th className="text-left py-3 px-4 text-caption font-medium text-surface-500 uppercase tracking-wider">Date</th>
+                  <th className="text-left py-3 px-4 text-caption font-medium text-surface-500 uppercase tracking-wider">Customer</th>
+                  <th className="text-left py-3 px-4 text-caption font-medium text-surface-500 uppercase tracking-wider">Type</th>
+                  <th className="text-left py-3 px-4 text-caption font-medium text-surface-500 uppercase tracking-wider">Payment</th>
+                  <th className="text-left py-3 px-4 text-caption font-medium text-surface-500 uppercase tracking-wider">Money trail</th>
+                  <th className="text-right py-3 px-4 text-caption font-medium text-surface-500 uppercase tracking-wider">Total</th>
+                  <th className="text-right py-3 px-4 text-caption font-medium text-surface-500 uppercase tracking-wider">Detail</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredReceipts.map((receipt) => (
                   <tr
                     key={receipt.id}
-                    className={`border-b border-gray-50 transition-colors hover:bg-gray-50 ${selectedReceipt?.id === receipt.id ? 'bg-brand-50/60' : ''}`}
+                    className={`border-b border-surface-100 transition-colors hover:bg-surface-50 ${selectedReceipt?.id === receipt.id ? 'bg-brand-50/60' : ''}`}
                   >
-                    <td className="py-3 px-4 text-sm font-mono text-gray-700">{receipt.receiptNumber}</td>
-                    <td className="py-3 px-4 text-sm text-gray-600">{formatDateTime(receipt.saleDate)}</td>
-                    <td className="py-3 px-4 text-sm">
-                      <p className="font-medium text-gray-900">{receipt.customer?.name || '—'}</p>
-                      {receipt.customer?.phone && <p className="text-xs text-gray-500">{receipt.customer.phone}</p>}
+                    <td className="py-3 px-4 text-body font-mono text-surface-700">{receipt.receiptNumber}</td>
+                    <td className="py-3 px-4 text-body text-surface-600">{formatDateTime(receipt.saleDate)}</td>
+                    <td className="py-3 px-4 text-body">
+                      <p className="font-medium text-surface-900">{receipt.customer?.name || '—'}</p>
+                      {receipt.customer?.phone && <p className="text-caption text-surface-500">{receipt.customer.phone}</p>}
                     </td>
-                    <td className="py-3 px-4 text-sm text-gray-600">{SOURCE_LABELS[receipt.sourceType] || receipt.sourceType}</td>
-                    <td className="py-3 px-4 text-sm text-gray-600">{PAYMENT_LABELS[receipt.paymentMethod] || receipt.paymentMethod}</td>
-                    <td className="py-3 px-4 text-sm text-gray-600">
+                    <td className="py-3 px-4 text-body text-surface-600">{SOURCE_LABELS[receipt.sourceType] || receipt.sourceType}</td>
+                    <td className="py-3 px-4 text-body text-surface-600">{PAYMENT_LABELS[receipt.paymentMethod] || receipt.paymentMethod}</td>
+                    <td className="py-3 px-4 text-body text-surface-600">
                       {receipt.paymentTransaction
                         ? `${receipt.paymentTransaction.bankAccount?.name || 'Linked account'} · ${formatCurrency(receipt.paymentTransaction.amount)}`
                         : 'Already covered before pickup'}
                     </td>
-                    <td className="py-3 px-4 text-sm text-right font-medium">{formatCurrency(receipt.totalAmount)}</td>
-                    <td className="py-3 px-4 text-sm text-right">
+                    <td className="py-3 px-4 text-body text-right font-medium">{formatCurrency(receipt.totalAmount)}</td>
+                    <td className="py-3 px-4 text-body text-right">
                       <button
                         type="button"
                         onClick={() => setSelectedReceiptId(receipt.id)}
-                        className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                        className="rounded-lg border border-surface-300 px-3 py-1.5 text-caption font-medium text-surface-700 hover:bg-surface-50"
                       >
                         Open
                       </button>
@@ -627,18 +625,18 @@ function ReceiptDetailModal({ receipt, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-4" onClick={onClose}>
       <div
-        className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-2xl bg-white shadow-xl"
+        className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-lg bg-surface-white shadow-xl"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-gray-100 px-4 py-4 sm:px-6">
+        <div className="flex items-center justify-between border-b border-surface-100 px-4 py-4 sm:px-6">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">Receipt {receipt.receiptNumber}</h3>
-            <p className="mt-1 text-sm text-gray-500">{formatDateTime(receipt.saleDate)}</p>
+            <h3 className="text-heading text-surface-900">Receipt {receipt.receiptNumber}</h3>
+            <p className="mt-1 text-body text-surface-500">{formatDateTime(receipt.saleDate)}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-800"
+            className="rounded-lg px-3 py-2 text-body font-medium text-surface-600 hover:bg-surface-100 hover:text-surface-800"
           >
             Close
           </button>
@@ -867,97 +865,97 @@ function ReceiptDetailCard({ receipt }) {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-xl font-semibold text-gray-900">{receipt.receiptNumber}</h3>
+            <h3 className="text-xl font-semibold text-surface-900">{receipt.receiptNumber}</h3>
             <StatusPill label={SOURCE_LABELS[receipt.sourceType] || receipt.sourceType} tone={receipt.sourceType === 'BOOKING' ? 'green' : 'slate'} />
           </div>
-          <p className="mt-2 text-sm text-gray-500">{formatDateTime(receipt.saleDate)}</p>
+          <p className="mt-2 text-body text-surface-500">{formatDateTime(receipt.saleDate)}</p>
         </div>
         <button
           type="button"
           onClick={handleCustomerPrint}
-          className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+          className="rounded-lg bg-brand-600 px-4 py-2 text-body font-medium text-white hover:bg-brand-700"
         >
           Print customer receipt
         </button>
       </div>
 
-      <div className="rounded-2xl border border-green-200 bg-green-50 p-5">
+      <div className="rounded-lg border border-success-200 bg-success-50 p-5">
         <div className="flex flex-col gap-3 border-b border-green-100 pb-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-green-700">Customer receipt</p>
-            <h4 className="mt-2 text-lg font-semibold text-gray-900">Simple receipt for the buyer</h4>
-            <p className="mt-1 text-sm text-gray-600">
+            <p className="text-caption font-semibold uppercase tracking-[0.18em] text-success-700">Customer receipt</p>
+            <h4 className="mt-2 text-heading text-surface-900">Simple receipt for the buyer</h4>
+            <p className="mt-1 text-body text-surface-600">
               This version keeps only the sale details a customer typically needs: receipt number, date, items, quantity, payment method, and total paid.
             </p>
           </div>
           <button
             type="button"
             onClick={handleCustomerPrint}
-            className="rounded-lg border border-green-300 bg-white px-4 py-2 text-sm font-medium text-green-700 hover:bg-green-100"
+            className="rounded-lg border border-green-300 bg-surface-white px-4 py-2 text-body font-medium text-success-700 hover:bg-success-100"
           >
             Thermal print
           </button>
         </div>
 
-        <div className="mx-auto mt-5 max-w-md rounded-2xl border border-dashed border-green-200 bg-white p-5 shadow-sm">
+        <div className="mx-auto mt-5 max-w-md rounded-lg border border-dashed border-success-200 bg-surface-white p-5 shadow-sm">
           <div className="text-center">
-            <p className="text-lg font-bold text-gray-900">Fresh Eggs Market</p>
-            <p className="text-xs uppercase tracking-[0.18em] text-gray-500">Customer Receipt</p>
+            <p className="text-lg font-bold text-surface-900">Fresh Eggs Market</p>
+            <p className="text-caption uppercase tracking-[0.18em] text-surface-500">Customer Receipt</p>
           </div>
 
-          <div className="mt-4 space-y-1 text-sm">
+          <div className="mt-4 space-y-1 text-body">
             <div className="flex items-start justify-between gap-4">
-              <span className="text-gray-500">Receipt No</span>
-              <span className="font-medium text-gray-900">{receipt.receiptNumber}</span>
+              <span className="text-surface-500">Receipt No</span>
+              <span className="font-medium text-surface-900">{receipt.receiptNumber}</span>
             </div>
             <div className="flex items-start justify-between gap-4">
-              <span className="text-gray-500">Date</span>
-              <span className="font-medium text-gray-900">{formatDateTime(receipt.saleDate)}</span>
+              <span className="text-surface-500">Date</span>
+              <span className="font-medium text-surface-900">{formatDateTime(receipt.saleDate)}</span>
             </div>
             <div className="flex items-start justify-between gap-4">
-              <span className="text-gray-500">Employee</span>
-              <span className="text-right font-medium text-gray-900">{receipt.recordedBy?.name || '—'}</span>
+              <span className="text-surface-500">Employee</span>
+              <span className="text-right font-medium text-surface-900">{receipt.recordedBy?.name || '—'}</span>
             </div>
             <div className="flex items-start justify-between gap-4">
-              <span className="text-gray-500">Customer</span>
-              <span className="text-right font-medium text-gray-900">{receipt.customer?.name || 'Walk-in customer'}</span>
+              <span className="text-surface-500">Customer</span>
+              <span className="text-right font-medium text-surface-900">{receipt.customer?.name || 'Walk-in customer'}</span>
             </div>
             {receipt.customer?.phone && (
               <div className="flex items-start justify-between gap-4">
-                <span className="text-gray-500">Phone</span>
-                <span className="font-medium text-gray-900">{receipt.customer.phone}</span>
+                <span className="text-surface-500">Phone</span>
+                <span className="font-medium text-surface-900">{receipt.customer.phone}</span>
               </div>
             )}
             <div className="flex items-start justify-between gap-4">
-              <span className="text-gray-500">Payment</span>
-              <span className="font-medium text-gray-900">{PAYMENT_LABELS[receipt.paymentMethod] || receipt.paymentMethod}</span>
+              <span className="text-surface-500">Payment</span>
+              <span className="font-medium text-surface-900">{PAYMENT_LABELS[receipt.paymentMethod] || receipt.paymentMethod}</span>
             </div>
           </div>
 
-          <div className="my-4 border-t border-dashed border-gray-300" />
+          <div className="my-4 border-t border-dashed border-surface-300" />
 
           <div className="space-y-3">
             {customerLineItems(receipt).map((lineItem, index) => (
-              <div key={`${lineItem.label}-${index}`} className="flex items-start justify-between gap-4 text-sm">
+              <div key={`${lineItem.label}-${index}`} className="flex items-start justify-between gap-4 text-body">
                 <div>
-                  <p className="font-medium text-gray-900">{lineItem.label}</p>
-                  <p className="text-xs text-gray-500">{lineItem.quantity} x {formatCurrency(lineItem.unitPrice)}</p>
+                  <p className="font-medium text-surface-900">{lineItem.label}</p>
+                  <p className="text-caption text-surface-500">{lineItem.quantity} x {formatCurrency(lineItem.unitPrice)}</p>
                 </div>
-                <p className="font-semibold text-gray-900">{formatCurrency(lineItem.lineTotal)}</p>
+                <p className="font-semibold text-surface-900">{formatCurrency(lineItem.lineTotal)}</p>
               </div>
             ))}
           </div>
 
-          <div className="my-4 border-t border-dashed border-gray-300" />
+          <div className="my-4 border-t border-dashed border-surface-300" />
 
-          <div className="space-y-1 text-sm">
+          <div className="space-y-1 text-body">
             <div className="flex items-start justify-between gap-4">
-              <span className="text-gray-500">Crates</span>
-              <span className="font-medium text-gray-900">{receipt.totalQuantity}</span>
+              <span className="text-surface-500">Crates</span>
+              <span className="font-medium text-surface-900">{receipt.totalQuantity}</span>
             </div>
             <div className="flex items-start justify-between gap-4 text-base">
-              <span className="font-semibold text-gray-900">Total paid</span>
-              <span className="font-bold text-gray-900">{formatCurrency(receipt.totalAmount)}</span>
+              <span className="font-semibold text-surface-900">Total paid</span>
+              <span className="font-bold text-surface-900">{formatCurrency(receipt.totalAmount)}</span>
             </div>
           </div>
         </div>
@@ -965,41 +963,41 @@ function ReceiptDetailCard({ receipt }) {
 
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">Internal receipt</p>
-          <p className="mt-1 text-sm text-gray-500">This version keeps the admin-level audit detail for staff review.</p>
+          <p className="text-caption font-semibold uppercase tracking-[0.18em] text-surface-500">Internal receipt</p>
+          <p className="mt-1 text-body text-surface-500">This version keeps the admin-level audit detail for staff review.</p>
         </div>
         <button
           type="button"
           onClick={handleInternalPrint}
-          className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          className="rounded-lg border border-surface-300 px-4 py-2 text-body font-medium text-surface-700 hover:bg-surface-50"
         >
           Print internal receipt
         </button>
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <div className="rounded-xl border border-gray-200 p-4">
-          <p className="text-xs uppercase tracking-wide text-gray-400">Customer</p>
-          <p className="mt-2 text-base font-semibold text-gray-900">{receipt.customer?.name || '—'}</p>
-          <p className="mt-1 text-sm text-gray-500">{receipt.customer?.phone || 'No phone saved'}</p>
+        <div className="rounded-lg border border-surface-200 p-4">
+          <p className="text-caption uppercase tracking-wide text-surface-600">Customer</p>
+          <p className="mt-2 text-base font-semibold text-surface-900">{receipt.customer?.name || '—'}</p>
+          <p className="mt-1 text-body text-surface-500">{receipt.customer?.phone || 'No phone saved'}</p>
         </div>
-        <div className="rounded-xl border border-gray-200 p-4">
-          <p className="text-xs uppercase tracking-wide text-gray-400">Payment trail</p>
-          <p className="mt-2 text-base font-semibold text-gray-900">{PAYMENT_LABELS[receipt.paymentMethod] || receipt.paymentMethod}</p>
-          <p className="mt-1 text-sm text-gray-500">
+        <div className="rounded-lg border border-surface-200 p-4">
+          <p className="text-caption uppercase tracking-wide text-surface-600">Payment trail</p>
+          <p className="mt-2 text-base font-semibold text-surface-900">{PAYMENT_LABELS[receipt.paymentMethod] || receipt.paymentMethod}</p>
+          <p className="mt-1 text-body text-surface-500">
             {receipt.paymentTransaction
               ? `${receipt.paymentTransaction.bankAccount?.name || 'Linked account'} · ${formatCurrency(receipt.paymentTransaction.amount)}`
               : 'Already paid before pickup'}
           </p>
           {receipt.paymentTransaction?.reference && (
-            <p className="mt-1 text-xs text-gray-400">Ref: {receipt.paymentTransaction.reference}</p>
+            <p className="mt-1 text-caption text-surface-600">Ref: {receipt.paymentTransaction.reference}</p>
           )}
         </div>
-        <div className="rounded-xl border border-gray-200 p-4">
-          <p className="text-xs uppercase tracking-wide text-gray-400">Receipt summary</p>
-          <p className="mt-2 text-base font-semibold text-gray-900">{formatCurrency(receipt.totalAmount)}</p>
-          <p className="mt-1 text-sm text-gray-500">{receipt.totalQuantity} crates sold</p>
-          <p className="mt-1 text-sm text-gray-500">Employee {receipt.recordedBy?.name || '—'}</p>
+        <div className="rounded-lg border border-surface-200 p-4">
+          <p className="text-caption uppercase tracking-wide text-surface-600">Receipt summary</p>
+          <p className="mt-2 text-base font-semibold text-surface-900">{formatCurrency(receipt.totalAmount)}</p>
+          <p className="mt-1 text-body text-surface-500">{receipt.totalQuantity} crates sold</p>
+          <p className="mt-1 text-body text-surface-500">Employee {receipt.recordedBy?.name || '—'}</p>
         </div>
       </div>
 
@@ -1036,9 +1034,9 @@ function BatchSummaryReport({ data }) {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <p className="text-sm font-medium text-gray-900">How to read this report</p>
-        <p className="text-sm text-gray-600 mt-1">
+      <div className="bg-surface-white rounded-lg border border-surface-200 p-4">
+        <p className="text-body font-medium text-surface-900">How to read this report</p>
+        <p className="text-body text-surface-600 mt-1">
           This page compares each batch against the policy that was active when that batch started. The current company target is {formatCurrency(policy.targetProfitPerCrate)} profit per crate.
         </p>
       </div>
@@ -1125,25 +1123,25 @@ function BatchSummaryReport({ data }) {
             <EmptyPanel text="No batches found for this period." />
           ) : (
             batches.map((batch) => (
-              <div key={batch.batchId} className="rounded-xl border border-gray-200 p-4">
+              <div key={batch.batchId} className="rounded-lg border border-surface-200 p-4">
                 <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-base font-semibold text-gray-900">{batch.batchName}</h3>
-                      <p className="mt-1 text-sm font-medium text-gray-700">{batch.eggTypeLabel || 'Regular Size Eggs'}</p>
+                      <h3 className="text-base font-semibold text-surface-900">{batch.batchName}</h3>
+                      <p className="mt-1 text-body font-medium text-surface-700">{batch.eggTypeLabel || 'Regular Size Eggs'}</p>
                       <StatusPill label={batch.status} tone={batch.status === 'CLOSED' ? 'slate' : 'green'} />
                       <CrackAlertPill alert={batch.crackAlert} />
                     </div>
-                    <p className="text-sm text-gray-500 mt-1">
+                    <p className="text-body text-surface-500 mt-1">
                       Batch date: {formatDate(batch.batchDate)} · Received: {batch.totalReceived.toLocaleString()} crates
                     </p>
                   </div>
 
                   <div className="text-left lg:text-right">
-                    <p className={`text-lg font-bold ${batch.varianceToPolicy >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    <p className={`text-lg font-bold ${batch.varianceToPolicy >= 0 ? 'text-green-600' : 'text-error-600'}`}>
                       {formatSignedCurrency(batch.varianceToPolicy)}
                     </p>
-                    <p className="text-xs text-gray-500 mt-1">Variance to policy target</p>
+                    <p className="text-caption text-surface-500 mt-1">Variance to policy target</p>
                   </div>
                 </div>
 
@@ -1157,41 +1155,41 @@ function BatchSummaryReport({ data }) {
                 </div>
 
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-4">
-                  <div className="rounded-xl bg-gray-50 p-4">
-                    <p className="text-xs uppercase tracking-wider text-gray-500">FE mix</p>
+                  <div className="rounded-lg bg-surface-50 p-4">
+                    <p className="text-caption uppercase tracking-wider text-surface-500">FE mix</p>
                     <div className="mt-3 space-y-2">
                       {(batch.eggCodeMix || []).map((row) => (
-                        <div key={`${batch.batchId}-${row.code}`} className="flex items-center justify-between gap-3 text-sm">
+                        <div key={`${batch.batchId}-${row.code}`} className="flex items-center justify-between gap-3 text-body">
                           <div>
-                            <p className="font-medium text-gray-900">{row.code}</p>
-                            <p className="text-xs text-gray-500">{formatCurrency(row.costPrice)} cost price</p>
+                            <p className="font-medium text-surface-900">{row.code}</p>
+                            <p className="text-caption text-surface-500">{formatCurrency(row.costPrice)} cost price</p>
                           </div>
                           <div className="text-right">
-                            <p className="font-medium text-gray-900">{(row.quantity + row.freeQty).toLocaleString()} crates</p>
-                            <p className="text-xs text-gray-500">{row.freeQty > 0 ? `${row.freeQty} free` : 'No free crates'}</p>
+                            <p className="font-medium text-surface-900">{(row.quantity + row.freeQty).toLocaleString()} crates</p>
+                            <p className="text-caption text-surface-500">{row.freeQty > 0 ? `${row.freeQty} free` : 'No free crates'}</p>
                           </div>
                         </div>
                       ))}
                     </div>
                   </div>
 
-                  <div className="rounded-xl bg-gray-50 p-4">
-                    <p className="text-xs uppercase tracking-wider text-gray-500">Sales and crack mix</p>
+                  <div className="rounded-lg bg-surface-50 p-4">
+                    <p className="text-caption uppercase tracking-wider text-surface-500">Sales and crack mix</p>
                     <div className="mt-3 grid grid-cols-2 gap-3">
                       <MiniMetric label="Wholesale" value={`${(batch.salesByType?.WHOLESALE?.quantity || 0).toLocaleString()} crates`} />
                       <MiniMetric label="Retail" value={`${(batch.salesByType?.RETAIL?.quantity || 0).toLocaleString()} crates`} />
                       <MiniMetric label="Cracked sold" value={`${batch.crackedSoldQuantity.toLocaleString()} crates`} />
                       <MiniMetric label="Damaged write-off" value={`${batch.totalWriteOffs.toLocaleString()} crates`} />
                     </div>
-                    <div className="mt-3 text-sm text-gray-600">
-                      <p>Cracked sold value: <span className="font-medium text-gray-900">{formatCurrency(batch.crackedSoldValue)}</span></p>
-                      <p className="mt-1">Sale-ready stock left: <span className="font-medium text-gray-900">{batch.availableForSale.toLocaleString()} crates</span></p>
+                    <div className="mt-3 text-body text-surface-600">
+                      <p>Cracked sold value: <span className="font-medium text-surface-900">{formatCurrency(batch.crackedSoldValue)}</span></p>
+                      <p className="mt-1">Sale-ready stock left: <span className="font-medium text-surface-900">{batch.availableForSale.toLocaleString()} crates</span></p>
                     </div>
                   </div>
                 </div>
 
                 {batch.latestCount && batch.latestCount.discrepancy !== 0 ? (
-                  <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  <div className="mt-4 rounded-lg border border-error-200 bg-error-50 px-3 py-2 text-body text-error-700">
                     Last count on {formatDate(batch.latestCount.countDate)} shows a discrepancy of {batch.latestCount.discrepancy > 0 ? '+' : ''}{batch.latestCount.discrepancy} crates.
                   </div>
                 ) : null}
@@ -1212,9 +1210,9 @@ function InventoryControlReport({ data }) {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <p className="text-sm font-medium text-gray-900">What needs attention</p>
-        <p className="text-sm text-gray-600 mt-1">
+      <div className="bg-surface-white rounded-lg border border-surface-200 p-4">
+        <p className="text-body font-medium text-surface-900">What needs attention</p>
+        <p className="text-body text-surface-600 mt-1">
           This report helps the team catch stock issues early. Batches are flagged when cracks move close to or above the policy that applied to that batch, or when the last count has a discrepancy.
         </p>
       </div>
@@ -1234,23 +1232,23 @@ function InventoryControlReport({ data }) {
           ) : (
             <div className="space-y-3">
               {flaggedBatches.map((batch) => (
-                <div key={batch.batchId} className="rounded-xl border border-gray-200 p-4">
+                <div key={batch.batchId} className="rounded-lg border border-surface-200 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <p className="font-semibold text-gray-900">{batch.batchName}</p>
-                      <p className="mt-1 text-xs font-medium text-gray-600">{batch.eggTypeLabel || 'Regular Size Eggs'}</p>
-                      <p className="text-sm text-gray-500 mt-1">
+                      <p className="font-semibold text-surface-900">{batch.batchName}</p>
+                      <p className="mt-1 text-caption font-medium text-surface-600">{batch.eggTypeLabel || 'Regular Size Eggs'}</p>
+                      <p className="text-body text-surface-500 mt-1">
                         On hand: {batch.onHand.toLocaleString()} · Available: {batch.available.toLocaleString()}
                       </p>
                     </div>
                     <CrackAlertPill alert={batch.crackAlert} />
                   </div>
-                  <div className="grid grid-cols-2 gap-3 mt-4 text-sm">
+                  <div className="grid grid-cols-2 gap-3 mt-4 text-body">
                     <MiniMetric label="Crack rate" value={formatPercent(batch.crackRatePercent)} />
                     <MiniMetric label="Write-offs" value={`${batch.totalWriteOffs.toLocaleString()} crates`} />
                   </div>
                   {batch.latestCount && batch.latestCount.discrepancy !== 0 ? (
-                    <div className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+                    <div className="mt-3 rounded-lg bg-error-50 px-3 py-2 text-body text-error-700">
                       Last count discrepancy: {batch.latestCount.discrepancy > 0 ? '+' : ''}{batch.latestCount.discrepancy} crates on {formatDate(batch.latestCount.countDate)}.
                     </div>
                   ) : null}
@@ -1274,31 +1272,31 @@ function InventoryControlReport({ data }) {
         <div className="overflow-x-auto">
           <table className="w-full min-w-[980px]">
             <thead>
-              <tr className="border-b border-gray-100">
-                <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Batch</th>
-                <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">On hand</th>
-                <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Booked</th>
-                <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Available</th>
-                <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Cracked sold</th>
-                <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Write-offs</th>
-                <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Crack rate</th>
-                <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+              <tr className="border-b border-surface-100">
+                <th className="text-left py-3 px-4 text-caption font-medium text-surface-500 uppercase tracking-wider">Batch</th>
+                <th className="text-right py-3 px-4 text-caption font-medium text-surface-500 uppercase tracking-wider">On hand</th>
+                <th className="text-right py-3 px-4 text-caption font-medium text-surface-500 uppercase tracking-wider">Booked</th>
+                <th className="text-right py-3 px-4 text-caption font-medium text-surface-500 uppercase tracking-wider">Available</th>
+                <th className="text-right py-3 px-4 text-caption font-medium text-surface-500 uppercase tracking-wider">Cracked sold</th>
+                <th className="text-right py-3 px-4 text-caption font-medium text-surface-500 uppercase tracking-wider">Write-offs</th>
+                <th className="text-right py-3 px-4 text-caption font-medium text-surface-500 uppercase tracking-wider">Crack rate</th>
+                <th className="text-left py-3 px-4 text-caption font-medium text-surface-500 uppercase tracking-wider">Status</th>
               </tr>
             </thead>
             <tbody>
               {activeInventory.map((batch) => (
-                <tr key={batch.batchId} className="border-b border-gray-50">
-                  <td className="py-3 px-4 text-sm font-medium text-gray-900">
+                <tr key={batch.batchId} className="border-b border-surface-100">
+                  <td className="py-3 px-4 text-body font-medium text-surface-900">
                     <div>{batch.batchName}</div>
-                    <div className="mt-1 text-xs font-medium text-gray-500">{batch.eggTypeLabel || 'Regular Size Eggs'}</div>
+                    <div className="mt-1 text-caption font-medium text-surface-500">{batch.eggTypeLabel || 'Regular Size Eggs'}</div>
                   </td>
-                  <td className="py-3 px-4 text-sm text-right">{batch.onHand.toLocaleString()}</td>
-                  <td className="py-3 px-4 text-sm text-right">{batch.booked.toLocaleString()}</td>
-                  <td className="py-3 px-4 text-sm text-right">{batch.available.toLocaleString()}</td>
-                  <td className="py-3 px-4 text-sm text-right">{batch.crackedSoldQuantity.toLocaleString()}</td>
-                  <td className="py-3 px-4 text-sm text-right">{batch.totalWriteOffs.toLocaleString()}</td>
-                  <td className="py-3 px-4 text-sm text-right">{formatPercent(batch.crackRatePercent)}</td>
-                  <td className="py-3 px-4 text-sm">
+                  <td className="py-3 px-4 text-body text-right">{batch.onHand.toLocaleString()}</td>
+                  <td className="py-3 px-4 text-body text-right">{batch.booked.toLocaleString()}</td>
+                  <td className="py-3 px-4 text-body text-right">{batch.available.toLocaleString()}</td>
+                  <td className="py-3 px-4 text-body text-right">{batch.crackedSoldQuantity.toLocaleString()}</td>
+                  <td className="py-3 px-4 text-body text-right">{batch.totalWriteOffs.toLocaleString()}</td>
+                  <td className="py-3 px-4 text-body text-right">{formatPercent(batch.crackRatePercent)}</td>
+                  <td className="py-3 px-4 text-body">
                     <CrackAlertPill alert={batch.crackAlert} />
                   </td>
                 </tr>
@@ -1313,9 +1311,9 @@ function InventoryControlReport({ data }) {
 
 function Panel({ title, body, children }) {
   return (
-    <section className="bg-white rounded-xl border border-gray-200 p-5">
-      <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
-      <p className="text-sm text-gray-500 mt-1 mb-4">{body}</p>
+    <section className="bg-surface-white rounded-lg border border-surface-200 p-5">
+      <h2 className="text-heading text-surface-900">{title}</h2>
+      <p className="text-body text-surface-500 mt-1 mb-4">{body}</p>
       {children}
     </section>
   );
@@ -1323,10 +1321,10 @@ function Panel({ title, body, children }) {
 
 function SummaryCard({ label, value, hint }) {
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4">
-      <p className="text-xs text-gray-400 uppercase tracking-wider">{label}</p>
-      <p className="text-xl font-bold text-gray-900 mt-1">{value}</p>
-      {hint ? <p className="text-xs text-gray-500 mt-2">{hint}</p> : null}
+    <div className="bg-surface-white rounded-lg border border-surface-200 p-4">
+      <p className="text-caption text-surface-600 uppercase tracking-wider">{label}</p>
+      <p className="text-xl font-bold text-surface-900 mt-1">{value}</p>
+      {hint ? <p className="text-caption text-surface-500 mt-2">{hint}</p> : null}
     </div>
   );
 }
@@ -1340,9 +1338,9 @@ function DataTable({ columns, rows, footer, emptyText = 'No rows found.' }) {
     <div className="overflow-x-auto">
       <table className="w-full min-w-[720px]">
         <thead>
-          <tr className="border-b border-gray-100">
+          <tr className="border-b border-surface-100">
             {columns.map((column) => (
-              <th key={column} className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th key={column} className="text-left py-3 px-4 text-caption font-medium text-surface-500 uppercase tracking-wider">
                 {column}
               </th>
             ))}
@@ -1350,18 +1348,18 @@ function DataTable({ columns, rows, footer, emptyText = 'No rows found.' }) {
         </thead>
         <tbody>
           {rows.map((row, rowIndex) => (
-            <tr key={`${rowIndex}-${row[0]}`} className="border-b border-gray-50">
+            <tr key={`${rowIndex}-${row[0]}`} className="border-b border-surface-100">
               {row.map((cell, cellIndex) => (
-                <td key={`${rowIndex}-${cellIndex}`} className="py-3 px-4 text-sm text-gray-700">
+                <td key={`${rowIndex}-${cellIndex}`} className="py-3 px-4 text-body text-surface-700">
                   {cell}
                 </td>
               ))}
             </tr>
           ))}
           {footer ? (
-            <tr className="bg-gray-50 font-medium">
+            <tr className="bg-surface-50 font-medium">
               {footer.map((cell, cellIndex) => (
-                <td key={`footer-${cellIndex}`} className="py-3 px-4 text-sm text-gray-900">
+                <td key={`footer-${cellIndex}`} className="py-3 px-4 text-body text-surface-900">
                   {cell}
                 </td>
               ))}
@@ -1397,13 +1395,13 @@ function AreaTrendChart({ data, labelKey, valueKey, valueFormatter, labelFormatt
 
   return (
     <div className="space-y-3">
-      <div className="rounded-2xl border border-gray-200 bg-gradient-to-br from-white to-emerald-50/60 p-4">
+      <div className="rounded-lg border border-surface-200 bg-gradient-to-br from-white to-emerald-50/60 p-4">
         <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto">
           {[0, 0.25, 0.5, 0.75, 1].map((step) => {
             const y = height - padding - step * (height - padding * 2);
             return (
               <g key={step}>
-                <line x1={padding} y1={y} x2={width - padding} y2={y} stroke="#E5E7EB" strokeWidth="1" />
+                <line x1={padding} y1={y} x2={width - padding} y2={y} stroke="#D1D5DB" strokeWidth="1" />
                 <text x="0" y={y + 4} fontSize="11" fill="#6B7280">
                   {valueFormatter(maxValue * step)}
                 </text>
@@ -1423,11 +1421,11 @@ function AreaTrendChart({ data, labelKey, valueKey, valueFormatter, labelFormatt
         </svg>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-gray-500">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-caption text-surface-500">
         {points.slice(-4).map((point) => (
-          <div key={`legend-${point.label}`} className="rounded-lg bg-gray-50 px-3 py-2">
+          <div key={`legend-${point.label}`} className="rounded-lg bg-surface-50 px-3 py-2">
             <p>{labelFormatter(point.label)}</p>
-            <p className="font-medium text-gray-800 mt-1">{valueFormatter(point.value)}</p>
+            <p className="font-medium text-surface-800 mt-1">{valueFormatter(point.value)}</p>
           </div>
         ))}
       </div>
@@ -1451,11 +1449,11 @@ function BarComparisonChart({ data, labelKey, valueKey, valueFormatter, labelFor
 
         return (
           <div key={`${label}-${value}`} className="space-y-1">
-            <div className="flex items-center justify-between gap-4 text-sm">
-              <span className="text-gray-700 font-medium truncate">{label}</span>
-              <span className="text-gray-500">{valueFormatter(value)}</span>
+            <div className="flex items-center justify-between gap-4 text-body">
+              <span className="text-surface-700 font-medium truncate">{label}</span>
+              <span className="text-surface-500">{valueFormatter(value)}</span>
             </div>
-            <div className="h-3 rounded-full bg-gray-100 overflow-hidden">
+            <div className="h-3 rounded-full bg-surface-100 overflow-hidden">
               <div
                 className="h-full rounded-full bg-gradient-to-r from-brand-500 to-emerald-400"
                 style={{ width: `${Math.max(widthPercent, 4)}%` }}
@@ -1470,31 +1468,31 @@ function BarComparisonChart({ data, labelKey, valueKey, valueFormatter, labelFor
 
 function ExecutiveNote({ label, value }) {
   return (
-    <div className="rounded-xl border border-gray-200 p-4">
-      <p className="text-xs uppercase tracking-wide text-gray-400">{label}</p>
-      <p className="text-sm font-medium text-gray-900 mt-2">{value}</p>
+    <div className="rounded-lg border border-surface-200 p-4">
+      <p className="text-caption uppercase tracking-wide text-surface-600">{label}</p>
+      <p className="text-body font-medium text-surface-900 mt-2">{value}</p>
     </div>
   );
 }
 
 function MiniMetric({ label, value }) {
   return (
-    <div className="rounded-lg bg-gray-50 px-3 py-2">
-      <p className="text-xs uppercase tracking-wide text-gray-400">{label}</p>
-      <p className="text-sm font-semibold text-gray-900 mt-1">{value}</p>
+    <div className="rounded-lg bg-surface-50 px-3 py-2">
+      <p className="text-caption uppercase tracking-wide text-surface-600">{label}</p>
+      <p className="text-body font-semibold text-surface-900 mt-1">{value}</p>
     </div>
   );
 }
 
 function StatusPill({ label, tone = 'slate' }) {
   const tones = {
-    slate: 'bg-slate-100 text-slate-700',
-    green: 'bg-green-100 text-green-700',
-    amber: 'bg-amber-100 text-amber-700',
+    slate: 'bg-surface-100 text-surface-700',
+    green: 'bg-success-100 text-success-700',
+    amber: 'bg-warning-100 text-warning-700',
   };
 
   return (
-    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${tones[tone] || tones.slate}`}>
+    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-caption font-medium ${tones[tone] || tones.slate}`}>
       {label}
     </span>
   );
@@ -1504,7 +1502,7 @@ function CrackAlertPill({ alert }) {
   if (!alert) return null;
 
   return (
-    <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${CRACK_ALERT_STYLES[alert.level] || CRACK_ALERT_STYLES.OK}`}>
+    <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-caption font-medium ${CRACK_ALERT_STYLES[alert.level] || CRACK_ALERT_STYLES.OK}`}>
       {alert.label}
     </span>
   );
@@ -1512,7 +1510,7 @@ function CrackAlertPill({ alert }) {
 
 function EmptyPanel({ text }) {
   return (
-    <div className="border border-dashed border-gray-300 rounded-xl p-6 text-center text-sm text-gray-500">
+    <div className="border border-dashed border-surface-300 rounded-lg p-6 text-center text-body text-surface-500">
       {text}
     </div>
   );

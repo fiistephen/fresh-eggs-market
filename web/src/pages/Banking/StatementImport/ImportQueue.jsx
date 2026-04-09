@@ -107,11 +107,11 @@ export default function ImportsView({
 
   /* ── No imports at all ───────────────────────────────── */
   if (importsLoading && imports.length === 0) {
-    return <div className="rounded-xl border border-gray-200 bg-white px-6 py-16 text-center text-sm text-gray-500">Loading statements…</div>;
+    return <div className=”rounded-lg border border-surface-200 bg-surface-0 px-6 py-16 text-center text-body text-surface-500”>Loading statements…</div>;
   }
   if (imports.length === 0) {
     return (
-      <div className="rounded-xl border border-gray-200 bg-white px-6 py-16">
+      <div className=”rounded-lg border border-surface-200 bg-surface-0 px-6 py-16”>
         <EmptyState
           title={importsSearch.trim() ? 'No statements match that search' : 'No bank statements imported yet'}
           body={importsSearch.trim() ? 'Try a different file name or clear the search to see all statement imports.' : 'Use the “Import statement” button to upload a Providus CSV.'}
@@ -121,45 +121,45 @@ export default function ImportsView({
   }
 
   return (
-    <div className="space-y-3">
+    <div className=”space-y-3”>
       {/* ── Statement queue ──────────────────────────────── */}
-      <div className="rounded-xl border border-gray-200 bg-white">
-        <div className="flex flex-wrap items-center gap-3 border-b border-gray-100 px-5 py-4">
+      <div className=”rounded-lg border border-surface-200 bg-surface-0”>
+        <div className=”flex flex-wrap items-center gap-3 border-b border-surface-100 px-5 py-4”>
           <div>
-            <h2 className="text-sm font-semibold text-gray-900">Import queue</h2>
-            <p className="text-xs text-gray-500">Search and open the statement you want to review.</p>
+            <h2 className=”text-body-medium font-semibold text-surface-900”>Import queue</h2>
+            <p className=”text-caption text-surface-500”>Search and open the statement you want to review.</p>
           </div>
-          <div className="relative min-w-[240px] flex-1">
+          <div className=”relative min-w-[240px] flex-1”>
             <input
-              type="text"
+              type=”text”
               value={importsSearchInput}
               onChange={(e) => onSearchChange(e.target.value)}
-              placeholder="Search file name, date, or account…"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+              placeholder=”Search file name, date, or account…”
+              className=”w-full rounded-md border border-surface-200 px-3 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500”
             />
             {importsLoading && importsSearchInput.trim() && (
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-gray-400">Searching…</span>
+              <span className=”absolute right-3 top-1/2 -translate-y-1/2 text-caption text-surface-400”>Searching…</span>
             )}
             {suggestionMatches.length > 0 && (
-              <div className="absolute left-0 right-0 top-full z-10 mt-1 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg">
+              <div className=”absolute left-0 right-0 top-full z-10 mt-1 overflow-hidden rounded-lg border border-surface-200 bg-surface-0 shadow-lg”>
                 {suggestionMatches.map((rec) => (
                   <button
                     key={rec.id}
-                    type="button"
+                    type=”button”
                     onClick={() => onSelectImport(rec.id)}
-                    className="flex w-full items-start justify-between gap-3 border-b border-gray-100 px-3 py-2 text-left last:border-b-0 hover:bg-gray-50"
+                    className=”flex w-full items-start justify-between gap-3 border-b border-surface-100 px-3 py-2 text-left last:border-b-0 hover:bg-surface-50”
                   >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-gray-900">{rec.originalFilename}</p>
-                      <p className="mt-0.5 text-xs text-gray-500">{displayAccountName(rec.bankAccount)}</p>
+                    <div className=”min-w-0”>
+                      <p className=”truncate text-body-medium font-medium text-surface-900”>{rec.originalFilename}</p>
+                      <p className=”mt-0.5 text-caption text-surface-500”>{displayAccountName(rec.bankAccount)}</p>
                     </div>
-                    <span className="shrink-0 text-[11px] text-gray-400">{rec.parsedRowCount} lines</span>
+                    <span className=”shrink-0 text-caption text-surface-400”>{rec.parsedRowCount} lines</span>
                   </button>
                 ))}
               </div>
             )}
           </div>
-          <span className="text-xs text-gray-500">
+          <span className=”text-caption text-surface-500”>
             {importsTotal > 0 ? `${importRangeStart}–${importRangeEnd} of ${importsTotal}` : 'No imports'}
           </span>
         </div>
@@ -173,20 +173,20 @@ export default function ImportsView({
                 key={rec.id}
                 type="button"
                 onClick={() => onSelectImport(rec.id)}
-                className={`rounded-xl border p-4 text-left transition-colors ${
+                className={`rounded-lg border p-4 text-left transition-colors duration-fast ${
                   selected
                     ? 'border-brand-300 bg-brand-50'
-                    : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
+                    : 'border-surface-200 bg-surface-0 hover:border-surface-300 hover:bg-surface-50'
                 }`}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-gray-900">{rec.originalFilename}</p>
-                    <p className="mt-1 text-xs text-gray-500">{displayAccountName(rec.bankAccount)}</p>
+                    <p className="truncate text-body-medium font-semibold text-surface-900">{rec.originalFilename}</p>
+                    <p className="mt-1 text-caption text-surface-500">{displayAccountName(rec.bankAccount)}</p>
                   </div>
-                  <StatusChip label={rec.status.toLowerCase().replace(/_/g, ' ')} tone={rec.status === 'POSTED' ? 'green' : rec.status === 'PARTIALLY_POSTED' ? 'amber' : 'gray'} />
+                  <StatusChip label={rec.status.toLowerCase().replace(/_/g, ' ')} tone={rec.status === 'POSTED' ? 'success' : rec.status === 'PARTIALLY_POSTED' ? 'warning' : 'default'} />
                 </div>
-                <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-gray-500">
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-caption text-surface-500">
                   <span>{fmtDate(rec.statementDateFrom)} – {fmtDate(rec.statementDateTo)}</span>
                   <span>·</span>
                   <span>{rec.parsedRowCount} lines</span>
@@ -199,8 +199,8 @@ export default function ImportsView({
         </div>
 
         {importsTotal > importsPageSize && (
-          <div className="flex items-center justify-between border-t border-gray-100 px-5 py-3">
-            <p className="text-xs text-gray-500">
+          <div className="flex items-center justify-between border-t border-surface-100 px-5 py-3">
+            <p className="text-caption text-surface-500">
               Showing {importRangeStart}–{importRangeEnd} of {importsTotal}
             </p>
             <div className="flex items-center gap-2">
@@ -208,16 +208,16 @@ export default function ImportsView({
                 type="button"
                 onClick={() => onPageChange(importsPage - 1)}
                 disabled={importsPage <= 1}
-                className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                className="rounded-md border border-surface-200 px-3 py-1.5 text-caption-medium font-medium text-surface-700 transition-colors duration-fast hover:bg-surface-50 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Previous
               </button>
-              <span className="text-xs text-gray-500">Page {importsPage} of {importTotalPages}</span>
+              <span className="text-caption text-surface-500">Page {importsPage} of {importTotalPages}</span>
               <button
                 type="button"
                 onClick={() => onPageChange(importsPage + 1)}
                 disabled={importsPage >= importTotalPages}
-                className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                className="rounded-md border border-surface-200 px-3 py-1.5 text-caption-medium font-medium text-surface-700 transition-colors duration-fast hover:bg-surface-50 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Next
               </button>
@@ -227,24 +227,24 @@ export default function ImportsView({
       </div>
 
       {/* ── Selected import detail ─────────────────────────── */}
-      <div className="rounded-xl border border-gray-200 bg-white">
+      <div className="rounded-lg border border-surface-200 bg-surface-0">
         {!selectedImportId ? (
           <div className="px-6 py-16"><EmptyState title="Choose an import" body="Select a statement from the dropdown above." /></div>
         ) : selectedImportLoading ? (
-          <div className="px-6 py-16 text-center text-sm text-gray-500">Loading…</div>
+          <div className="px-6 py-16 text-center text-body text-surface-500">Loading…</div>
         ) : !selectedImport ? (
           <div className="px-6 py-16"><EmptyState title="Import not found" body="Reload and try again." /></div>
         ) : (
           <>
             {/* Stats + Post button */}
-            <div className="space-y-3 border-b border-gray-100 px-5 py-3">
+            <div className="space-y-3 border-b border-surface-100 px-5 py-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-sm font-semibold text-gray-900">{selectedImport.originalFilename}</h2>
-                  <p className="text-xs text-gray-500">
+                  <h2 className="text-body-medium font-semibold text-surface-900">{selectedImport.originalFilename}</h2>
+                  <p className="text-caption text-surface-500">
                     Review the lines, fix categories, then post only the lines that are ready.
                   </p>
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-caption text-surface-500">
                     <span>{displayAccountName(selectedImport.bankAccount)}</span>
                     <span>·</span>
                     <span>{fmtDate(selectedImport.statementDateFrom)} – {fmtDate(selectedImport.statementDateTo)}</span>
@@ -256,29 +256,29 @@ export default function ImportsView({
                       type="button"
                       onClick={removeImportFromQueue}
                       disabled={removingImport}
-                      className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="rounded-md border border-error-100 bg-error-50 px-3 py-2 text-caption-medium font-medium text-error-700 transition-colors duration-fast hover:bg-error-100 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {removingImport ? 'Removing…' : 'Remove from queue'}
                     </button>
                   )}
-                  <button onClick={onPostImport} disabled={postingImport || selectedImport.status === 'POSTED'} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-gray-300">
+                  <button onClick={onPostImport} disabled={postingImport || selectedImport.status === 'POSTED'} className="rounded-md bg-brand-600 px-4 py-2 text-body-medium font-medium text-surface-0 transition-colors duration-fast hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-surface-300">
                     {postingImport ? 'Posting…' : selectedImport.status === 'POSTED' ? 'Posted' : 'Post ready lines'}
                   </button>
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
-                <ImportCountCard label="Ready" value={importCount(selectedImport, 'READY_TO_POST') || importCount(selectedImport, 'ready')} tone="green" />
-                <ImportCountCard label="Pending" value={importCount(selectedImport, 'PENDING_REVIEW') || importCount(selectedImport, 'pending')} tone="amber" />
-                <ImportCountCard label="Duplicates" value={importCount(selectedImport, 'DUPLICATE') || importCount(selectedImport, 'duplicate')} tone="red" />
-                <ImportCountCard label="Skipped" value={importCount(selectedImport, 'SKIPPED') || importCount(selectedImport, 'skipped')} tone="gray" />
+                <ImportCountCard label="Ready" value={importCount(selectedImport, 'READY_TO_POST') || importCount(selectedImport, 'ready')} tone="success" />
+                <ImportCountCard label="Pending" value={importCount(selectedImport, 'PENDING_REVIEW') || importCount(selectedImport, 'pending')} tone="warning" />
+                <ImportCountCard label="Duplicates" value={importCount(selectedImport, 'DUPLICATE') || importCount(selectedImport, 'duplicate')} tone="error" />
+                <ImportCountCard label="Skipped" value={importCount(selectedImport, 'SKIPPED') || importCount(selectedImport, 'skipped')} tone="default" />
               </div>
             </div>
 
             {/* Filters + bulk actions */}
-            <div className="space-y-3 border-b border-gray-100 px-5 py-3">
+            <div className="space-y-3 border-b border-surface-100 px-5 py-3">
               <div className="flex flex-wrap items-center gap-2">
-                <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search narration, reference, amount…" className="w-full max-w-xs rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500" />
-                <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500">
+                <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search narration, reference, amount…" className="w-full max-w-xs rounded-md border border-surface-200 px-3 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500" />
+                <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="rounded-md border border-surface-200 px-3 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500">
                   <option value="">All statuses</option>
                   <option value="PENDING_REVIEW">Pending</option>
                   <option value="READY_TO_POST">Ready</option>
@@ -286,46 +286,46 @@ export default function ImportsView({
                   <option value="SKIPPED">Skipped</option>
                   <option value="POSTED">Posted</option>
                 </select>
-                <span className="text-xs text-gray-500">{filteredImportLines.length} of {selectedImportLines.length} lines</span>
+                <span className="text-caption text-surface-500">{filteredImportLines.length} of {selectedImportLines.length} lines</span>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3">
-                <label className="flex items-center gap-1.5 text-xs text-gray-600">
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-surface-200 bg-surface-50 px-3 py-3">
+                <label className="flex items-center gap-1.5 text-caption text-surface-600">
                   <input type="checkbox" checked={editableVisibleLines.length > 0 && selectedLineIds.length === editableVisibleLines.length} onChange={(e) => setSelectedLineIds(e.target.checked ? editableVisibleLines.map((l) => l.id) : [])} />
                   Select visible editable
                 </label>
-                <select value={bulkCategory} onChange={(e) => setBulkCategory(e.target.value)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500">
+                <select value={bulkCategory} onChange={(e) => setBulkCategory(e.target.value)} className="rounded-md border border-surface-200 px-3 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500">
                   <option value="">Bulk category</option>
                   {categoryOptions.map((cat) => <option key={cat} value={cat}>{categoryLabel(cat, categoryMap)}</option>)}
                 </select>
-                <select value={bulkStatus} onChange={(e) => setBulkStatus(e.target.value)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500">
+                <select value={bulkStatus} onChange={(e) => setBulkStatus(e.target.value)} className="rounded-md border border-surface-200 px-3 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500">
                   <option value="">Bulk status</option>
                   <option value="PENDING_REVIEW">Move to pending</option>
                   <option value="READY_TO_POST">Mark ready</option>
                   <option value="SKIPPED">Mark skipped</option>
                 </select>
-                <button onClick={applyBulkUpdate} disabled={selectedLineIds.length === 0 || bulkSaving} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-gray-300">
+                <button onClick={applyBulkUpdate} disabled={selectedLineIds.length === 0 || bulkSaving} className="rounded-md bg-brand-600 px-4 py-2 text-body-medium font-medium text-surface-0 transition-colors duration-fast hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-surface-300">
                   {bulkSaving ? 'Applying…' : `Apply to ${selectedLineIds.length}`}
                 </button>
               </div>
-              {bulkError && <p className="w-full text-xs text-red-600">{bulkError}</p>}
+              {bulkError && <p className="w-full text-caption text-error-600">{bulkError}</p>}
             </div>
 
             {/* Line table */}
             {filteredImportLines.length === 0 ? (
               <div className="px-6 py-16"><EmptyState title="No matching lines" body="Clear the search or change the status filter." /></div>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto custom-scrollbar">
                 <table className="w-full min-w-[900px]">
                   <thead>
-                    <tr className="border-b border-gray-100 bg-gray-50/50">
+                    <tr className="border-b border-surface-100 bg-surface-50/50">
                       <th className="w-8 px-3 py-2.5"></th>
-                      <th className="px-3 py-2.5 text-left text-xs font-medium uppercase text-gray-500">Date</th>
-                      <th className="px-3 py-2.5 text-left text-xs font-medium uppercase text-gray-500">Bank narration</th>
-                      <th className="px-3 py-2.5 text-right text-xs font-medium uppercase text-gray-500">Amount</th>
-                      <th className="px-3 py-2.5 text-left text-xs font-medium uppercase text-gray-500">Category</th>
-                      <th className="px-3 py-2.5 text-left text-xs font-medium uppercase text-gray-500">Status</th>
-                      <th className="px-3 py-2.5 text-left text-xs font-medium uppercase text-gray-500">Clean description</th>
+                      <th className="px-3 py-2.5 text-left text-overline text-surface-500">Date</th>
+                      <th className="px-3 py-2.5 text-left text-overline text-surface-500">Bank narration</th>
+                      <th className="px-3 py-2.5 text-right text-overline text-surface-500">Amount</th>
+                      <th className="px-3 py-2.5 text-left text-overline text-surface-500">Category</th>
+                      <th className="px-3 py-2.5 text-left text-overline text-surface-500">Status</th>
+                      <th className="px-3 py-2.5 text-left text-overline text-surface-500">Clean description</th>
                       <th className="w-16 px-3 py-2.5"></th>
                     </tr>
                   </thead>

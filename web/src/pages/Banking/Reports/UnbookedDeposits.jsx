@@ -18,26 +18,26 @@ export default function UnbookedDeposits() {
 
   return (
     <div className="space-y-4">
-      <SummaryBanner tone="amber" title={`${data.count} customer deposit${data.count !== 1 ? 's' : ''} still need booking action`} body={`${fmtMoney(data.total)} is sitting in deposits without a linked booking.`} />
-      <div className="rounded-2xl border border-gray-200 bg-white overflow-x-auto">
+      <SummaryBanner tone="warning" title={`${data.count} customer deposit${data.count !== 1 ? 's' : ''} still need booking action`} body={`${fmtMoney(data.total)} is sitting in deposits without a linked booking.`} />
+      <div className="rounded-xl border border-surface-200 bg-surface-0 overflow-x-auto custom-scrollbar">
         <table className="w-full min-w-[720px]">
           <thead>
-            <tr className="border-b border-gray-100">
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Date</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Customer</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Account</th>
-              <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">Amount</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Entered by</th>
+            <tr className="border-b border-surface-100">
+              <th className="px-4 py-3 text-left text-overline text-surface-500">Date</th>
+              <th className="px-4 py-3 text-left text-overline text-surface-500">Customer</th>
+              <th className="px-4 py-3 text-left text-overline text-surface-500">Account</th>
+              <th className="px-4 py-3 text-right text-overline text-surface-500">Amount</th>
+              <th className="px-4 py-3 text-left text-overline text-surface-500">Entered by</th>
             </tr>
           </thead>
           <tbody>
             {data.deposits.map((d) => (
-              <tr key={d.id} className="border-b border-gray-50">
-                <td className="px-4 py-3 text-sm text-gray-600">{fmtDate(d.transactionDate)}</td>
-                <td className="px-4 py-3 text-sm text-gray-800">{d.customer?.name || '—'}</td>
-                <td className="px-4 py-3 text-sm text-gray-500">{displayAccountName(d.bankAccount)}</td>
-                <td className="px-4 py-3 text-right text-sm font-semibold text-green-600">{fmtMoney(d.amount)}</td>
-                <td className="px-4 py-3 text-sm text-gray-500">{d.enteredBy?.firstName || '—'}</td>
+              <tr key={d.id} className="border-b border-surface-50">
+                <td className="px-4 py-3 text-body text-surface-600">{fmtDate(d.transactionDate)}</td>
+                <td className="px-4 py-3 text-body text-surface-800">{d.customer?.name || '—'}</td>
+                <td className="px-4 py-3 text-body text-surface-500">{displayAccountName(d.bankAccount)}</td>
+                <td className="px-4 py-3 text-right text-body-medium font-semibold text-success-600">{fmtMoney(d.amount)}</td>
+                <td className="px-4 py-3 text-body text-surface-500">{d.enteredBy?.firstName || '—'}</td>
               </tr>
             ))}
           </tbody>

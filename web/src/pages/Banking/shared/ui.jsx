@@ -1,7 +1,7 @@
 export function FilterField({ label, children }) {
   return (
     <div>
-      <label className="mb-1 block text-xs font-medium uppercase tracking-[0.14em] text-gray-500">{label}</label>
+      <label className="text-overline mb-2 block text-surface-500">{label}</label>
       {children}
     </div>
   );
@@ -10,7 +10,7 @@ export function FilterField({ label, children }) {
 export function Field({ label, children }) {
   return (
     <div>
-      <label className="mb-1 block text-sm font-medium text-gray-700">{label}</label>
+      <label className="text-body-medium mb-2 block text-surface-700">{label}</label>
       {children}
     </div>
   );
@@ -19,10 +19,10 @@ export function Field({ label, children }) {
 export function ModalShell({ title, onClose, children, maxWidth = 'max-w-3xl' }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className={`max-h-[92vh] w-full ${maxWidth} overflow-y-auto rounded-3xl bg-white shadow-2xl`} onClick={(event) => event.stopPropagation()}>
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-100 bg-white px-6 py-4">
-          <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
-          <button onClick={onClose} className="rounded-lg px-2 py-1 text-sm text-gray-500 hover:bg-gray-100 hover:text-gray-700">Close</button>
+      <div className={`max-h-[92vh] w-full ${maxWidth} overflow-y-auto rounded-xl bg-surface-0 shadow-xl`} onClick={(event) => event.stopPropagation()}>
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-surface-200 bg-surface-0 px-6 py-4">
+          <h2 className="text-heading text-surface-900">{title}</h2>
+          <button onClick={onClose} className="rounded-md px-2 py-1 text-body text-surface-500 transition-colors duration-fast hover:bg-surface-100 hover:text-surface-700">Close</button>
         </div>
         <div className="p-6">{children}</div>
       </div>
@@ -32,11 +32,11 @@ export function ModalShell({ title, onClose, children, maxWidth = 'max-w-3xl' })
 
 export function ModalActions({ onClose, submitting, submitLabel }) {
   return (
-    <div className="flex flex-col-reverse gap-2 border-t border-gray-100 pt-4 sm:flex-row sm:justify-end">
-      <button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100">
+    <div className="flex flex-col-reverse gap-3 border-t border-surface-200 pt-4 sm:flex-row sm:justify-end">
+      <button type="button" onClick={onClose} className="text-body-medium rounded-md px-4 py-2 text-surface-600 transition-colors duration-fast hover:bg-surface-100">
         Cancel
       </button>
-      <button type="submit" disabled={submitting} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-gray-300">
+      <button type="submit" disabled={submitting} className="text-body-medium rounded-md bg-brand-600 px-4 py-2 text-surface-0 transition-colors duration-fast hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-surface-300">
         {submitLabel}
       </button>
     </div>
@@ -46,81 +46,85 @@ export function ModalActions({ onClose, submitting, submitLabel }) {
 export function EmptyState({ title, body, compact = false }) {
   return (
     <div className={`text-center ${compact ? 'py-6' : 'py-10'}`}>
-      <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-xl">🏦</div>
-      <h3 className="text-base font-semibold text-gray-900">{title}</h3>
-      <p className="mx-auto mt-2 max-w-md text-sm text-gray-500">{body}</p>
+      <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-surface-100">
+        <svg className="h-6 w-6 text-surface-500" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8zm6 2a1 1 0 100-2 1 1 0 000 2z" />
+        </svg>
+      </div>
+      <h3 className="text-heading text-surface-900">{title}</h3>
+      <p className="mx-auto mt-2 max-w-md text-body text-surface-500">{body}</p>
     </div>
   );
 }
 
 export function EmptyPanel({ title, body }) {
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white px-6 py-24">
+    <div className="rounded-lg border border-surface-200 bg-surface-0 px-6 py-24">
       <EmptyState title={title} body={body} />
     </div>
   );
 }
 
 export function PanelLoading({ label }) {
-  return <div className="rounded-2xl border border-gray-200 bg-white px-6 py-24 text-center text-sm text-gray-500">{label}</div>;
+  return <div className="rounded-lg border border-surface-200 bg-surface-0 px-6 py-24 text-center text-body text-surface-500">{label}</div>;
 }
 
 export function SummaryBanner({ tone, title, body }) {
   const tones = {
-    amber: 'border-amber-200 bg-amber-50 text-amber-900',
-    orange: 'border-orange-200 bg-orange-50 text-orange-900',
-    red: 'border-red-200 bg-red-50 text-red-900',
+    warning: 'border-warning-100 bg-warning-50 text-warning-700',
+    brand: 'border-brand-200 bg-brand-50 text-brand-700',
+    error: 'border-error-100 bg-error-50 text-error-700',
   };
   return (
-    <div className={`rounded-2xl border px-4 py-4 ${tones[tone] || 'border-gray-200 bg-gray-50 text-gray-900'}`}>
-      <p className="text-sm font-semibold">{title}</p>
-      <p className="mt-1 text-sm opacity-80">{body}</p>
+    <div className={`rounded-lg border px-4 py-4 ${tones[tone] || 'border-surface-200 bg-surface-50 text-surface-700'}`}>
+      <p className="text-body-medium font-semibold">{title}</p>
+      <p className="mt-1 text-body opacity-80">{body}</p>
     </div>
   );
 }
 
 export function StatPill({ label, value, danger = false }) {
   return (
-    <div className={`rounded-xl px-3 py-2 ${danger ? 'bg-red-50' : 'bg-gray-50'}`}>
-      <p className="text-[11px] uppercase tracking-[0.14em] text-gray-500">{label}</p>
-      <p className={`mt-1 text-sm font-semibold ${danger ? 'text-red-600' : 'text-gray-900'}`}>{value}</p>
+    <div className={`rounded-lg px-3 py-2 ${danger ? 'bg-error-50' : 'bg-surface-50'}`}>
+      <p className="text-overline text-surface-500">{label}</p>
+      <p className={`mt-1 text-body-medium font-semibold ${danger ? 'text-error-700' : 'text-surface-900'}`}>{value}</p>
     </div>
   );
 }
 
-export function StatusChip({ label, tone = 'gray' }) {
+export function StatusChip({ label, tone = 'default' }) {
   const tones = {
-    gray: 'bg-gray-100 text-gray-700',
-    green: 'bg-green-100 text-green-700',
-    amber: 'bg-amber-100 text-amber-700',
+    default: 'bg-surface-100 text-surface-700',
+    success: 'bg-success-100 text-success-700',
+    warning: 'bg-warning-100 text-warning-700',
   };
-  return <span className={`rounded-full px-2 py-1 text-[11px] font-medium ${tones[tone] || tones.gray}`}>{label}</span>;
+  return <span className={`rounded-full px-2 py-1 text-caption-medium ${tones[tone] || tones.default}`}>{label}</span>;
 }
 
 export function ImportCountCard({ label, value, tone }) {
   const tones = {
-    green: 'bg-green-50 text-green-700',
-    amber: 'bg-amber-50 text-amber-700',
-    red: 'bg-red-50 text-red-700',
-    gray: 'bg-gray-50 text-gray-700',
+    success: 'bg-success-50 text-success-700',
+    warning: 'bg-warning-50 text-warning-700',
+    error: 'bg-error-50 text-error-700',
+    default: 'bg-surface-50 text-surface-700',
   };
   return (
-    <div className={`rounded-xl px-4 py-3 ${tones[tone] || tones.gray}`}>
-      <p className="text-xs font-medium uppercase tracking-[0.16em]">{label}</p>
-      <p className="mt-2 text-2xl font-bold">{value}</p>
+    <div className={`rounded-lg px-4 py-3 ${tones[tone] || tones.default}`}>
+      <p className="text-overline">{label}</p>
+      <p className="mt-2 text-metric font-bold">{value}</p>
     </div>
   );
 }
 
-export function ActionButton({ label, onClick, variant = 'default' }) {
+export function ActionButton({ label, onClick, variant = 'secondary' }) {
   const variants = {
-    default: 'border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100',
-    primary: 'border-brand-600 bg-brand-600 text-white hover:bg-brand-700',
+    secondary: 'border border-brand-200 bg-brand-50 text-brand-700 transition-colors duration-fast hover:bg-brand-100',
+    primary: 'border border-brand-600 bg-brand-600 text-surface-0 transition-colors duration-fast hover:bg-brand-700',
   };
   return (
     <button
       onClick={onClick}
-      className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${variants[variant] || variants.default}`}
+      className={`text-body-medium rounded-md px-3 py-2 ${variants[variant] || variants.secondary}`}
     >
       {label}
     </button>

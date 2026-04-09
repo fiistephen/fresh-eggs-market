@@ -18,26 +18,26 @@ export default function CustomerLiability() {
 
   return (
     <div className="space-y-4">
-      <SummaryBanner tone="orange" title={`${data.count} confirmed booking${data.count !== 1 ? 's' : ''} still carry liability`} body={`${fmtMoney(data.totalLiability)} is owed in goods to booked customers.`} />
-      <div className="rounded-2xl border border-gray-200 bg-white overflow-x-auto">
+      <SummaryBanner tone="brand" title={`${data.count} confirmed booking${data.count !== 1 ? 's' : ''} still carry liability`} body={`${fmtMoney(data.totalLiability)} is owed in goods to booked customers.`} />
+      <div className="rounded-xl border border-surface-200 bg-surface-0 overflow-x-auto custom-scrollbar">
         <table className="w-full min-w-[820px]">
           <thead>
-            <tr className="border-b border-gray-100">
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Customer</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Batch</th>
-              <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">Qty</th>
-              <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">Amount paid</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Booked on</th>
+            <tr className="border-b border-surface-100">
+              <th className="px-4 py-3 text-left text-overline text-surface-500">Customer</th>
+              <th className="px-4 py-3 text-left text-overline text-surface-500">Batch</th>
+              <th className="px-4 py-3 text-right text-overline text-surface-500">Qty</th>
+              <th className="px-4 py-3 text-right text-overline text-surface-500">Amount paid</th>
+              <th className="px-4 py-3 text-left text-overline text-surface-500">Booked on</th>
             </tr>
           </thead>
           <tbody>
             {data.bookings.map((b) => (
-              <tr key={b.id} className="border-b border-gray-50">
-                <td className="px-4 py-3 text-sm text-gray-800">{b.customer}</td>
-                <td className="px-4 py-3 text-sm text-gray-700">{b.batch}</td>
-                <td className="px-4 py-3 text-right text-sm">{b.quantity}</td>
-                <td className="px-4 py-3 text-right text-sm font-semibold text-orange-600">{fmtMoney(b.amountPaid)}</td>
-                <td className="px-4 py-3 text-sm text-gray-500">{fmtDate(b.bookedOn)}</td>
+              <tr key={b.id} className="border-b border-surface-50">
+                <td className="px-4 py-3 text-body text-surface-800">{b.customer}</td>
+                <td className="px-4 py-3 text-body text-surface-700">{b.batch}</td>
+                <td className="px-4 py-3 text-right text-body">{b.quantity}</td>
+                <td className="px-4 py-3 text-right text-body-medium font-semibold text-brand-600">{fmtMoney(b.amountPaid)}</td>
+                <td className="px-4 py-3 text-body text-surface-500">{fmtDate(b.bookedOn)}</td>
               </tr>
             ))}
           </tbody>

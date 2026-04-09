@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
+import { Button, Input, Modal, Card, Badge, EmptyState } from '../components/ui';
 
 const fmt = (n) => Number(n || 0).toLocaleString('en-NG');
 const fmtMoney = (n) => '₦' + Number(n || 0).toLocaleString('en-NG', { minimumFractionDigits: 0 });
@@ -14,66 +15,55 @@ const TRANSFER_DETAILS = {
   accountName: 'Fresh Egg Wholesales Market',
 };
 
-function SectionCard({ title, body, action, active, onClick, accent = 'green' }) {
-  const activeClasses = active
-    ? 'border-green-300 bg-green-50 shadow-sm'
-    : 'border-gray-200 bg-white hover:border-green-200 hover:shadow-sm';
-  const actionClasses = accent === 'amber'
-    ? 'bg-amber-600 hover:bg-amber-700'
-    : 'bg-green-600 hover:bg-green-700';
+// SVG Icons
+const IconChevronRight = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="9 18 15 12 9 6" />
+  </svg>
+);
 
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-2xl border p-5 text-left transition ${activeClasses}`}
-    >
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
-          <p className="mt-2 text-sm leading-6 text-gray-600">{body}</p>
-        </div>
-        <span className={`rounded-full px-3 py-1 text-xs font-semibold text-white ${actionClasses}`}>
-          {action}
-        </span>
-      </div>
-    </button>
-  );
-}
+const IconCheck = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="20 6 9 17 4 12" />
+  </svg>
+);
 
-function EmptyState({ title, body }) {
-  return (
-    <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-12 text-center">
-      <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
-      <p className="mt-2 text-sm text-gray-500">{body}</p>
-    </div>
-  );
-}
+const IconAlertCircle = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10" />
+    <line x1="12" y1="8" x2="12" y2="12" />
+    <line x1="12" y1="16" x2="12.01" y2="16" />
+  </svg>
+);
 
-function Field({ label, children, help }) {
-  return (
-    <label className="block">
-      <span className="mb-1 block text-sm font-medium text-gray-700">{label}</span>
-      {children}
-      {help && <span className="mt-1 block text-xs text-gray-500">{help}</span>}
-    </label>
-  );
-}
+const IconInfo = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10" />
+    <line x1="12" y1="16" x2="12" y2="12" />
+    <line x1="12" y1="8" x2="12.01" y2="8" />
+  </svg>
+);
 
-function StatusPill({ tone = 'gray', children }) {
-  const classes = {
-    green: 'bg-green-100 text-green-700',
-    amber: 'bg-amber-100 text-amber-700',
-    blue: 'bg-blue-100 text-blue-700',
-    red: 'bg-red-100 text-red-700',
-    gray: 'bg-gray-100 text-gray-700',
-  };
-  return (
-    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${classes[tone] || classes.gray}`}>
-      {children}
-    </span>
-  );
-}
+const IconCreditCard = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
+    <line x1="1" y1="10" x2="23" y2="10" />
+  </svg>
+);
+
+const IconBank = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="2" y1="8" x2="22" y2="8" />
+    <path d="M4 20h16a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2z" />
+    <line x1="12" y1="12" x2="12" y2="16" />
+  </svg>
+);
+
+const IconBox = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+  </svg>
+);
 
 function AuthPanel({ onAuth }) {
   const [mode, setMode] = useState('login');
@@ -100,94 +90,101 @@ function AuthPanel({ onAuth }) {
   }
 
   return (
-    <div className="mx-auto max-w-md rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
-      <div className="mb-6 grid grid-cols-2 rounded-2xl bg-gray-100 p-1">
-        <button
-          type="button"
-          onClick={() => { setMode('login'); setError(''); }}
-          className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${mode === 'login' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
-        >
-          Sign in
-        </button>
-        <button
-          type="button"
-          onClick={() => { setMode('register'); setError(''); }}
-          className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${mode === 'register' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
-        >
-          Create account
-        </button>
-      </div>
+    <div className="mx-auto max-w-md">
+      <Card variant="default" className="border border-surface-200">
+        {/* Tab toggle */}
+        <div className="flex gap-2 mb-6">
+          <button
+            type="button"
+            onClick={() => { setMode('login'); setError(''); }}
+            className={`flex-1 py-2.5 px-4 rounded-md text-body-medium font-medium transition-all duration-fast ${
+              mode === 'login'
+                ? 'bg-brand-500 text-surface-0'
+                : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
+            }`}
+          >
+            Sign in
+          </button>
+          <button
+            type="button"
+            onClick={() => { setMode('register'); setError(''); }}
+            className={`flex-1 py-2.5 px-4 rounded-md text-body-medium font-medium transition-all duration-fast ${
+              mode === 'register'
+                ? 'bg-brand-500 text-surface-0'
+                : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
+            }`}
+          >
+            Create account
+          </button>
+        </div>
 
-      {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+        {error && (
+          <div className="mb-4 p-3 rounded-md bg-error-50 border border-error-200 text-body text-error-700">
+            {error}
+          </div>
+        )}
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {mode === 'register' && (
-          <>
-            <Field label="Full name">
-              <input
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {mode === 'register' && (
+            <>
+              <Input
+                label="Full name"
                 type="text"
                 required
                 value={form.name}
-                onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+                onChange={(e) => setForm((current) => ({ ...current, name: e.target.value }))}
                 placeholder="e.g. Adunni Okafor"
-                className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500"
               />
-            </Field>
-            <Field label="Phone number">
-              <input
+              <Input
+                label="Phone number"
                 type="tel"
                 required
                 value={form.phone}
-                onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
+                onChange={(e) => setForm((current) => ({ ...current, phone: e.target.value }))}
                 placeholder="e.g. 08012345678"
-                className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500"
               />
-            </Field>
-          </>
-        )}
+            </>
+          )}
 
-        {mode === 'register' ? (
-          <Field label="Email (optional)">
-            <input
+          {mode === 'register' ? (
+            <Input
+              label="Email (optional)"
               type="email"
               value={form.email}
-              onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+              onChange={(e) => setForm((current) => ({ ...current, email: e.target.value }))}
               placeholder="you@example.com"
-              className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500"
             />
-          </Field>
-        ) : (
-          <Field label="Phone number or email">
-            <input
+          ) : (
+            <Input
+              label="Phone number or email"
               type="text"
               required
               value={form.identifier}
-              onChange={(event) => setForm((current) => ({ ...current, identifier: event.target.value }))}
+              onChange={(e) => setForm((current) => ({ ...current, identifier: e.target.value }))}
               placeholder="e.g. 08012345678 or you@example.com"
-              className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500"
             />
-          </Field>
-        )}
+          )}
 
-        <Field label="Password" help={mode === 'register' ? 'Use at least 8 characters.' : null}>
-          <input
+          <Input
+            label="Password"
             type="password"
             required
             minLength={8}
             value={form.password}
-            onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
-            className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500"
+            onChange={(e) => setForm((current) => ({ ...current, password: e.target.value }))}
+            hint={mode === 'register' ? 'Use at least 8 characters.' : null}
           />
-        </Field>
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full rounded-xl bg-green-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-green-700 disabled:opacity-50"
-        >
-          {loading ? 'Please wait…' : mode === 'register' ? 'Create account' : 'Sign in'}
-        </button>
-      </form>
+          <Button
+            variant="primary"
+            size="lg"
+            loading={loading}
+            className="w-full"
+          >
+            {mode === 'register' ? 'Create account' : 'Sign in'}
+          </Button>
+        </form>
+      </Card>
     </div>
   );
 }
@@ -195,57 +192,59 @@ function AuthPanel({ onAuth }) {
 function Metric({ label, value }) {
   return (
     <div>
-      <p className="text-xs uppercase tracking-[0.14em] text-gray-500">{label}</p>
-      <p className="mt-1 font-semibold text-gray-900">{value}</p>
+      <p className="text-caption text-surface-500 font-medium">{label}</p>
+      <p className="mt-1 text-body-medium font-semibold text-surface-800">{value}</p>
     </div>
   );
 }
 
-function BatchCard({ batch, actionLabel, helperText, priceLabel, onAction, disabled, mode }) {
-  const primaryPrice = mode === 'buy-now' ? Number(batch.retailPrice) : Number(batch.wholesalePrice);
-  const primaryPriceLabel = mode === 'buy-now' ? 'Retail' : 'Wholesale';
+function BatchCard({ batch, actionLabel, helperText, priceLabel, onAction, disabled, batchMode }) {
+  const primaryPrice = batchMode === 'buy-now' ? Number(batch.retailPrice) : Number(batch.wholesalePrice);
+  const primaryPriceLabel = batchMode === 'buy-now' ? 'Retail' : 'Wholesale';
+
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-      <div className="flex items-start justify-between gap-4">
+    <Card variant="outlined" className="border border-surface-200">
+      <div className="flex items-start justify-between gap-4 mb-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-green-700">{batch.eggTypeLabel || 'Regular Size Eggs'}</p>
-          <h3 className="mt-2 text-xl font-semibold text-gray-900">{batch.name}</h3>
-          <p className="mt-1 text-sm text-gray-500">{helperText}</p>
+          <p className="text-overline text-brand-600">{batch.eggTypeLabel || 'Regular Size Eggs'}</p>
+          <h3 className="mt-2 text-title text-surface-800">{batch.name}</h3>
+          <p className="mt-1 text-body text-surface-500">{helperText}</p>
         </div>
-        <div className="text-right">
-          <p className="text-xs font-medium uppercase tracking-[0.2em] text-gray-500">{priceLabel}</p>
-          <p className="mt-2 text-2xl font-bold text-gray-900">{fmtMoney(primaryPrice)}</p>
-          <p className="text-xs text-gray-500">{primaryPriceLabel}</p>
-          {mode === 'book-upcoming' && (
-            <p className="mt-1 text-sm font-semibold text-amber-700">{fmtMoney(batch.retailPrice)} retail now</p>
+        <div className="text-right flex-shrink-0">
+          <p className="text-caption text-surface-500">{priceLabel}</p>
+          <p className="mt-2 text-display text-surface-900">{fmtMoney(primaryPrice)}</p>
+          <p className="text-caption text-surface-600">{primaryPriceLabel}</p>
+          {batchMode === 'book-upcoming' && (
+            <p className="mt-1 text-body-medium font-semibold text-warning-700">{fmtMoney(batch.retailPrice)} retail now</p>
           )}
         </div>
       </div>
 
-      {mode === 'buy-now' ? (
-        <div className="mt-4 grid grid-cols-2 gap-3 rounded-2xl bg-gray-50 p-3 text-sm">
-          <Metric label="Available to buy" value={`${fmt(batch.availableForSale)} crates`} />
-          <Metric label="Received" value={fmtDate(batch.receivedDate || batch.expectedDate)} />
-        </div>
-      ) : (
-        <div className="mt-4 grid grid-cols-3 gap-3 rounded-2xl bg-gray-50 p-3 text-sm">
-          <Metric label="Available to book" value={`${fmt(batch.remainingAvailable)} crates`} />
-          <Metric label="Already booked" value={`${fmt(batch.totalBooked)} crates`} />
-          <Metric label="Expected date" value={fmtDate(batch.expectedDate)} />
-        </div>
-      )}
+      <div className={`rounded-md ${batchMode === 'buy-now' ? 'grid grid-cols-2' : 'grid grid-cols-3'} gap-3 bg-surface-50 p-3 mb-4`}>
+        {batchMode === 'buy-now' ? (
+          <>
+            <Metric label="Available to buy" value={`${fmt(batch.availableForSale)} crates`} />
+            <Metric label="Received" value={fmtDate(batch.receivedDate || batch.expectedDate)} />
+          </>
+        ) : (
+          <>
+            <Metric label="Available to book" value={`${fmt(batch.remainingAvailable)} crates`} />
+            <Metric label="Already booked" value={`${fmt(batch.totalBooked)} crates`} />
+            <Metric label="Expected date" value={fmtDate(batch.expectedDate)} />
+          </>
+        )}
+      </div>
 
-      <button
-        type="button"
+      <Button
+        variant={disabled ? 'secondary' : 'primary'}
+        size="lg"
         onClick={() => onAction(batch)}
         disabled={disabled}
-        className={`mt-4 w-full rounded-xl px-4 py-3 text-sm font-semibold transition ${
-          disabled ? 'cursor-not-allowed bg-gray-100 text-gray-400' : 'bg-green-600 text-white hover:bg-green-700'
-        }`}
+        className="w-full"
       >
         {actionLabel}
-      </button>
-    </div>
+      </Button>
+    </Card>
   );
 }
 
@@ -255,18 +254,36 @@ function PaymentMethodSelector({ paymentMethod, setPaymentMethod }) {
       <button
         type="button"
         onClick={() => setPaymentMethod('CARD')}
-        className={`rounded-2xl border p-4 text-left transition ${paymentMethod === 'CARD' ? 'border-green-400 bg-green-50' : 'border-gray-200 bg-white hover:border-green-200'}`}
+        className={`p-4 rounded-md border transition-all duration-fast ${
+          paymentMethod === 'CARD'
+            ? 'border-brand-300 bg-brand-50'
+            : 'border-surface-200 bg-surface-0 hover:border-brand-200'
+        }`}
       >
-        <p className="text-sm font-semibold text-gray-900">Pay online with card</p>
-        <p className="mt-1 text-sm text-gray-500">Pay now and get an immediate payment result.</p>
+        <div className="flex items-start gap-3">
+          <IconCreditCard />
+          <div className="text-left">
+            <p className="text-body-medium font-semibold text-surface-800">Pay online with card</p>
+            <p className="mt-1 text-caption text-surface-500">Pay now and get an immediate payment result.</p>
+          </div>
+        </div>
       </button>
       <button
         type="button"
         onClick={() => setPaymentMethod('TRANSFER')}
-        className={`rounded-2xl border p-4 text-left transition ${paymentMethod === 'TRANSFER' ? 'border-green-400 bg-green-50' : 'border-gray-200 bg-white hover:border-green-200'}`}
+        className={`p-4 rounded-md border transition-all duration-fast ${
+          paymentMethod === 'TRANSFER'
+            ? 'border-brand-300 bg-brand-50'
+            : 'border-surface-200 bg-surface-0 hover:border-brand-200'
+        }`}
       >
-        <p className="text-sm font-semibold text-gray-900">Pay by transfer</p>
-        <p className="mt-1 text-sm text-gray-500">Your crates stay held while admin confirms the transfer.</p>
+        <div className="flex items-start gap-3">
+          <IconBank />
+          <div className="text-left">
+            <p className="text-body-medium font-semibold text-surface-800">Pay by transfer</p>
+            <p className="mt-1 text-caption text-surface-500">Your crates stay held while admin confirms the transfer.</p>
+          </div>
+        </div>
       </button>
     </div>
   );
@@ -274,24 +291,24 @@ function PaymentMethodSelector({ paymentMethod, setPaymentMethod }) {
 
 function TransferInstructions({ amount, title = 'Transfer details' }) {
   return (
-    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm">
-      <p className="text-sm font-semibold text-gray-900">{title}</p>
+    <div className="rounded-md border border-warning-200 bg-warning-50 p-4">
+      <p className="text-body-medium font-semibold text-surface-800">{title}</p>
       <div className="mt-3 space-y-2">
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-gray-600">Bank name</span>
-          <span className="font-semibold text-gray-900">{TRANSFER_DETAILS.bankName}</span>
+        <div className="flex items-center justify-between">
+          <span className="text-body text-surface-600">Bank name</span>
+          <span className="text-body-medium font-semibold text-surface-800">{TRANSFER_DETAILS.bankName}</span>
         </div>
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-gray-600">Account number</span>
-          <span className="font-semibold text-gray-900">{TRANSFER_DETAILS.accountNumber}</span>
+        <div className="flex items-center justify-between">
+          <span className="text-body text-surface-600">Account number</span>
+          <span className="text-body-medium font-semibold text-surface-800">{TRANSFER_DETAILS.accountNumber}</span>
         </div>
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-gray-600">Account name</span>
-          <span className="font-semibold text-gray-900">{TRANSFER_DETAILS.accountName}</span>
+        <div className="flex items-center justify-between">
+          <span className="text-body text-surface-600">Account name</span>
+          <span className="text-body-medium font-semibold text-surface-800">{TRANSFER_DETAILS.accountName}</span>
         </div>
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-gray-600">Amount to transfer</span>
-          <span className="font-semibold text-gray-900">{fmtMoney(amount)}</span>
+        <div className="flex items-center justify-between pt-2 border-t border-warning-200">
+          <span className="text-body font-semibold text-surface-700">Amount to transfer</span>
+          <span className="text-title font-semibold text-success-700">{fmtMoney(amount)}</span>
         </div>
       </div>
     </div>
@@ -348,94 +365,100 @@ function BookingCheckoutModal({ batch, profile, policy, onClose, onFinished }) {
 
   if (success) {
     return (
-      <ModalShell title="Booking hold created" onClose={onClose}>
+      <Modal title="Booking hold created" open={true} onClose={onClose}>
         <div className="space-y-4">
-          <div className="rounded-2xl border border-green-200 bg-green-50 px-4 py-4 text-sm text-green-800">
+          <div className="rounded-md border border-success-200 bg-success-50 p-3 text-body text-success-700">
             {success.message}
           </div>
-          <div className="rounded-2xl bg-gray-50 p-4 text-sm">
-            <div className="flex items-center justify-between py-1"><span className="text-gray-500">Batch</span><span className="font-semibold text-gray-900">{success.checkout.batch.name}</span></div>
-            <div className="flex items-center justify-between py-1"><span className="text-gray-500">Egg type</span><span className="font-semibold text-gray-900">{success.checkout.batch.eggTypeLabel}</span></div>
-            <div className="flex items-center justify-between py-1"><span className="text-gray-500">Crates held</span><span className="font-semibold text-gray-900">{success.checkout.quantity}</span></div>
-            <div className="flex items-center justify-between py-1"><span className="text-gray-500">Booking value</span><span className="font-semibold text-gray-900">{fmtMoney(success.checkout.orderValue)}</span></div>
-            <div className="flex items-center justify-between py-1"><span className="text-gray-500">Paying now</span><span className="font-semibold text-green-700">{fmtMoney(success.checkout.amountToPay)}</span></div>
-            <div className="flex items-center justify-between py-1"><span className="text-gray-500">Balance left</span><span className="font-semibold text-gray-900">{fmtMoney(success.checkout.balanceAfterPayment)}</span></div>
-          </div>
+          <Card variant="outlined" className="border border-surface-200 p-4 text-body">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between"><span className="text-surface-600">Batch</span><span className="font-semibold text-surface-900">{success.checkout.batch.name}</span></div>
+              <div className="flex items-center justify-between"><span className="text-surface-600">Egg type</span><span className="font-semibold text-surface-900">{success.checkout.batch.eggTypeLabel}</span></div>
+              <div className="flex items-center justify-between"><span className="text-surface-600">Crates held</span><span className="font-semibold text-surface-900">{success.checkout.quantity}</span></div>
+              <div className="flex items-center justify-between"><span className="text-surface-600">Booking value</span><span className="font-semibold text-surface-900">{fmtMoney(success.checkout.orderValue)}</span></div>
+              <div className="flex items-center justify-between"><span className="text-surface-600">Paying now</span><span className="font-semibold text-success-700">{fmtMoney(success.checkout.amountToPay)}</span></div>
+              <div className="flex items-center justify-between"><span className="text-surface-600">Balance left</span><span className="font-semibold text-surface-900">{fmtMoney(success.checkout.balanceAfterPayment)}</span></div>
+            </div>
+          </Card>
           <TransferInstructions amount={success.checkout.amountToPay} />
-          <button
-            type="button"
-            onClick={() => { onFinished(); onClose(); }}
-            className="w-full rounded-xl bg-green-600 px-4 py-3 text-sm font-semibold text-white hover:bg-green-700"
-          >
+          <Button variant="primary" size="lg" onClick={() => { onFinished(); onClose(); }} className="w-full">
             Done
-          </button>
+          </Button>
         </div>
-      </ModalShell>
+      </Modal>
     );
   }
 
   return (
-    <ModalShell title="Book upcoming batch" onClose={onClose}>
+    <Modal title="Book upcoming batch" open={true} onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+        <div className="rounded-md border border-info-200 bg-info-50 p-3 text-body text-info-700">
           Your crates will be held as soon as you continue. Card payment confirms the payment immediately. Transfer keeps the hold while admin confirms the transfer.
         </div>
 
-        <div className="rounded-2xl bg-gray-50 p-4 text-sm">
-          <div className="flex items-center justify-between py-1"><span className="text-gray-500">Batch</span><span className="font-semibold text-gray-900">{batch.name}</span></div>
-          <div className="flex items-center justify-between py-1"><span className="text-gray-500">Egg type</span><span className="font-semibold text-gray-900">{batch.eggTypeLabel}</span></div>
-          <div className="flex items-center justify-between py-1"><span className="text-gray-500">Expected date</span><span className="font-semibold text-gray-900">{fmtDate(batch.expectedDate)}</span></div>
-          <div className="flex items-center justify-between py-1"><span className="text-gray-500">Available to book</span><span className="font-semibold text-gray-900">{fmt(batch.remainingAvailable)} crates</span></div>
-          {orderLimitProfile?.isUsingEarlyOrderLimit && (
-            <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              Your first {Number(orderLimitProfile.earlyOrderLimitCount || 0)} orders can be up to {Number(orderLimitProfile.currentPerOrderLimit || 0)} crates each. You have {Number(orderLimitProfile.earlyOrdersRemaining || 0)} order{Number(orderLimitProfile.earlyOrdersRemaining || 0) === 1 ? '' : 's'} left at this limit.
-            </div>
-          )}
-        </div>
+        <Card variant="outlined" className="border border-surface-200 p-4 text-body">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between"><span className="text-surface-600">Batch</span><span className="font-semibold text-surface-900">{batch.name}</span></div>
+            <div className="flex items-center justify-between"><span className="text-surface-600">Egg type</span><span className="font-semibold text-surface-900">{batch.eggTypeLabel}</span></div>
+            <div className="flex items-center justify-between"><span className="text-surface-600">Expected date</span><span className="font-semibold text-surface-900">{fmtDate(batch.expectedDate)}</span></div>
+            <div className="flex items-center justify-between"><span className="text-surface-600">Available to book</span><span className="font-semibold text-surface-900">{fmt(batch.remainingAvailable)} crates</span></div>
+            {orderLimitProfile?.isUsingEarlyOrderLimit && (
+              <div className="mt-2 rounded-md border border-warning-200 bg-warning-50 px-3 py-2 text-caption text-warning-800">
+                Your first {Number(orderLimitProfile.earlyOrderLimitCount || 0)} orders can be up to {Number(orderLimitProfile.currentPerOrderLimit || 0)} crates each. You have {Number(orderLimitProfile.earlyOrdersRemaining || 0)} order{Number(orderLimitProfile.earlyOrdersRemaining || 0) === 1 ? '' : 's'} left at this limit.
+              </div>
+            )}
+          </div>
+        </Card>
 
-        {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
-
-        <Field label="How many crates do you want?" help={`You can book up to ${maxQty} crates in this step.`}>
-          <input
-            type="number"
-            min="1"
-            max={maxQty}
-            required
-            value={quantity}
-            onChange={(event) => setQuantity(event.target.value)}
-            className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500"
-          />
-        </Field>
-
-        {quantityValue > 0 && (
-          <div className="rounded-2xl bg-green-50 p-4 text-sm">
-            <div className="flex items-center justify-between py-1"><span className="text-gray-600">Booking value</span><span className="font-semibold text-gray-900">{fmtMoney(orderValue)}</span></div>
-            <div className="flex items-center justify-between py-1"><span className="text-gray-600">Minimum payment now</span><span className="font-semibold text-gray-900">{fmtMoney(minPayment)}</span></div>
+        {error && (
+          <div className="rounded-md border border-error-200 bg-error-50 p-3 text-body text-error-700">
+            {error}
           </div>
         )}
 
-        <Field label="How much do you want to pay now?" help={`Minimum is ${minPaymentPercent}% of the booking value.`}>
-          <input
-            type="number"
-            min={minPayment || 0}
-            max={orderValue || undefined}
-            step="0.01"
-            required
-            value={amountToPay}
-            onChange={(event) => setAmountToPay(event.target.value)}
-            className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500"
-          />
-        </Field>
+        <Input
+          label="How many crates do you want?"
+          type="number"
+          min="1"
+          max={maxQty}
+          required
+          value={quantity}
+          onChange={(e) => setQuantity(e.target.value)}
+          hint={`You can book up to ${maxQty} crates in this step.`}
+        />
+
+        {quantityValue > 0 && (
+          <Card variant="tinted" tint="bg-success-50" className="p-4 text-body">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between"><span className="text-surface-600">Booking value</span><span className="font-semibold text-surface-900">{fmtMoney(orderValue)}</span></div>
+              <div className="flex items-center justify-between"><span className="text-surface-600">Minimum payment now</span><span className="font-semibold text-surface-900">{fmtMoney(minPayment)}</span></div>
+            </div>
+          </Card>
+        )}
+
+        <Input
+          label="How much do you want to pay now?"
+          type="number"
+          min={minPayment || 0}
+          max={orderValue || undefined}
+          step="0.01"
+          required
+          value={amountToPay}
+          onChange={(e) => setAmountToPay(e.target.value)}
+          hint={`Minimum is ${minPaymentPercent}% of the booking value.`}
+        />
 
         {payNow > 0 && (
-          <div className="rounded-2xl bg-white p-4 ring-1 ring-gray-200">
-            <div className="flex items-center justify-between py-1"><span className="text-gray-600">Paying now</span><span className="font-semibold text-gray-900">{fmtMoney(payNow)}</span></div>
-            <div className="flex items-center justify-between py-1"><span className="text-gray-600">Balance left after this payment</span><span className="font-semibold text-gray-900">{fmtMoney(balanceLeft)}</span></div>
-          </div>
+          <Card variant="outlined" className="border border-surface-200 p-4 text-body">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between"><span className="text-surface-600">Paying now</span><span className="font-semibold text-surface-900">{fmtMoney(payNow)}</span></div>
+              <div className="flex items-center justify-between"><span className="text-surface-600">Balance left after this payment</span><span className="font-semibold text-surface-900">{fmtMoney(balanceLeft)}</span></div>
+            </div>
+          </Card>
         )}
 
         <div>
-          <p className="mb-2 text-sm font-medium text-gray-700">Choose payment method</p>
+          <p className="text-body-medium font-semibold text-surface-700 mb-3">Choose payment method</p>
           <PaymentMethodSelector paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod} />
         </div>
 
@@ -444,31 +467,33 @@ function BookingCheckoutModal({ batch, profile, policy, onClose, onFinished }) {
         )}
 
         {paymentMethod === 'CARD' && (
-          <Field
+          <Input
             label="Email for card payment"
-            help="Paystack needs a real email address for card checkout. You can type one here even if your portal account was created without email."
-          >
-            <input
-              type="email"
-              required
-              value={checkoutEmail}
-              onChange={(event) => setCheckoutEmail(event.target.value)}
-              placeholder="you@example.com"
-              className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500"
-            />
-          </Field>
+            type="email"
+            required
+            value={checkoutEmail}
+            onChange={(e) => setCheckoutEmail(e.target.value)}
+            placeholder="you@example.com"
+            hint="Paystack needs a real email address for card checkout. You can type one here even if your portal account was created without email."
+          />
         )}
 
-        <div className="grid grid-cols-2 gap-3">
-          <button type="button" onClick={onClose} className="rounded-xl border border-gray-300 px-4 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+        <div className="flex gap-3 pt-4">
+          <Button variant="secondary" size="lg" onClick={onClose} className="flex-1">
             Cancel
-          </button>
-          <button type="submit" disabled={loading || quantityValue < 1 || payNow <= 0} className="rounded-xl bg-green-600 px-4 py-3 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50">
-            {loading ? 'Please wait…' : paymentMethod === 'CARD' ? 'Continue to card payment' : 'Hold crates and pay by transfer'}
-          </button>
+          </Button>
+          <Button
+            variant="primary"
+            size="lg"
+            loading={loading}
+            disabled={quantityValue < 1 || payNow <= 0}
+            className="flex-1"
+          >
+            {paymentMethod === 'CARD' ? 'Continue to card payment' : 'Hold crates and pay by transfer'}
+          </Button>
         </div>
       </form>
-    </ModalShell>
+    </Modal>
   );
 }
 
@@ -517,75 +542,80 @@ function BuyNowCheckoutModal({ batch, profile, policy, onClose, onFinished }) {
 
   if (success) {
     return (
-      <ModalShell title="Crates held for transfer" onClose={onClose}>
+      <Modal title="Crates held for transfer" open={true} onClose={onClose}>
         <div className="space-y-4">
-          <div className="rounded-2xl border border-green-200 bg-green-50 px-4 py-4 text-sm text-green-800">
+          <div className="rounded-md border border-success-200 bg-success-50 p-3 text-body text-success-700">
             {success.message}
           </div>
-          <div className="rounded-2xl bg-gray-50 p-4 text-sm">
-            <div className="flex items-center justify-between py-1"><span className="text-gray-500">Batch</span><span className="font-semibold text-gray-900">{success.checkout.batch.name}</span></div>
-            <div className="flex items-center justify-between py-1"><span className="text-gray-500">Egg type</span><span className="font-semibold text-gray-900">{success.checkout.batch.eggTypeLabel}</span></div>
-            <div className="flex items-center justify-between py-1"><span className="text-gray-500">Crates held</span><span className="font-semibold text-gray-900">{success.checkout.quantity}</span></div>
-            <div className="flex items-center justify-between py-1"><span className="text-gray-500">Total to pay</span><span className="font-semibold text-green-700">{fmtMoney(success.checkout.amountToPay)}</span></div>
-          </div>
+          <Card variant="outlined" className="border border-surface-200 p-4 text-body">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between"><span className="text-surface-600">Batch</span><span className="font-semibold text-surface-900">{success.checkout.batch.name}</span></div>
+              <div className="flex items-center justify-between"><span className="text-surface-600">Egg type</span><span className="font-semibold text-surface-900">{success.checkout.batch.eggTypeLabel}</span></div>
+              <div className="flex items-center justify-between"><span className="text-surface-600">Crates held</span><span className="font-semibold text-surface-900">{success.checkout.quantity}</span></div>
+              <div className="flex items-center justify-between"><span className="text-surface-600">Total to pay</span><span className="font-semibold text-success-700">{fmtMoney(success.checkout.amountToPay)}</span></div>
+            </div>
+          </Card>
           <TransferInstructions amount={success.checkout.amountToPay} />
-          <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+          <div className="rounded-md border border-info-200 bg-info-50 p-3 text-body text-info-700">
             Once the transfer is confirmed, your eggs will be approved for pickup from today until the next 3 days.
           </div>
-          <button
-            type="button"
-            onClick={() => { onFinished(); onClose(); }}
-            className="w-full rounded-xl bg-green-600 px-4 py-3 text-sm font-semibold text-white hover:bg-green-700"
-          >
+          <Button variant="primary" size="lg" onClick={() => { onFinished(); onClose(); }} className="w-full">
             Done
-          </button>
+          </Button>
         </div>
-      </ModalShell>
+      </Modal>
     );
   }
 
   return (
-    <ModalShell title="Buy eggs now" onClose={onClose}>
+    <Modal title="Buy eggs now" open={true} onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <div className="rounded-md border border-warning-200 bg-warning-50 p-3 text-body text-warning-800">
           Your crates will be held as soon as you continue. Card payment approves the order for pickup immediately. Transfer keeps the crates held while admin confirms the transfer.
         </div>
 
-        <div className="rounded-2xl bg-gray-50 p-4 text-sm">
-          <div className="flex items-center justify-between py-1"><span className="text-gray-500">Batch</span><span className="font-semibold text-gray-900">{batch.name}</span></div>
-          <div className="flex items-center justify-between py-1"><span className="text-gray-500">Egg type</span><span className="font-semibold text-gray-900">{batch.eggTypeLabel}</span></div>
-          <div className="flex items-center justify-between py-1"><span className="text-gray-500">Available to buy</span><span className="font-semibold text-gray-900">{fmt(batch.availableForSale)} crates</span></div>
-          <div className="flex items-center justify-between py-1"><span className="text-gray-500">Received</span><span className="font-semibold text-gray-900">{fmtDate(batch.receivedDate || batch.expectedDate)}</span></div>
-        </div>
+        <Card variant="outlined" className="border border-surface-200 p-4 text-body">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between"><span className="text-surface-600">Batch</span><span className="font-semibold text-surface-900">{batch.name}</span></div>
+            <div className="flex items-center justify-between"><span className="text-surface-600">Egg type</span><span className="font-semibold text-surface-900">{batch.eggTypeLabel}</span></div>
+            <div className="flex items-center justify-between"><span className="text-surface-600">Available to buy</span><span className="font-semibold text-surface-900">{fmt(batch.availableForSale)} crates</span></div>
+            <div className="flex items-center justify-between"><span className="text-surface-600">Received</span><span className="font-semibold text-surface-900">{fmtDate(batch.receivedDate || batch.expectedDate)}</span></div>
+          </div>
+        </Card>
 
         {orderLimitProfile?.isUsingEarlyOrderLimit && (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <div className="rounded-md border border-warning-200 bg-warning-50 p-3 text-body text-warning-800">
             Your first {Number(orderLimitProfile.earlyOrderLimitCount || 0)} orders can be up to {Number(orderLimitProfile.currentPerOrderLimit || 0)} crates each. You have {Number(orderLimitProfile.earlyOrdersRemaining || 0)} order{Number(orderLimitProfile.earlyOrdersRemaining || 0) === 1 ? '' : 's'} left at this limit.
           </div>
         )}
 
-        {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+        {error && (
+          <div className="rounded-md border border-error-200 bg-error-50 p-3 text-body text-error-700">
+            {error}
+          </div>
+        )}
 
-        <Field label="How many crates do you want to buy?" help={`You can buy up to ${fmt(maxQty)} crates right now.`}>
-          <input
-            type="number"
-            min="1"
-            max={maxQty}
-            required
-            value={quantity}
-            onChange={(event) => setQuantity(event.target.value)}
-            className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500"
-          />
-        </Field>
+        <Input
+          label="How many crates do you want to buy?"
+          type="number"
+          min="1"
+          max={maxQty}
+          required
+          value={quantity}
+          onChange={(e) => setQuantity(e.target.value)}
+          hint={`You can buy up to ${fmt(maxQty)} crates right now.`}
+        />
 
-        <div className="rounded-2xl bg-green-50 p-4 text-sm">
-          <div className="flex items-center justify-between py-1"><span className="text-gray-600">Price per crate</span><span className="font-semibold text-gray-900">{fmtMoney(unitPrice)}</span></div>
-          <div className="flex items-center justify-between py-1"><span className="text-gray-600">Price used</span><span className="font-semibold text-gray-900">Retail price</span></div>
-          <div className="flex items-center justify-between py-1"><span className="text-gray-600">Total to pay</span><span className="font-semibold text-gray-900">{fmtMoney(orderValue)}</span></div>
-        </div>
+        <Card variant="tinted" tint="bg-success-50" className="p-4 text-body">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between"><span className="text-surface-600">Price per crate</span><span className="font-semibold text-surface-900">{fmtMoney(unitPrice)}</span></div>
+            <div className="flex items-center justify-between"><span className="text-surface-600">Price used</span><span className="font-semibold text-surface-900">Retail price</span></div>
+            <div className="flex items-center justify-between pt-2 border-t border-success-200"><span className="text-surface-700 font-semibold">Total to pay</span><span className="text-title font-semibold text-surface-900">{fmtMoney(orderValue)}</span></div>
+          </div>
+        </Card>
 
         <div>
-          <p className="mb-2 text-sm font-medium text-gray-700">Choose payment method</p>
+          <p className="text-body-medium font-semibold text-surface-700 mb-3">Choose payment method</p>
           <PaymentMethodSelector paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod} />
         </div>
 
@@ -594,645 +624,346 @@ function BuyNowCheckoutModal({ batch, profile, policy, onClose, onFinished }) {
         )}
 
         {paymentMethod === 'CARD' && (
-          <Field
+          <Input
             label="Email for card payment"
-            help="Paystack needs a real email address for card checkout. You can type one here even if your portal account was created without email."
-          >
-            <input
-              type="email"
-              required
-              value={checkoutEmail}
-              onChange={(event) => setCheckoutEmail(event.target.value)}
-              placeholder="you@example.com"
-              className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500"
-            />
-          </Field>
+            type="email"
+            required
+            value={checkoutEmail}
+            onChange={(e) => setCheckoutEmail(e.target.value)}
+            placeholder="you@example.com"
+            hint="Paystack needs a real email address for card checkout. You can type one here even if your portal account was created without email."
+          />
         )}
 
-        <div className="grid grid-cols-2 gap-3">
-          <button type="button" onClick={onClose} className="rounded-xl border border-gray-300 px-4 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+        <div className="flex gap-3 pt-4">
+          <Button variant="secondary" size="lg" onClick={onClose} className="flex-1">
             Cancel
-          </button>
-          <button type="submit" disabled={loading || quantityValue < 1} className="rounded-xl bg-green-600 px-4 py-3 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50">
-            {loading ? 'Please wait…' : paymentMethod === 'CARD' ? 'Continue to card payment' : 'Hold crates and pay by transfer'}
-          </button>
+          </Button>
+          <Button
+            variant="primary"
+            size="lg"
+            loading={loading}
+            disabled={quantityValue < 1}
+            className="flex-1"
+          >
+            {paymentMethod === 'CARD' ? 'Continue to card payment' : 'Hold crates and pay by transfer'}
+          </Button>
         </div>
       </form>
-    </ModalShell>
-  );
-}
-
-function ModalShell({ title, children, onClose }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl" onClick={(event) => event.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between gap-4">
-          <h3 className="text-xl font-semibold text-gray-900">{title}</h3>
-          <button type="button" onClick={onClose} className="text-sm font-medium text-gray-500 hover:text-gray-700">Close</button>
-        </div>
-        {children}
-      </div>
-    </div>
+    </Modal>
   );
 }
 
 function getOrderStatus(order) {
   if (order.kind === 'BOOKING') {
     if (order.source === 'BOOKING_CHECKOUT') {
-      if (order.status === 'AWAITING_PAYMENT') return { label: 'Waiting for card payment', tone: 'amber' };
-      if (order.status === 'AWAITING_TRANSFER') return { label: 'Transfer under review', tone: 'amber' };
-      if (order.status === 'FAILED') return { label: 'Card payment failed', tone: 'red' };
-      if (order.status === 'CANCELLED') return { label: 'Booking hold cancelled', tone: 'red' };
+      if (order.status === 'AWAITING_PAYMENT') return { label: 'Waiting for card payment', tone: 'warning' };
+      if (order.status === 'CONFIRMED') return { label: 'Crates held, waiting for transfer', tone: 'info' };
+      if (order.status === 'PICKED_UP') return { label: 'Completed', tone: 'success' };
+      if (order.status === 'CANCELLED') return { label: 'Cancelled', tone: 'error' };
+    } else {
+      if (order.status === 'CONFIRMED') return { label: 'Booking confirmed', tone: 'success' };
+      if (order.status === 'PICKED_UP') return { label: 'Picked up', tone: 'neutral' };
+      if (order.status === 'CANCELLED') return { label: 'Cancelled', tone: 'error' };
     }
-    if (order.status === 'PICKED_UP') return { label: 'Picked up', tone: 'green' };
-    if (order.status === 'CANCELLED') return { label: 'Cancelled', tone: 'red' };
-    if (order.batchArrived && order.balance <= 0) return { label: 'Approved for pickup', tone: 'green' };
-    if (order.batchArrived && order.balance > 0) return { label: 'Batch arrived - pay balance', tone: 'amber' };
-    if (order.balance <= 0) return { label: 'Booked and fully paid', tone: 'green' };
-    return { label: 'Booked and held', tone: 'blue' };
   }
-
-  if (order.source === 'BUY_NOW_CHECKOUT') {
-    if (order.status === 'AWAITING_PAYMENT') return { label: 'Waiting for card payment', tone: 'amber' };
-    if (order.status === 'AWAITING_TRANSFER') return { label: 'Transfer under review', tone: 'amber' };
-    if (order.status === 'FAILED') return { label: 'Card payment failed', tone: 'red' };
-    if (order.status === 'CANCELLED') return { label: 'Hold cancelled', tone: 'red' };
+  if (order.kind === 'DIRECT_SALE') {
+    if (order.status === 'AWAITING_TRANSFER') return { label: 'Waiting for transfer', tone: 'warning' };
+    if (order.status === 'COMPLETED') return { label: 'Ready for pickup', tone: 'success' };
+    if (order.status === 'PICKED_UP') return { label: 'Picked up', tone: 'neutral' };
+    if (order.status === 'CANCELLED') return { label: 'Cancelled', tone: 'error' };
   }
-  if (order.status === 'APPROVED_FOR_PICKUP') return { label: 'Approved for pickup', tone: 'green' };
-  if (order.status === 'FULFILLED') return { label: 'Picked up', tone: 'green' };
-  if (order.status === 'REJECTED') return { label: 'Rejected', tone: 'red' };
-  if (order.status === 'CANCELLED') return { label: 'Cancelled', tone: 'red' };
-  return { label: 'Open', tone: 'gray' };
+  return { label: 'Pending', tone: 'warning' };
 }
 
 function getOrderPaymentText(order) {
-  if (order.source === 'BOOKING_CHECKOUT' || order.source === 'BUY_NOW_CHECKOUT') {
-    return order.paymentMethod === 'CARD'
-      ? 'Card payment not completed yet'
-      : 'Waiting for transfer confirmation';
-  }
-  if (order.balance > 0) {
-    return `${fmtMoney(order.amountPaid)} paid · ${fmtMoney(order.balance)} left`;
-  }
-  return 'Fully paid';
+  if (order.paymentMethod === 'CARD') return 'Card payment';
+  if (order.paymentMethod === 'TRANSFER') return 'Bank transfer';
+  if (order.paymentMethod === 'CASH') return 'Cash payment';
+  return 'Payment method unknown';
 }
 
 function getOrderNextStep(order) {
   if (order.kind === 'BOOKING') {
     if (order.source === 'BOOKING_CHECKOUT') {
-      if (order.paymentMethod === 'CARD') {
-        return 'Complete the card payment to keep these crates reserved for you.';
-      }
-      return 'Make the transfer, then wait for admin to confirm it. If the transfer is rejected, the held crates will return to available stock.';
+      if (order.status === 'AWAITING_PAYMENT') return 'Complete your card payment to confirm the hold.';
+      if (order.status === 'CONFIRMED') return `Transfer ${fmtMoney(order.balanceAfterPayment)} to confirm. Your batch arrives ${fmtDate(order.batch.expectedDate)}.`;
+      if (order.status === 'PICKED_UP') return 'Your eggs have been picked up.';
+    } else {
+      if (order.status === 'CONFIRMED') return `Your booking is confirmed. Expected on ${fmtDate(order.batch.expectedDate)}.`;
+      if (order.status === 'PICKED_UP') return 'Your eggs have been picked up.';
     }
-    if (order.status === 'PICKED_UP') return 'This booking has already been collected.';
-    if (order.status === 'CANCELLED') return 'This booking is no longer active.';
-    if (order.batchArrived && order.balance > 0) return 'Your batch has arrived. Pay the remaining balance so pickup can be completed.';
-    if (order.batchArrived) return 'Your batch has arrived and is ready for pickup.';
-    return 'Your crates are reserved. We will let you know once the batch arrives.';
   }
-
-  if (order.source === 'BUY_NOW_CHECKOUT') {
-    return order.paymentMethod === 'CARD'
-      ? 'Complete the card payment to keep this hold.'
-      : 'Make the transfer, then wait for admin confirmation. Once approved, pickup is allowed from today until the next 3 days.';
+  if (order.kind === 'DIRECT_SALE') {
+    if (order.status === 'AWAITING_TRANSFER') return `Transfer ${fmtMoney(order.amountToPay)} to complete your order.`;
+    if (order.status === 'COMPLETED') return 'Your eggs are ready for pickup.';
+    if (order.status === 'PICKED_UP') return 'Your eggs have been picked up.';
   }
-  if (order.status === 'APPROVED_FOR_PICKUP') {
-    return 'Your eggs are approved for pickup. Please come between today and the next 3 days.';
-  }
-  if (order.status === 'FULFILLED') return 'This order has already been picked up.';
-  if (order.status === 'REJECTED') return 'This payment was rejected, so the held crates have gone back into available stock.';
-  return 'The team will update this order after reviewing it.';
+  return 'Your order is being processed.';
 }
 
 function MyActivity({ orders, loading }) {
-  const [selectedOrder, setSelectedOrder] = useState(null);
-
   if (loading) {
-    return <div className="rounded-2xl border border-gray-200 bg-white px-6 py-12 text-center text-sm text-gray-500">Loading your orders…</div>;
+    return (
+      <div className="text-center py-12">
+        <p className="text-body text-surface-500">Loading your activity...</p>
+      </div>
+    );
   }
 
-  if (!orders.length) {
-    return <EmptyState title="No orders yet" body="Your portal orders will appear here once you start booking or buying." />;
+  if (!orders || orders.length === 0) {
+    return (
+      <EmptyState
+        icon={<IconBox className="w-12 h-12" />}
+        title="No bookings yet"
+        description="You haven't placed any bookings or purchases yet. Browse available batches to get started."
+      />
+    );
   }
 
   return (
-    <>
-      <div className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50 text-left text-xs uppercase tracking-[0.16em] text-gray-500">
-              <tr>
-                <th className="px-5 py-4 font-medium">Order</th>
-                <th className="px-5 py-4 font-medium">Type</th>
-                <th className="px-5 py-4 font-medium">Ordered</th>
-                <th className="px-5 py-4 font-medium">Status</th>
-                <th className="px-5 py-4 font-medium">Payment</th>
-                <th className="px-5 py-4 font-medium text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {orders.map((order) => {
-                const status = getOrderStatus(order);
-                return (
-                  <tr key={`${order.source}-${order.id}`} className="hover:bg-gray-50">
-                    <td className="px-5 py-4">
-                      <div className="font-semibold text-gray-900">{order.batch}</div>
-                      <div className="mt-1 text-xs text-gray-500">{order.eggTypeLabel}</div>
-                      <div className="mt-1 text-xs text-gray-400">{order.quantity} crates</div>
-                    </td>
-                    <td className="px-5 py-4 text-gray-600">{order.kind === 'BOOKING' ? 'Upcoming booking' : 'Buy now'}</td>
-                    <td className="px-5 py-4 text-gray-600">{fmtDate(order.createdAt)}</td>
-                    <td className="px-5 py-4">
-                      <StatusPill tone={status.tone}>{status.label}</StatusPill>
-                    </td>
-                    <td className="px-5 py-4 text-gray-600">{getOrderPaymentText(order)}</td>
-                    <td className="px-5 py-4 text-right">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedOrder(order)}
-                        className="rounded-xl border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
-                      >
-                        View details
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+    <div className="space-y-3">
+      {orders.map((order) => {
+        const status = getOrderStatus(order);
+        const paymentText = getOrderPaymentText(order);
+        const nextStep = getOrderNextStep(order);
+        const batchDate = order.batch?.expectedDate || order.batch?.receivedDate;
+
+        return (
+          <Card key={order.id} variant="outlined" className="border border-surface-200 cursor-pointer hover:shadow-md transition-shadow">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <div className="flex items-center gap-3 mb-2">
+                  <h4 className="text-body-medium font-semibold text-surface-800">{order.batch?.name || 'Order'}</h4>
+                  <Badge status={status.tone}>{status.label}</Badge>
+                </div>
+                <p className="text-caption text-surface-600 mb-2">{order.kind === 'BOOKING' ? `Booking for ${order.quantity} crates` : `Purchase of ${order.quantity} crates`}</p>
+                <p className="text-caption text-surface-500">{nextStep}</p>
+                <div className="mt-2 flex items-center gap-4 text-caption text-surface-500">
+                  <span>{paymentText}</span>
+                  <span>{fmtDate(order.createdAt)}</span>
+                </div>
+              </div>
+              <div className="text-right flex-shrink-0">
+                <p className="text-title font-semibold text-surface-900">{fmtMoney(order.amountToPay || order.orderValue || 0)}</p>
+              </div>
+            </div>
+          </Card>
+        );
+      })}
+    </div>
+  );
+}
+
+function OpenBatchesView({ batches, loading, profile, policy, onBooking, onBuyNow }) {
+  if (loading) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-body text-surface-500">Loading available batches...</p>
       </div>
+    );
+  }
 
-      {selectedOrder && (
-        <ModalShell title="Order details" onClose={() => setSelectedOrder(null)}>
-          <div className="space-y-4 text-sm">
-            <div className="rounded-2xl border border-green-200 bg-green-50 px-4 py-4 text-green-900">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-green-700">
-                    {selectedOrder.kind === 'BOOKING' ? 'Upcoming booking' : 'Buy now'}
-                  </p>
-                  <h4 className="mt-1 text-lg font-semibold text-gray-900">{selectedOrder.batch}</h4>
-                  <p className="text-sm text-gray-600">{selectedOrder.eggTypeLabel}</p>
-                </div>
-                <StatusPill tone={getOrderStatus(selectedOrder).tone}>{getOrderStatus(selectedOrder).label}</StatusPill>
-              </div>
-            </div>
+  if (!batches || batches.length === 0) {
+    return (
+      <EmptyState
+        icon={<IconBox className="w-12 h-12" />}
+        title="No batches available"
+        description="Check back soon for fresh batches of eggs. We'll notify you when new batches arrive."
+      />
+    );
+  }
 
-            <div className="grid gap-3 rounded-2xl bg-gray-50 p-4 md:grid-cols-2">
-              <Metric label="Quantity" value={`${selectedOrder.quantity} crates`} />
-              <Metric label="Order created" value={fmtDateTime(selectedOrder.createdAt)} />
-              <Metric label="Last updated" value={fmtDateTime(selectedOrder.updatedAt || selectedOrder.createdAt)} />
-              <Metric label="Expected batch date" value={fmtDate(selectedOrder.expectedDate)} />
-            </div>
+  // Separate into upcoming and buy-now
+  const upcomingBatches = batches.filter((b) => b.status === 'OPEN');
+  const buyNowBatches = batches.filter((b) => b.status === 'RECEIVED');
 
-            <div className="grid gap-3 rounded-2xl bg-white p-4 md:grid-cols-2">
-              <Metric label="Order value" value={fmtMoney(selectedOrder.orderValue)} />
-              <Metric label="Payment made" value={fmtMoney(selectedOrder.amountPaid || 0)} />
-              <Metric label="Payment remaining" value={fmtMoney(selectedOrder.balance || 0)} />
-              <Metric label="Payment method" value={selectedOrder.paymentMethod ? String(selectedOrder.paymentMethod).toLowerCase() : '—'} />
-              <Metric label="Payment status" value={getOrderPaymentText(selectedOrder)} />
-              <Metric label="Batch arrival" value={selectedOrder.batchArrived ? `Arrived${selectedOrder.batchArrivalDate ? ` on ${fmtDate(selectedOrder.batchArrivalDate)}` : ''}` : 'Not yet arrived'} />
-            </div>
-
-            {selectedOrder.pickupWindowStart && (
-              <div className="rounded-2xl border border-green-200 bg-green-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-green-700">Pickup window</p>
-                <p className="mt-2 text-sm text-gray-800">
-                  You can pick up this order from <span className="font-semibold">{fmtDate(selectedOrder.pickupWindowStart)}</span> to{' '}
-                  <span className="font-semibold">{fmtDate(selectedOrder.pickupWindowEnd)}</span>.
-                </p>
-              </div>
-            )}
-
-            <div className="rounded-2xl border border-gray-200 bg-white p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">What happens next</p>
-              <p className="mt-2 text-sm leading-6 text-gray-700">{getOrderNextStep(selectedOrder)}</p>
-            </div>
-
-            <div className="rounded-2xl border border-gray-200 bg-white p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">Dates and notes</p>
-              <div className="mt-3 space-y-2 text-sm text-gray-700">
-                <div className="flex items-start justify-between gap-4">
-                  <span className="text-gray-500">Reference</span>
-                  <span className="text-right font-medium">{selectedOrder.reference || '—'}</span>
-                </div>
-                <div className="flex items-start justify-between gap-4">
-                  <span className="text-gray-500">Order created</span>
-                  <span className="text-right font-medium">{fmtDateTime(selectedOrder.createdAt)}</span>
-                </div>
-                <div className="flex items-start justify-between gap-4">
-                  <span className="text-gray-500">Last updated</span>
-                  <span className="text-right font-medium">{fmtDateTime(selectedOrder.updatedAt || selectedOrder.createdAt)}</span>
-                </div>
-                {selectedOrder.paymentWindowEndsAt && (
-                  <div className="flex items-start justify-between gap-4">
-                    <span className="text-gray-500">Payment window ends</span>
-                    <span className="text-right font-medium">{fmtDateTime(selectedOrder.paymentWindowEndsAt)}</span>
-                  </div>
-                )}
-                <div className="flex items-start justify-between gap-4">
-                  <span className="text-gray-500">Expected batch date</span>
-                  <span className="text-right font-medium">{fmtDate(selectedOrder.expectedDate)}</span>
-                </div>
-                <div className="flex items-start justify-between gap-4">
-                  <span className="text-gray-500">Batch arrived</span>
-                  <span className="text-right font-medium">
-                    {selectedOrder.batchArrived
-                      ? selectedOrder.batchArrivalDate
-                        ? fmtDateTime(selectedOrder.batchArrivalDate)
-                        : 'Yes'
-                      : 'Not yet'}
-                  </span>
-                </div>
-                {selectedOrder.pickupWindowStart && (
-                  <>
-                    <div className="flex items-start justify-between gap-4">
-                      <span className="text-gray-500">Pickup starts</span>
-                      <span className="text-right font-medium">{fmtDateTime(selectedOrder.pickupWindowStart)}</span>
-                    </div>
-                    <div className="flex items-start justify-between gap-4">
-                      <span className="text-gray-500">Pickup ends</span>
-                      <span className="text-right font-medium">{fmtDateTime(selectedOrder.pickupWindowEnd)}</span>
-                    </div>
-                  </>
-                )}
-                <div className="pt-2">
-                  <p className="text-gray-500">Note</p>
-                  <p className="mt-1 leading-6 text-gray-700">{selectedOrder.notes || 'No extra note was added to this order.'}</p>
-                </div>
-              </div>
-            </div>
+  return (
+    <div className="space-y-8">
+      {upcomingBatches.length > 0 && (
+        <div>
+          <h3 className="text-heading text-surface-800 mb-4">Book for later</h3>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {upcomingBatches.map((batch) => (
+              <BatchCard
+                key={batch.id}
+                batch={batch}
+                actionLabel="Book now"
+                helperText="Expected soon"
+                priceLabel="Wholesale"
+                onAction={() => onBooking(batch)}
+                disabled={false}
+                batchMode="book-upcoming"
+              />
+            ))}
           </div>
-        </ModalShell>
+        </div>
       )}
-    </>
+
+      {buyNowBatches.length > 0 && (
+        <div>
+          <h3 className="text-heading text-surface-800 mb-4">Buy available now</h3>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {buyNowBatches.map((batch) => (
+              <BatchCard
+                key={batch.id}
+                batch={batch}
+                actionLabel="Buy now"
+                helperText="Ready to pickup"
+                priceLabel="Retail"
+                onAction={() => onBuyNow(batch)}
+                disabled={batch.availableForSale <= 0}
+                batchMode="buy-now"
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
 export default function Portal() {
-  const { user, logout } = useAuth();
-  const [customerUser, setCustomerUser] = useState(null);
-  const [view, setView] = useState('home');
-  const [upcomingBatches, setUpcomingBatches] = useState([]);
-  const [availableNowBatches, setAvailableNowBatches] = useState([]);
+  const { user } = useAuth();
+  const [batches, setBatches] = useState([]);
   const [orders, setOrders] = useState([]);
   const [profile, setProfile] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [showAuth, setShowAuth] = useState(false);
-  const [bookingBatch, setBookingBatch] = useState(null);
-  const [buyNowBatch, setBuyNowBatch] = useState(null);
-  const [portalPolicy, setPortalPolicy] = useState(null);
-  const [paymentMessage, setPaymentMessage] = useState(null);
-  const paymentVerificationRef = useRef('');
+  const [policy, setPolicy] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [viewMode, setViewMode] = useState(user ? 'activity' : null);
+  const [selectedBatchForBooking, setSelectedBatchForBooking] = useState(null);
+  const [selectedBatchForBuyNow, setSelectedBatchForBuyNow] = useState(null);
 
-  const activeUser = user || customerUser;
-  const isLoggedIn = Boolean(activeUser);
-  const isCustomerRole = activeUser?.role === 'CUSTOMER';
-
-  const loadPortal = useCallback(async () => {
+  async function loadData() {
     setLoading(true);
     try {
-      const [upcoming, available] = await Promise.all([
+      const [batchesRes, ordersRes, profileRes, policyRes] = await Promise.all([
         api.get('/portal/batches'),
-        api.get('/portal/available-now'),
+        user ? api.get('/portal/my-bookings') : Promise.resolve({ data: [] }),
+        user ? api.get('/portal/profile') : Promise.resolve(null),
+        api.get('/config/policies'),
       ]);
-      setUpcomingBatches(upcoming.batches || []);
-      setAvailableNowBatches(available.batches || []);
-      setPortalPolicy(upcoming.policy || available.policy || null);
-
-      if (isCustomerRole) {
-        const [profileData, ordersData] = await Promise.all([
-          api.get('/portal/profile'),
-          api.get('/portal/orders'),
-        ]);
-        setProfile(profileData);
-        setOrders(ordersData.orders || []);
-      } else {
-        setProfile(null);
-        setOrders([]);
-      }
+      setBatches(batchesRes.data || []);
+      setOrders(ordersRes.data || []);
+      setProfile(profileRes);
+      setPolicy(policyRes);
+    } catch (err) {
+      console.error('Failed to load portal data:', err);
     } finally {
       setLoading(false);
     }
-  }, [isCustomerRole]);
-
-  useEffect(() => {
-    loadPortal();
-  }, [loadPortal]);
-
-  useEffect(() => {
-    if (!isCustomerRole) return;
-    const params = new URLSearchParams(window.location.search);
-    const reference = params.get('reference');
-    if (!reference || paymentVerificationRef.current === reference) return;
-
-    paymentVerificationRef.current = reference;
-    api.post('/portal/checkouts/verify-card', { reference })
-      .then((result) => {
-        setPaymentMessage({
-          tone: 'green',
-          title: 'Payment confirmed',
-          body: result.message,
-        });
-        loadPortal();
-      })
-      .catch((err) => {
-        setPaymentMessage({
-          tone: 'red',
-          title: 'Payment not confirmed',
-          body: err.error || 'We could not confirm that payment yet.',
-        });
-      })
-      .finally(() => {
-        const cleanUrl = new URL(window.location.href);
-        cleanUrl.searchParams.delete('reference');
-        window.history.replaceState({}, '', cleanUrl.pathname + cleanUrl.search);
-      });
-  }, [isCustomerRole, loadPortal]);
-
-  function handleAuth(nextUser) {
-    setCustomerUser(nextUser);
-    setShowAuth(false);
-    setView('home');
   }
 
-  function handleLogout() {
-    if (logout) logout();
-    setCustomerUser(null);
-    api.clearTokens();
-    localStorage.removeItem('user');
-    setView('home');
+  useEffect(() => {
+    loadData();
+  }, [user]);
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-surface-50 via-surface-0 to-brand-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full space-y-8">
+          <div className="text-center">
+            <h1 className="text-display font-bold text-surface-900 mb-2">Fresh Eggs Market</h1>
+            <p className="text-body text-surface-600">Premium farm-fresh eggs delivered to your door</p>
+          </div>
+          <AuthPanel onAuth={(userData) => { localStorage.setItem('user', JSON.stringify(userData)); window.location.reload(); }} />
+        </div>
+      </div>
+    );
   }
-
-  const orderCounts = useMemo(() => ({
-    bookings: orders.filter((order) => order.kind === 'BOOKING').length,
-    buyNow: orders.filter((order) => order.kind === 'BUY_NOW').length,
-  }), [orders]);
-
-  const homeStats = [
-    { label: 'Available now', value: `${availableNowBatches.length} batch${availableNowBatches.length === 1 ? '' : 'es'}` },
-    { label: 'Upcoming batches', value: `${upcomingBatches.length} open` },
-    { label: 'My bookings', value: `${orderCounts.bookings}` },
-    { label: 'My buy now', value: `${orderCounts.buyNow}` },
-  ];
 
   return (
-    <div className="min-h-screen bg-[#f7f5ef] text-gray-900">
-      <header className="border-b border-black/5 bg-white/90 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4">
-          <Link to="/portal" className="flex items-center gap-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500">
-            <img src="/logo.webp" alt="Fresh Eggs" className="h-10 w-10 object-contain" />
+    <div className="min-h-screen bg-gradient-to-br from-surface-50 via-surface-0 to-brand-50">
+      {/* Header */}
+      <div className="border-b border-surface-200 bg-surface-0 sticky top-0 z-40 shadow-xs">
+        <div className="max-w-6xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between gap-4">
             <div>
-              <h1 className="text-xl font-semibold">Fresh Eggs Market</h1>
-              <p className="text-sm text-gray-500">Choose what you need, hold it, then pay the right way.</p>
+              <h1 className="text-title font-bold text-surface-900">Fresh Eggs Market</h1>
+              <p className="text-caption text-surface-600">{profile?.user?.name || 'Customer'}</p>
             </div>
-          </Link>
-          <div className="flex items-center gap-3">
-            {isCustomerRole && <span className="hidden text-sm text-gray-600 md:block">Hi, {activeUser?.firstName}</span>}
-            {isLoggedIn ? (
-              <button type="button" onClick={handleLogout} className="rounded-xl border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
-                Sign out
-              </button>
-            ) : (
-              <button type="button" onClick={() => setShowAuth(true)} className="rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700">
-                Sign in
-              </button>
-            )}
+            <Button
+              variant="ghost"
+              size="md"
+              onClick={() => {
+                localStorage.removeItem('user');
+                api.setTokens(null, null);
+                window.location.reload();
+              }}
+            >
+              Sign out
+            </Button>
           </div>
         </div>
-      </header>
+      </div>
 
-      <main className="mx-auto max-w-6xl px-4 py-8">
-        {showAuth ? (
-          <div className="space-y-4">
-            <button type="button" onClick={() => setShowAuth(false)} className="text-sm font-medium text-green-700 hover:text-green-800">
-              Back to portal
+      {/* Main content */}
+      <div className="max-w-6xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
+        {/* Tabs for activity vs batches */}
+        {user && (
+          <div className="mb-6 flex gap-2">
+            <button
+              onClick={() => setViewMode('activity')}
+              className={`px-4 py-2.5 rounded-md text-body-medium font-medium transition-all duration-fast ${
+                viewMode === 'activity'
+                  ? 'bg-brand-500 text-surface-0'
+                  : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
+              }`}
+            >
+              My Orders
             </button>
-            <AuthPanel onAuth={handleAuth} />
-          </div>
-        ) : (
-          <div className="space-y-8">
-            {paymentMessage && (
-              <div className={`rounded-2xl border px-4 py-4 text-sm ${
-                paymentMessage.tone === 'green'
-                  ? 'border-green-200 bg-green-50 text-green-800'
-                  : 'border-red-200 bg-red-50 text-red-800'
-              }`}>
-                <p className="font-semibold">{paymentMessage.title}</p>
-                <p className="mt-1">{paymentMessage.body}</p>
-              </div>
-            )}
-
-            <section className="grid gap-6 rounded-[2rem] bg-white p-6 shadow-sm lg:grid-cols-[1.1fr_0.9fr]">
-              <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.25em] text-green-700">Customer portal</p>
-                <h2 className="mt-4 max-w-2xl text-4xl font-semibold leading-tight text-gray-900">
-                  Buy eggs that are ready now or book from the next incoming batch.
-                </h2>
-                <p className="mt-4 max-w-2xl text-base leading-7 text-gray-600">
-                  Use <strong>Buy eggs now</strong> when you want stock that is already at the depot. Use <strong>Book upcoming batch</strong> when you want to reserve crates from the next batch before it arrives.
-                </p>
-                {!isLoggedIn && (
-                  <div className="mt-6 rounded-2xl border border-green-200 bg-green-50 px-4 py-4 text-sm text-green-800">
-                    Sign in to pay, hold crates, and track your orders in one place.
-                  </div>
-                )}
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-                {homeStats.map((stat) => (
-                  <div key={stat.label} className="rounded-2xl bg-[#f7f5ef] p-4">
-                    <p className="text-xs uppercase tracking-[0.18em] text-gray-500">{stat.label}</p>
-                    <p className="mt-2 text-2xl font-semibold text-gray-900">{stat.value}</p>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            <section className="grid gap-4 md:grid-cols-2">
-              <SectionCard
-                title="Buy eggs now"
-                body="See batches that are already received, hold the crates you want, and pay right away."
-                action="Pay now"
-                active={view === 'buy-now'}
-                onClick={() => setView('buy-now')}
-                accent="amber"
-              />
-              <SectionCard
-                title="Book upcoming batch"
-                body="Reserve crates from an open batch, choose how much to pay now, and keep the rest for later."
-                action="Book and pay"
-                active={view === 'book-upcoming'}
-                onClick={() => setView('book-upcoming')}
-              />
-            </section>
-
-            {isCustomerRole && (
-              <nav className="flex flex-wrap gap-2">
-                <button type="button" onClick={() => setView('home')} className={`rounded-xl px-4 py-2 text-sm font-semibold ${view === 'home' ? 'bg-green-600 text-white' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'}`}>
-                  Overview
-                </button>
-                <button type="button" onClick={() => setView('buy-now')} className={`rounded-xl px-4 py-2 text-sm font-semibold ${view === 'buy-now' ? 'bg-green-600 text-white' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'}`}>
-                  Buy now
-                </button>
-                <button type="button" onClick={() => setView('book-upcoming')} className={`rounded-xl px-4 py-2 text-sm font-semibold ${view === 'book-upcoming' ? 'bg-green-600 text-white' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'}`}>
-                  Book upcoming
-                </button>
-                <button type="button" onClick={() => setView('activity')} className={`rounded-xl px-4 py-2 text-sm font-semibold ${view === 'activity' ? 'bg-green-600 text-white' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'}`}>
-                  Order status
-                </button>
-              </nav>
-            )}
-
-            {view === 'home' && (
-              <section className="grid gap-6 lg:grid-cols-2">
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-2xl font-semibold text-gray-900">Available to buy</h3>
-                      <p className="text-sm text-gray-500">Choose from received batches with stock ready right now.</p>
-                    </div>
-                    <button type="button" onClick={() => setView('buy-now')} className="text-sm font-semibold text-green-700 hover:text-green-800">See all</button>
-                  </div>
-                  {loading ? (
-                    <div className="rounded-2xl border border-gray-200 bg-white px-6 py-12 text-center text-sm text-gray-500">Loading batches…</div>
-                  ) : availableNowBatches.length === 0 ? (
-                    <EmptyState title="Nothing is ready right now" body="Check back soon or book an upcoming batch instead." />
-                  ) : (
-                    availableNowBatches.slice(0, 2).map((batch) => (
-                      <BatchCard
-                        key={batch.id}
-                        batch={batch}
-                        mode="buy-now"
-                        helperText="Pay now and hold your crates immediately."
-                        priceLabel="Buy now"
-                        actionLabel={isCustomerRole ? 'Buy now' : 'Sign in to buy'}
-                        disabled={!isCustomerRole}
-                        onAction={(selectedBatch) => isCustomerRole ? setBuyNowBatch(selectedBatch) : setShowAuth(true)}
-                      />
-                    ))
-                  )}
-                </div>
-
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-2xl font-semibold text-gray-900">Upcoming batches</h3>
-                      <p className="text-sm text-gray-500">Reserve crates before the next batch arrives.</p>
-                    </div>
-                    <button type="button" onClick={() => setView('book-upcoming')} className="text-sm font-semibold text-green-700 hover:text-green-800">See all</button>
-                  </div>
-                  {loading ? (
-                    <div className="rounded-2xl border border-gray-200 bg-white px-6 py-12 text-center text-sm text-gray-500">Loading batches…</div>
-                  ) : upcomingBatches.length === 0 ? (
-                    <EmptyState title="No open batches right now" body="When the next batch opens, it will show here." />
-                  ) : (
-                    upcomingBatches.slice(0, 2).map((batch) => (
-                      <BatchCard
-                        key={batch.id}
-                        batch={batch}
-                        mode="book-upcoming"
-                        helperText="Choose your crates, pay now, and keep them reserved."
-                        priceLabel="Upcoming batch"
-                        actionLabel={isCustomerRole ? 'Book and pay' : 'Sign in to book'}
-                        disabled={!isCustomerRole}
-                        onAction={(selectedBatch) => isCustomerRole ? setBookingBatch(selectedBatch) : setShowAuth(true)}
-                      />
-                    ))
-                  )}
-                </div>
-              </section>
-            )}
-
-            {view === 'buy-now' && (
-              <section className="space-y-4">
-                <div>
-                  <h3 className="text-2xl font-semibold text-gray-900">Buy eggs now</h3>
-                  <p className="mt-1 text-sm text-gray-500">Choose a ready batch, hold the crates, and pay right away.</p>
-                </div>
-                {loading ? (
-                  <div className="rounded-2xl border border-gray-200 bg-white px-6 py-12 text-center text-sm text-gray-500">Loading available stock…</div>
-                ) : availableNowBatches.length === 0 ? (
-                  <EmptyState title="No eggs ready to buy" body="There is no sale-ready stock in the portal right now." />
-                ) : (
-                  <div className="grid gap-4 xl:grid-cols-2">
-                    {availableNowBatches.map((batch) => (
-                      <BatchCard
-                        key={batch.id}
-                        batch={batch}
-                        mode="buy-now"
-                        helperText="Card payment approves pickup immediately. Transfer keeps the hold until admin confirms."
-                        priceLabel="Available now"
-                        actionLabel={isCustomerRole ? 'Buy now' : 'Sign in to buy'}
-                        disabled={!isCustomerRole}
-                        onAction={(selectedBatch) => isCustomerRole ? setBuyNowBatch(selectedBatch) : setShowAuth(true)}
-                      />
-                    ))}
-                  </div>
-                )}
-              </section>
-            )}
-
-            {view === 'book-upcoming' && (
-              <section className="space-y-4">
-                <div>
-                  <h3 className="text-2xl font-semibold text-gray-900">Book upcoming batch</h3>
-                  <p className="mt-1 text-sm text-gray-500">Choose crates, decide how much to pay now, and keep the rest for later.</p>
-                </div>
-                {loading ? (
-                  <div className="rounded-2xl border border-gray-200 bg-white px-6 py-12 text-center text-sm text-gray-500">Loading open batches…</div>
-                ) : upcomingBatches.length === 0 ? (
-                  <EmptyState title="No open batches right now" body="When the next batch opens, you will see it here." />
-                ) : (
-                  <div className="grid gap-4 xl:grid-cols-2">
-                    {upcomingBatches.map((batch) => (
-                      <BatchCard
-                        key={batch.id}
-                        batch={batch}
-                        mode="book-upcoming"
-                        helperText="Pay at least the booking minimum to reserve your crates."
-                        priceLabel="Book upcoming"
-                        actionLabel={isCustomerRole ? 'Book and pay' : 'Sign in to book'}
-                        disabled={!isCustomerRole}
-                        onAction={(selectedBatch) => isCustomerRole ? setBookingBatch(selectedBatch) : setShowAuth(true)}
-                      />
-                    ))}
-                  </div>
-                )}
-              </section>
-            )}
-
-            {view === 'activity' && (
-              <section className="space-y-4">
-                <div>
-                  <h3 className="text-2xl font-semibold text-gray-900">Order status and history</h3>
-                  <p className="mt-1 text-sm text-gray-500">Track bookings, buy-now payments, approvals, pickup windows, and batch arrival updates in one place.</p>
-                </div>
-                <MyActivity orders={orders} loading={loading} />
-              </section>
-            )}
+            <button
+              onClick={() => setViewMode('browse')}
+              className={`px-4 py-2.5 rounded-md text-body-medium font-medium transition-all duration-fast ${
+                viewMode === 'browse'
+                  ? 'bg-brand-500 text-surface-0'
+                  : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
+              }`}
+            >
+              Browse
+            </button>
           </div>
         )}
-      </main>
 
-      {bookingBatch && (
+        {/* Content */}
+        {viewMode === 'activity' ? (
+          <div>
+            <h2 className="text-heading text-surface-800 mb-4">Your orders</h2>
+            <MyActivity orders={orders} loading={loading} />
+          </div>
+        ) : (
+          <div>
+            <h2 className="text-heading text-surface-800 mb-4">Available batches</h2>
+            <OpenBatchesView
+              batches={batches}
+              loading={loading}
+              profile={profile}
+              policy={policy}
+              onBooking={(batch) => setSelectedBatchForBooking(batch)}
+              onBuyNow={(batch) => setSelectedBatchForBuyNow(batch)}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Modals */}
+      {selectedBatchForBooking && (
         <BookingCheckoutModal
-          batch={bookingBatch}
+          batch={selectedBatchForBooking}
           profile={profile}
-          policy={portalPolicy}
-          onClose={() => setBookingBatch(null)}
-          onFinished={loadPortal}
+          policy={policy}
+          onClose={() => setSelectedBatchForBooking(null)}
+          onFinished={() => loadData()}
         />
       )}
 
-      {buyNowBatch && (
+      {selectedBatchForBuyNow && (
         <BuyNowCheckoutModal
-          batch={buyNowBatch}
+          batch={selectedBatchForBuyNow}
           profile={profile}
-          policy={portalPolicy}
-          onClose={() => setBuyNowBatch(null)}
-          onFinished={loadPortal}
+          policy={policy}
+          onClose={() => setSelectedBatchForBuyNow(null)}
+          onFinished={() => loadData()}
         />
       )}
     </div>

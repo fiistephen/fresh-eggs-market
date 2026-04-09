@@ -2,11 +2,44 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import { Button, Input, Select, Modal, Card, Badge, EmptyState, useToast } from '../components/ui';
 
-const STATUS_COLORS = {
-  OPEN: 'bg-blue-100 text-blue-700',
-  RECEIVED: 'bg-green-100 text-green-700',
-  CLOSED: 'bg-gray-100 text-gray-500',
+// SVG Icons (20x20, strokeWidth 1.75)
+const IconArrowLeft = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
+    <path d="M15 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const IconPlus = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
+    <path d="M12 5v14m7-7H5" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const IconCheck = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
+    <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const IconX = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
+    <path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const IconTrash = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
+    <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 5a1 1 0 011-1h4a1 1 0 011 1v2H9V5z"
+          strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const STATUS_TOKENS = {
+  OPEN: { bg: 'bg-info-50', border: 'border-info-200', text: 'text-info-700' },
+  RECEIVED: { bg: 'bg-success-50', border: 'border-success-200', text: 'text-success-700' },
+  CLOSED: { bg: 'bg-surface-100', border: 'border-surface-200', text: 'text-surface-600' },
 };
 
 const STATUS_LABELS = {
@@ -22,7 +55,7 @@ function formatDate(d) {
 
 function formatCurrency(n) {
   if (n == null) return '—';
-  return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', minimumFractionDigits: 0 }).format(n);
+  return Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', minimumFractionDigits: 0 }).format(n);
 }
 
 function formatNumber(n) {
@@ -37,20 +70,20 @@ function normalizeEggCode(code) {
   return String(code || '').trim().toUpperCase();
 }
 
-function OverviewCard({ label, value, subtext, tone = 'gray' }) {
+function OverviewCard({ label, value, subtext, tone = 'neutral' }) {
   const tones = {
-    gray: 'bg-white border-gray-200 text-gray-900',
-    blue: 'bg-blue-50 border-blue-200 text-blue-900',
-    green: 'bg-green-50 border-green-200 text-green-900',
-    amber: 'bg-amber-50 border-amber-200 text-amber-900',
-    red: 'bg-red-50 border-red-200 text-red-900',
+    neutral: 'bg-surface-50 border-surface-200',
+    warning: 'bg-warning-50 border-warning-200',
+    success: 'bg-success-50 border-success-200',
+    info: 'bg-info-50 border-info-200',
+    error: 'bg-error-50 border-error-200',
   };
 
   return (
-    <div className={`rounded-2xl border p-4 ${tones[tone]}`}>
-      <p className="text-xs uppercase tracking-wider opacity-70">{label}</p>
-      <p className="mt-2 text-2xl font-bold">{value}</p>
-      {subtext && <p className="mt-1 text-sm opacity-75">{subtext}</p>}
+    <div className={`rounded-lg border p-4 ${tones[tone]} shadow-xs`}>
+      <p className="text-overline text-surface-600">{label}</p>
+      <p className="mt-2 text-metric text-surface-900">{value}</p>
+      {subtext && <p className="mt-1 text-caption text-surface-600">{subtext}</p>}
     </div>
   );
 }
@@ -85,13 +118,12 @@ export default function BatchDetail() {
       const data = await api.get(`/batches/${id}`);
       setBatch(data.batch);
 
-      // Load analysis for received/closed batches
       if (['RECEIVED', 'CLOSED'].includes(data.batch.status) && canManage) {
         try {
           const analysisData = await api.get(`/batches/${id}/analysis`);
           setAnalysis(analysisData);
         } catch {
-          // Analysis may fail if no sales yet, that's fine
+          // Analysis may fail if no sales yet
         }
       }
     } catch (err) {
@@ -103,8 +135,8 @@ export default function BatchDetail() {
 
   if (loading) {
     return (
-      <div className="text-center py-16 text-gray-400">
-        <div className="animate-pulse text-lg">Loading batch details...</div>
+      <div className="text-center py-16">
+        <div className="text-body text-surface-400">Loading batch details...</div>
       </div>
     );
   }
@@ -112,10 +144,10 @@ export default function BatchDetail() {
   if (error || !batch) {
     return (
       <div className="text-center py-16">
-        <div className="text-red-500 mb-4">{error || 'Batch not found'}</div>
-        <button onClick={() => navigate('/batches')} className="text-brand-500 hover:text-brand-600 text-sm font-medium">
+        <div className="text-error-600 mb-4 text-body">{error || 'Batch not found'}</div>
+        <Button variant="tertiary" size="sm" onClick={() => navigate('/batches')}>
           Back to Batches
-        </button>
+        </Button>
       </div>
     );
   }
@@ -133,30 +165,36 @@ export default function BatchDetail() {
     ...((analysis && canManage) ? [{ key: 'analysis', label: 'Analysis' }] : []),
   ];
 
+  const statusToken = STATUS_TOKENS[batch.status];
+
   return (
     <div>
-      {/* Back nav + header */}
+      {/* Back nav */}
       <button
         onClick={() => navigate('/batches')}
-        className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1 mb-4 transition-colors"
+        className="flex items-center gap-1.5 text-body-medium text-surface-600 hover:text-surface-900 mb-6 transition-colors duration-fast"
       >
-        <span>&larr;</span> Back to Batches
+        <IconArrowLeft /> Back to Batches
       </button>
 
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-0 mb-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 sm:gap-0 mb-8">
         <div className="flex-1">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-            <h1 className="text-2xl font-bold text-gray-900">{batch.name}</h1>
-            <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium w-fit ${STATUS_COLORS[batch.status]}`}>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-2">
+            <h1 className="text-display text-surface-900">{batch.name}</h1>
+            <Badge
+              variant={batch.status === 'OPEN' ? 'info' : batch.status === 'RECEIVED' ? 'success' : 'neutral'}
+              size="md"
+            >
               {STATUS_LABELS[batch.status]}
-            </span>
+            </Badge>
           </div>
-          <p className="text-xs sm:text-sm text-gray-500 mt-1">
+          <p className="text-caption text-surface-600 mb-3">
             Expected {formatDate(batch.expectedDate)}
             {batch.receivedDate && <> · Received {formatDate(batch.receivedDate)}</>}
             {batch.closedDate && <> · Closed {formatDate(batch.closedDate)}</>}
           </p>
-          <p className="mt-2 text-sm font-medium text-gray-700">
+          <p className="text-body-medium text-surface-700">
             Customer-facing type: {batch.eggTypeLabel || 'Regular Size Eggs'}
           </p>
         </div>
@@ -165,71 +203,55 @@ export default function BatchDetail() {
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           {canManage && batch.status === 'OPEN' && (
             <>
-              <button
-                onClick={() => setShowEdit(true)}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-              >
+              <Button variant="secondary" size="md" onClick={() => setShowEdit(true)}>
                 Edit
-              </button>
-              <button
-                onClick={() => setShowReceive(true)}
-                className="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors"
-              >
+              </Button>
+              <Button variant="primary" size="md" onClick={() => setShowReceive(true)}>
                 Receive Batch
-              </button>
+              </Button>
             </>
           )}
           {canCount && batch.status === 'RECEIVED' && (
-            <button
-              onClick={() => setShowCount(true)}
-              className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
-            >
+            <Button variant="secondary" size="md" onClick={() => setShowCount(true)}>
               Record Count
-            </button>
+            </Button>
           )}
           {canManage && batch.status === 'RECEIVED' && (
-            <>
-              <button
-                onClick={() => setShowClose(true)}
-                className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-white bg-gray-600 hover:bg-gray-700 rounded-lg transition-colors"
-              >
-                Close Batch
-              </button>
-            </>
+            <Button variant="secondary" size="md" onClick={() => setShowClose(true)}>
+              Close Batch
+            </Button>
           )}
           {canDelete && batch.status === 'OPEN' && (batch._count?.bookings || 0) === 0 && (
-            <button
-              onClick={() => setShowDelete(true)}
-              className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
-            >
+            <Button variant="destructive" size="md" onClick={() => setShowDelete(true)}>
               Delete
-            </button>
+            </Button>
           )}
         </div>
       </div>
 
+      {/* Status banners */}
       {batch.status === 'OPEN' && (
-        <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 p-4">
-          <p className="text-sm font-semibold text-blue-900">This batch is still waiting to be received.</p>
-          <p className="mt-1 text-sm text-blue-700">
+        <div className="mb-4 rounded-lg border border-info-200 bg-info-50 p-4 shadow-xs">
+          <p className="text-body-medium font-medium text-info-900">This batch is still waiting to be received.</p>
+          <p className="mt-1 text-body text-info-700">
             Keep taking bookings here, then use <span className="font-medium">Receive Batch</span> when the eggs arrive and the real FE mix is known.
           </p>
         </div>
       )}
 
       {hasCrackWatch && (
-        <div className={`mb-4 rounded-2xl border p-4 ${
+        <div className={`mb-4 rounded-lg border p-4 shadow-xs ${
           overview.crackAlert?.level === 'ALERT'
-            ? 'border-red-200 bg-red-50'
-            : 'border-amber-200 bg-amber-50'
+            ? 'border-error-200 bg-error-50'
+            : 'border-warning-200 bg-warning-50'
         }`}>
-          <p className={`text-sm font-semibold ${
-            overview.crackAlert?.level === 'ALERT' ? 'text-red-900' : 'text-amber-900'
+          <p className={`text-body-medium font-medium ${
+            overview.crackAlert?.level === 'ALERT' ? 'text-error-900' : 'text-warning-900'
           }`}>
             {overview.crackAlert?.label}
           </p>
-          <p className={`mt-1 text-sm ${
-            overview.crackAlert?.level === 'ALERT' ? 'text-red-700' : 'text-amber-700'
+          <p className={`mt-1 text-body ${
+            overview.crackAlert?.level === 'ALERT' ? 'text-error-700' : 'text-warning-700'
           }`}>
             Crack impact is {formatPercent(overview.crackRatePercent)} for this batch. Review damaged write-off and discounted cracked sales.
           </p>
@@ -237,13 +259,13 @@ export default function BatchDetail() {
       )}
 
       {showPolicyBanner && (
-        <div className={`mb-6 rounded-2xl border p-4 ${
-          isBelowPolicy ? 'border-red-200 bg-red-50' : 'border-green-200 bg-green-50'
+        <div className={`mb-6 rounded-lg border p-4 shadow-xs ${
+          isBelowPolicy ? 'border-error-200 bg-error-50' : 'border-success-200 bg-success-50'
         }`}>
-          <p className={`text-sm font-semibold ${isBelowPolicy ? 'text-red-900' : 'text-green-900'}`}>
+          <p className={`text-body-medium font-medium ${isBelowPolicy ? 'text-error-900' : 'text-success-900'}`}>
             {isBelowPolicy ? 'This batch is below the company profit target.' : 'This batch is above the company profit target.'}
           </p>
-          <p className={`mt-1 text-sm ${isBelowPolicy ? 'text-red-700' : 'text-green-700'}`}>
+          <p className={`mt-1 text-body ${isBelowPolicy ? 'text-error-700' : 'text-success-700'}`}>
             Profit per crate is {formatCurrency(overview.profitPerCrate)}. Variance to target is{' '}
             <span className="font-medium">
               {(overview.varianceToPolicy || 0) >= 0 ? '+' : '-'}{formatCurrency(Math.abs(overview.varianceToPolicy || 0))}
@@ -252,24 +274,25 @@ export default function BatchDetail() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 mb-6">
+      {/* Overview cards */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 mb-8">
         <OverviewCard
           label={batch.status === 'OPEN' ? 'Booked so far' : 'Confirmed bookings'}
           value={`${formatNumber(overview.totalBooked)} crates`}
           subtext={`${overview.confirmedBookingCount || 0} active booking${overview.confirmedBookingCount === 1 ? '' : 's'}`}
-          tone="amber"
+          tone="warning"
         />
         <OverviewCard
           label={batch.status === 'OPEN' ? 'Still to receive' : 'Sale-ready stock'}
           value={`${formatNumber(batch.status === 'OPEN' ? overview.remainingToReceive : overview.availableForSale)} crates`}
           subtext={batch.status === 'OPEN' ? 'Expected quantity not yet received' : 'On hand minus confirmed bookings'}
-          tone={batch.status === 'OPEN' ? 'blue' : 'green'}
+          tone={batch.status === 'OPEN' ? 'info' : 'success'}
         />
         <OverviewCard
           label={batch.status === 'OPEN' ? 'Booking space used' : 'On hand now'}
           value={batch.status === 'OPEN' ? formatPercent(overview.bookingUtilizationPercent) : `${formatNumber(overview.onHand)} crates`}
           subtext={batch.status === 'OPEN' ? `${formatNumber(batch.availableForBooking)} crates open for booking` : `${formatNumber(overview.totalSold)} sold · ${formatNumber(overview.totalWrittenOff)} written off`}
-          tone="gray"
+          tone="neutral"
         />
         <OverviewCard
           label={batch.status === 'OPEN' ? 'Expected quantity' : 'Profit vs target'}
@@ -279,20 +302,20 @@ export default function BatchDetail() {
           subtext={batch.status === 'OPEN'
             ? `${batch.eggCodes?.length || 0} planned FE item type${(batch.eggCodes?.length || 0) === 1 ? '' : 's'}`
             : `${formatCurrency(overview.profitPerCrate)} per crate`}
-          tone={batch.status === 'OPEN' ? 'gray' : (overview.varianceToPolicy || 0) >= 0 ? 'green' : 'red'}
+          tone={batch.status === 'OPEN' ? 'neutral' : (overview.varianceToPolicy || 0) >= 0 ? 'success' : 'error'}
         />
       </div>
 
       {/* Tab navigation */}
-      <div className="flex gap-1 mb-6 bg-gray-100 rounded-lg p-1 overflow-x-auto">
+      <div className="flex gap-1 mb-8 bg-surface-50 rounded-lg p-1 overflow-x-auto custom-scrollbar">
         {tabs.map(tab => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
+            className={`px-3 sm:px-4 py-2 rounded-md text-caption-medium font-medium transition-all duration-fast whitespace-nowrap ${
               activeTab === tab.key
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
+                ? 'bg-surface-0 text-surface-900 shadow-xs'
+                : 'text-surface-600 hover:text-surface-900'
             }`}
           >
             {tab.label}
@@ -369,125 +392,129 @@ function DetailsTab({ batch, analysis }) {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
-          <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-4">Batch Snapshot</h3>
+        <Card>
+          <div className="border-b border-surface-200 pb-4 mb-4">
+            <h3 className="text-overline text-surface-600">Batch Snapshot</h3>
+          </div>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
             <div>
-              <p className="text-xs text-gray-400">Expected quantity</p>
-              <p className="mt-1 text-lg font-semibold text-gray-900">{formatNumber(batch.expectedQuantity)} crates</p>
+              <p className="text-caption text-surface-500">Expected quantity</p>
+              <p className="mt-1 text-metric text-surface-900">{formatNumber(batch.expectedQuantity)} crates</p>
             </div>
             <div>
-              <p className="text-xs text-gray-400">Available for booking</p>
-              <p className="mt-1 text-lg font-semibold text-gray-900">{formatNumber(batch.availableForBooking)} crates</p>
+              <p className="text-caption text-surface-500">Available for booking</p>
+              <p className="mt-1 text-metric text-surface-900">{formatNumber(batch.availableForBooking)} crates</p>
             </div>
             <div>
-              <p className="text-xs text-gray-400">Actual received</p>
-              <p className="mt-1 text-lg font-semibold text-gray-900">
+              <p className="text-caption text-surface-500">Actual received</p>
+              <p className="mt-1 text-metric text-surface-900">
                 {batch.actualQuantity != null ? `${formatNumber(batch.actualQuantity)} crates` : '—'}
               </p>
             </div>
             <div>
-              <p className="text-xs text-gray-400">Paid crates</p>
-              <p className="mt-1 text-lg font-semibold text-gray-900">{formatNumber(overview.totalPaidQuantity)} crates</p>
+              <p className="text-caption text-surface-500">Paid crates</p>
+              <p className="mt-1 text-metric text-surface-900">{formatNumber(overview.totalPaidQuantity)} crates</p>
             </div>
             <div>
-              <p className="text-xs text-gray-400">Free crates</p>
-              <p className="mt-1 text-lg font-semibold text-green-700">{formatNumber(overview.totalFreeQuantity || batch.freeCrates)} crates</p>
+              <p className="text-caption text-surface-500">Free crates</p>
+              <p className="mt-1 text-metric text-success-700">{formatNumber(overview.totalFreeQuantity || batch.freeCrates)} crates</p>
             </div>
             <div>
-              <p className="text-xs text-gray-400">FE codes in batch</p>
-              <p className="mt-1 text-lg font-semibold text-gray-900">{feMix.length}</p>
+              <p className="text-caption text-surface-500">FE codes in batch</p>
+              <p className="mt-1 text-metric text-surface-900">{feMix.length}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-400">Customer-facing type</p>
-              <p className="mt-1 text-lg font-semibold text-gray-900">{batch.eggTypeLabel || 'Regular Size Eggs'}</p>
+              <p className="text-caption text-surface-500">Customer-facing type</p>
+              <p className="mt-1 text-metric text-surface-900">{batch.eggTypeLabel || 'Regular Size Eggs'}</p>
             </div>
           </div>
-        </div>
+        </Card>
 
-        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
-          <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-4">Batch Selling Price</h3>
+        <Card>
+          <div className="border-b border-surface-200 pb-4 mb-4">
+            <h3 className="text-overline text-surface-600">Batch Selling Price</h3>
+          </div>
           <div className="space-y-4">
             <div>
-              <p className="text-xs text-gray-400">Cost price range</p>
-              <p className="mt-1 text-xl font-bold text-gray-900">{priceRangeLabel(costPrices)}</p>
+              <p className="text-caption text-surface-500">Cost price range</p>
+              <p className="mt-1 text-2xl font-bold text-surface-900">{priceRangeLabel(costPrices)}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-400">Wholesale price</p>
-              <p className="mt-1 text-xl font-bold text-blue-600">{formatCurrency(batch.wholesalePrice)}</p>
+              <p className="text-caption text-surface-500">Wholesale price</p>
+              <p className="mt-1 text-2xl font-bold text-info-600">{formatCurrency(batch.wholesalePrice)}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-400">Retail price</p>
-              <p className="mt-1 text-xl font-bold text-green-600">{formatCurrency(batch.retailPrice)}</p>
+              <p className="text-caption text-surface-500">Retail price</p>
+              <p className="mt-1 text-2xl font-bold text-success-600">{formatCurrency(batch.retailPrice)}</p>
             </div>
           </div>
-        </div>
+        </Card>
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
-          <div className="flex items-start justify-between gap-3">
+        <Card>
+          <div className="flex items-start justify-between gap-3 mb-4">
             <div>
-              <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Booking Pressure</h3>
-              <p className="mt-1 text-sm text-gray-500">See how much of this batch is already promised to customers.</p>
+              <h3 className="text-overline text-surface-600">Booking Pressure</h3>
+              <p className="mt-1 text-body text-surface-600">See how much of this batch is already promised to customers.</p>
             </div>
-            <span className="inline-flex rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
+            <Badge variant="warning" size="sm">
               {formatPercent(overview.bookingUtilizationPercent)} of booking space used
-            </span>
+            </Badge>
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <div>
-              <p className="text-xs text-gray-400">Confirmed</p>
-              <p className="mt-1 text-lg font-semibold text-gray-900">{confirmedBookings.length}</p>
+              <p className="text-caption text-surface-500">Confirmed</p>
+              <p className="mt-1 text-metric text-surface-900">{confirmedBookings.length}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-400">Picked up</p>
-              <p className="mt-1 text-lg font-semibold text-blue-700">{pickedUpBookings.length}</p>
+              <p className="text-caption text-surface-500">Picked up</p>
+              <p className="mt-1 text-metric text-info-700">{pickedUpBookings.length}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-400">Cancelled</p>
-              <p className="mt-1 text-lg font-semibold text-gray-700">{cancelledBookings.length}</p>
+              <p className="text-caption text-surface-500">Cancelled</p>
+              <p className="mt-1 text-metric text-surface-700">{cancelledBookings.length}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-400">Booking value received</p>
-              <p className="mt-1 text-lg font-semibold text-green-700">{formatCurrency(bookingRevenue)}</p>
+              <p className="text-caption text-surface-500">Booking value received</p>
+              <p className="mt-1 text-metric text-success-700">{formatCurrency(bookingRevenue)}</p>
             </div>
           </div>
-        </div>
+        </Card>
 
-        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
-          <div className="flex items-start justify-between gap-3">
+        <Card>
+          <div className="flex items-start justify-between gap-3 mb-4">
             <div>
-              <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Latest Count Check</h3>
-              <p className="mt-1 text-sm text-gray-500">Use this to compare what the system expects with what the floor team counted.</p>
+              <h3 className="text-overline text-surface-600">Latest Count Check</h3>
+              <p className="mt-1 text-body text-surface-600">Use this to compare what the system expects with what the floor team counted.</p>
             </div>
           </div>
 
           {overview.latestCount ? (
-            <div className="mt-4 space-y-3">
+            <div className="space-y-3">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-xs text-gray-400">Count date</p>
-                  <p className="mt-1 text-base font-semibold text-gray-900">{formatDate(overview.latestCount.countDate)}</p>
+                  <p className="text-caption text-surface-500">Count date</p>
+                  <p className="mt-1 text-body font-medium text-surface-900">{formatDate(overview.latestCount.countDate)}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-400">Entered by</p>
-                  <p className="mt-1 text-base font-semibold text-gray-900">{overview.latestCount.enteredBy}</p>
+                  <p className="text-caption text-surface-500">Entered by</p>
+                  <p className="mt-1 text-body font-medium text-surface-900">{overview.latestCount.enteredBy}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-400">System count</p>
-                  <p className="mt-1 text-base font-semibold text-gray-900">{formatNumber(overview.latestCount.systemCount)} crates</p>
+                  <p className="text-caption text-surface-500">System count</p>
+                  <p className="mt-1 text-body font-medium text-surface-900">{formatNumber(overview.latestCount.systemCount)} crates</p>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-400">Physical count</p>
-                  <p className="mt-1 text-base font-semibold text-gray-900">{formatNumber(overview.latestCount.physicalCount)} crates</p>
+                  <p className="text-caption text-surface-500">Physical count</p>
+                  <p className="mt-1 text-body font-medium text-surface-900">{formatNumber(overview.latestCount.physicalCount)} crates</p>
                 </div>
               </div>
-              <div className={`rounded-xl border px-3 py-3 text-sm ${
+              <div className={`rounded-md border px-3 py-3 text-body ${
                 overview.latestCount.discrepancy === 0
-                  ? 'border-green-200 bg-green-50 text-green-800'
-                  : 'border-red-200 bg-red-50 text-red-800'
+                  ? 'border-success-200 bg-success-50 text-success-800'
+                  : 'border-error-200 bg-error-50 text-error-800'
               }`}>
                 {overview.latestCount.discrepancy === 0
                   ? 'The last physical count matched the system count.'
@@ -495,52 +522,56 @@ function DetailsTab({ batch, analysis }) {
               </div>
             </div>
           ) : (
-            <div className="mt-4 rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-5 text-sm text-gray-500">
+            <div className="rounded-md border border-dashed border-surface-300 bg-surface-50 px-4 py-5 text-body text-surface-500">
               No physical count has been recorded for this batch yet.
             </div>
           )}
-        </div>
+        </Card>
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
-          <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-4">FE Mix</h3>
+        <Card>
+          <div className="border-b border-surface-200 pb-4 mb-4">
+            <h3 className="text-overline text-surface-600">FE Mix</h3>
+          </div>
           {feMix.length === 0 ? (
-            <p className="text-sm text-gray-500">The final FE codes will appear here after this batch is received.</p>
+            <p className="text-body text-surface-600">The final FE codes will appear here after this batch is received.</p>
           ) : (
             <div className="space-y-3">
               {feMix.map((eggCode) => (
-                <div key={eggCode.id} className="rounded-xl border border-gray-100 px-3 py-3">
+                <div key={eggCode.id} className="rounded-md border border-surface-200 p-3 shadow-xs">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <p className="font-mono text-sm font-semibold text-brand-600">{eggCode.code}</p>
-                      <p className="mt-1 text-xs text-gray-500">{eggCode.item?.name || 'Catalog item linked'}</p>
+                      <p className="font-mono text-body-medium font-semibold text-brand-600">{eggCode.code}</p>
+                      <p className="mt-1 text-caption text-surface-600">{eggCode.item?.name || 'Catalog item linked'}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-semibold text-gray-900">{formatNumber(eggCode.quantity + (eggCode.freeQty || 0))} crates</p>
-                      <p className="text-xs text-gray-500">{formatCurrency(eggCode.costPrice)} cost price</p>
+                      <p className="text-body-medium font-semibold text-surface-900">{formatNumber(eggCode.quantity + (eggCode.freeQty || 0))} crates</p>
+                      <p className="text-caption text-surface-600">{formatCurrency(eggCode.costPrice)} cost price</p>
                     </div>
                   </div>
                 </div>
               ))}
             </div>
           )}
-        </div>
+        </Card>
 
-        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
-          <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-4">Operational Notes</h3>
-          <div className="space-y-3 text-sm text-gray-600">
-            <div className="rounded-xl bg-gray-50 px-4 py-3">
-              <span className="font-medium text-gray-900">Bookings do not reduce batch stock.</span> Stock reduces only when a sale happens or when damaged crates are written off.
+        <Card>
+          <div className="border-b border-surface-200 pb-4 mb-4">
+            <h3 className="text-overline text-surface-600">Operational Notes</h3>
+          </div>
+          <div className="space-y-3 text-body text-surface-600">
+            <div className="rounded-md bg-surface-50 px-4 py-3">
+              <span className="font-medium text-surface-900">Bookings do not reduce batch stock.</span> Stock reduces only when a sale happens or when damaged crates are written off.
             </div>
-            <div className="rounded-xl bg-gray-50 px-4 py-3">
-              <span className="font-medium text-gray-900">Crack impact is tracked in crates.</span> Mildly cracked crates sold at discount and badly damaged write-offs are shown separately in analysis.
+            <div className="rounded-md bg-surface-50 px-4 py-3">
+              <span className="font-medium text-surface-900">Crack impact is tracked in crates.</span> Mildly cracked crates sold at discount and badly damaged write-offs are shown separately in analysis.
             </div>
-            <div className="rounded-xl bg-gray-50 px-4 py-3">
-              <span className="font-medium text-gray-900">Company target for this batch:</span> about {formatCurrency(analysis?.policy?.targetProfitPerCrate || 500)} profit per crate.
+            <div className="rounded-md bg-surface-50 px-4 py-3">
+              <span className="font-medium text-surface-900">Company target for this batch:</span> about {formatCurrency(analysis?.policy?.targetProfitPerCrate || 500)} profit per crate.
             </div>
           </div>
-        </div>
+        </Card>
       </div>
     </div>
   );
@@ -550,52 +581,52 @@ function DetailsTab({ batch, analysis }) {
 
 function EggCodesTab({ batch }) {
   return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden overflow-x-auto">
+    <Card className="overflow-hidden overflow-x-auto">
       <table className="w-full min-w-max">
         <thead>
-          <tr className="border-b border-gray-100">
-            <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Code</th>
-            <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase">Cost Price</th>
-            <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase">Paid Qty</th>
-            <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase">Free Qty</th>
-            <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase">Total Qty</th>
-            <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase">Subtotal (Cost)</th>
+          <tr className="border-b border-surface-200">
+            <th className="text-left py-3 px-4 text-overline text-surface-600">Code</th>
+            <th className="text-right py-3 px-4 text-overline text-surface-600">Cost Price</th>
+            <th className="text-right py-3 px-4 text-overline text-surface-600">Paid Qty</th>
+            <th className="text-right py-3 px-4 text-overline text-surface-600">Free Qty</th>
+            <th className="text-right py-3 px-4 text-overline text-surface-600">Total Qty</th>
+            <th className="text-right py-3 px-4 text-overline text-surface-600">Subtotal (Cost)</th>
           </tr>
         </thead>
         <tbody>
           {batch.eggCodes.map(ec => (
-            <tr key={ec.id} className="border-b border-gray-50">
+            <tr key={ec.id} className="border-b border-surface-100">
               <td className="py-3 px-4">
                 <span className="font-mono font-semibold text-brand-600">{ec.code}</span>
               </td>
-              <td className="py-3 px-4 text-sm text-right">{formatCurrency(ec.costPrice)}</td>
-              <td className="py-3 px-4 text-sm text-right">{ec.quantity.toLocaleString()}</td>
-              <td className="py-3 px-4 text-sm text-right text-green-600">{ec.freeQty || 0}</td>
-              <td className="py-3 px-4 text-sm text-right font-medium">{(ec.quantity + (ec.freeQty || 0)).toLocaleString()}</td>
-              <td className="py-3 px-4 text-sm text-right font-medium">{formatCurrency(ec.costPrice * ec.quantity)}</td>
+              <td className="py-3 px-4 text-body text-right">{formatCurrency(ec.costPrice)}</td>
+              <td className="py-3 px-4 text-body text-right">{ec.quantity.toLocaleString()}</td>
+              <td className="py-3 px-4 text-body text-right text-success-600">{ec.freeQty || 0}</td>
+              <td className="py-3 px-4 text-body text-right font-medium">{(ec.quantity + (ec.freeQty || 0)).toLocaleString()}</td>
+              <td className="py-3 px-4 text-body text-right font-medium">{formatCurrency(ec.costPrice * ec.quantity)}</td>
             </tr>
           ))}
         </tbody>
         <tfoot>
-          <tr className="bg-gray-50 font-medium">
-            <td className="py-3 px-4 text-sm">Total</td>
+          <tr className="bg-surface-50 font-medium">
+            <td className="py-3 px-4 text-body">Total</td>
             <td className="py-3 px-4"></td>
-            <td className="py-3 px-4 text-sm text-right">
+            <td className="py-3 px-4 text-body text-right">
               {batch.eggCodes.reduce((s, ec) => s + ec.quantity, 0).toLocaleString()}
             </td>
-            <td className="py-3 px-4 text-sm text-right text-green-600">
+            <td className="py-3 px-4 text-body text-right text-success-600">
               {batch.eggCodes.reduce((s, ec) => s + (ec.freeQty || 0), 0)}
             </td>
-            <td className="py-3 px-4 text-sm text-right">
+            <td className="py-3 px-4 text-body text-right">
               {batch.eggCodes.reduce((s, ec) => s + ec.quantity + (ec.freeQty || 0), 0).toLocaleString()}
             </td>
-            <td className="py-3 px-4 text-sm text-right">
+            <td className="py-3 px-4 text-body text-right">
               {formatCurrency(batch.eggCodes.reduce((s, ec) => s + ec.costPrice * ec.quantity, 0))}
             </td>
           </tr>
         </tfoot>
       </table>
-    </div>
+    </Card>
   );
 }
 
@@ -603,49 +634,52 @@ function EggCodesTab({ batch }) {
 
 function BookingsTab({ batch }) {
   const BOOKING_STATUS = {
-    CONFIRMED: 'bg-green-100 text-green-700',
-    PICKED_UP: 'bg-blue-100 text-blue-700',
-    CANCELLED: 'bg-red-100 text-red-700',
+    CONFIRMED: { bg: 'bg-success-100', text: 'text-success-700' },
+    PICKED_UP: { bg: 'bg-info-100', text: 'text-info-700' },
+    CANCELLED: { bg: 'bg-error-100', text: 'text-error-700' },
   };
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden overflow-x-auto">
+    <Card className="overflow-hidden overflow-x-auto">
       <table className="w-full min-w-max">
         <thead>
-          <tr className="border-b border-gray-100">
-            <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Customer</th>
-            <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase">Quantity</th>
-            <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase">Order Value</th>
-            <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase">Amount Paid</th>
-            <th className="text-center py-3 px-4 text-xs font-medium text-gray-500 uppercase">Channel</th>
-            <th className="text-center py-3 px-4 text-xs font-medium text-gray-500 uppercase">Status</th>
-            <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Date</th>
+          <tr className="border-b border-surface-200">
+            <th className="text-left py-3 px-4 text-overline text-surface-600">Customer</th>
+            <th className="text-right py-3 px-4 text-overline text-surface-600">Quantity</th>
+            <th className="text-right py-3 px-4 text-overline text-surface-600">Order Value</th>
+            <th className="text-right py-3 px-4 text-overline text-surface-600">Amount Paid</th>
+            <th className="text-center py-3 px-4 text-overline text-surface-600">Channel</th>
+            <th className="text-center py-3 px-4 text-overline text-surface-600">Status</th>
+            <th className="text-left py-3 px-4 text-overline text-surface-600">Date</th>
           </tr>
         </thead>
         <tbody>
-          {batch.bookings.map(bk => (
-            <tr key={bk.id} className="border-b border-gray-50">
-              <td className="py-3 px-4">
-                <span className="font-medium text-gray-900">{bk.customer?.name || '—'}</span>
-                {bk.customer?.phone && (
-                  <span className="text-xs text-gray-400 ml-2">{bk.customer.phone}</span>
-                )}
-              </td>
-              <td className="py-3 px-4 text-sm text-right">{bk.quantity.toLocaleString()}</td>
-              <td className="py-3 px-4 text-sm text-right">{formatCurrency(bk.orderValue)}</td>
-              <td className="py-3 px-4 text-sm text-right font-medium">{formatCurrency(bk.amountPaid)}</td>
-              <td className="py-3 px-4 text-sm text-center capitalize">{bk.channel}</td>
-              <td className="py-3 px-4 text-center">
-                <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium ${BOOKING_STATUS[bk.status]}`}>
-                  {bk.status.replace('_', ' ')}
-                </span>
-              </td>
-              <td className="py-3 px-4 text-sm text-gray-500">{formatDate(bk.createdAt)}</td>
-            </tr>
-          ))}
+          {batch.bookings.map(bk => {
+            const statusStyle = BOOKING_STATUS[bk.status];
+            return (
+              <tr key={bk.id} className="border-b border-surface-100">
+                <td className="py-3 px-4">
+                  <span className="font-medium text-surface-900">{bk.customer?.name || '—'}</span>
+                  {bk.customer?.phone && (
+                    <span className="text-caption text-surface-500 ml-2">{bk.customer.phone}</span>
+                  )}
+                </td>
+                <td className="py-3 px-4 text-body text-right">{bk.quantity.toLocaleString()}</td>
+                <td className="py-3 px-4 text-body text-right">{formatCurrency(bk.orderValue)}</td>
+                <td className="py-3 px-4 text-body text-right font-medium">{formatCurrency(bk.amountPaid)}</td>
+                <td className="py-3 px-4 text-body text-center capitalize">{bk.channel}</td>
+                <td className="py-3 px-4 text-center">
+                  <Badge variant="neutral" size="sm">
+                    {bk.status.replace('_', ' ')}
+                  </Badge>
+                </td>
+                <td className="py-3 px-4 text-body text-surface-600">{formatDate(bk.createdAt)}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
-    </div>
+    </Card>
   );
 }
 
@@ -660,38 +694,38 @@ function SalesTab({ batch }) {
   };
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden overflow-x-auto">
+    <Card className="overflow-hidden overflow-x-auto">
       <table className="w-full min-w-max">
         <thead>
-          <tr className="border-b border-gray-100">
-            <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Receipt #</th>
-            <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Customer</th>
-            <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase">Qty</th>
-            <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase">Amount</th>
-            <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase">Cost</th>
-            <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase">Profit</th>
-            <th className="text-center py-3 px-4 text-xs font-medium text-gray-500 uppercase">Payment</th>
-            <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Date</th>
+          <tr className="border-b border-surface-200">
+            <th className="text-left py-3 px-4 text-overline text-surface-600">Receipt #</th>
+            <th className="text-left py-3 px-4 text-overline text-surface-600">Customer</th>
+            <th className="text-right py-3 px-4 text-overline text-surface-600">Qty</th>
+            <th className="text-right py-3 px-4 text-overline text-surface-600">Amount</th>
+            <th className="text-right py-3 px-4 text-overline text-surface-600">Cost</th>
+            <th className="text-right py-3 px-4 text-overline text-surface-600">Profit</th>
+            <th className="text-center py-3 px-4 text-overline text-surface-600">Payment</th>
+            <th className="text-left py-3 px-4 text-overline text-surface-600">Date</th>
           </tr>
         </thead>
         <tbody>
           {batch.sales.map(sale => (
-            <tr key={sale.id} className="border-b border-gray-50">
-              <td className="py-3 px-4 font-mono text-sm text-gray-600">{sale.receiptNumber}</td>
-              <td className="py-3 px-4 text-sm font-medium text-gray-900">{sale.customer?.name || '—'}</td>
-              <td className="py-3 px-4 text-sm text-right">{sale.totalQuantity.toLocaleString()}</td>
-              <td className="py-3 px-4 text-sm text-right">{formatCurrency(sale.totalAmount)}</td>
-              <td className="py-3 px-4 text-sm text-right text-gray-500">{formatCurrency(sale.totalCost)}</td>
-              <td className="py-3 px-4 text-sm text-right font-medium text-green-600">
+            <tr key={sale.id} className="border-b border-surface-100">
+              <td className="py-3 px-4 font-mono text-body text-surface-600">{sale.receiptNumber}</td>
+              <td className="py-3 px-4 text-body font-medium text-surface-900">{sale.customer?.name || '—'}</td>
+              <td className="py-3 px-4 text-body text-right">{sale.totalQuantity.toLocaleString()}</td>
+              <td className="py-3 px-4 text-body text-right">{formatCurrency(sale.totalAmount)}</td>
+              <td className="py-3 px-4 text-body text-right text-surface-600">{formatCurrency(sale.totalCost)}</td>
+              <td className="py-3 px-4 text-body text-right font-medium text-success-600">
                 {formatCurrency(sale.totalAmount - sale.totalCost)}
               </td>
-              <td className="py-3 px-4 text-sm text-center">{PAYMENT_LABELS[sale.paymentMethod] || sale.paymentMethod}</td>
-              <td className="py-3 px-4 text-sm text-gray-500">{formatDate(sale.saleDate)}</td>
+              <td className="py-3 px-4 text-body text-center">{PAYMENT_LABELS[sale.paymentMethod] || sale.paymentMethod}</td>
+              <td className="py-3 px-4 text-body text-surface-600">{formatDate(sale.saleDate)}</td>
             </tr>
           ))}
         </tbody>
       </table>
-    </div>
+    </Card>
   );
 }
 
@@ -703,159 +737,168 @@ function AnalysisTab({ analysis }) {
   return (
     <div className="space-y-6">
       {/* Profit headline */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
+      <Card>
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 sm:gap-6">
           <div>
-            <p className="text-xs text-gray-400 uppercase tracking-wider">Total Revenue</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{formatCurrency(sales.totalRevenue)}</p>
+            <p className="text-overline text-surface-600">Total Revenue</p>
+            <p className="text-metric text-surface-900 mt-1">{formatCurrency(sales.totalRevenue)}</p>
           </div>
           <div>
-            <p className="text-xs text-gray-400 uppercase tracking-wider">Total Cost</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{formatCurrency(sales.totalCost)}</p>
+            <p className="text-overline text-surface-600">Total Cost</p>
+            <p className="text-metric text-surface-900 mt-1">{formatCurrency(sales.totalCost)}</p>
           </div>
           <div>
-            <p className="text-xs text-gray-400 uppercase tracking-wider">Gross Profit</p>
-            <p className={`text-2xl font-bold mt-1 ${profit.grossProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+            <p className="text-overline text-surface-600">Gross Profit</p>
+            <p className={`text-metric mt-1 font-bold ${profit.grossProfit >= 0 ? 'text-success-600' : 'text-error-600'}`}>
               {formatCurrency(profit.grossProfit)}
             </p>
-            <p className="text-xs text-gray-400 mt-0.5">{profit.margin}% margin</p>
+            <p className="text-caption text-surface-600 mt-0.5">{profit.margin}% margin</p>
           </div>
           <div>
-            <p className="text-xs text-gray-400 uppercase tracking-wider">Policy Target</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{formatCurrency(profit.expectedPolicyProfit)}</p>
-            <p className="text-xs text-gray-400 mt-0.5">{formatCurrency(policy.targetProfitPerCrate)} per crate</p>
+            <p className="text-overline text-surface-600">Policy Target</p>
+            <p className="text-metric text-surface-900 mt-1">{formatCurrency(profit.expectedPolicyProfit)}</p>
+            <p className="text-caption text-surface-600 mt-0.5">{formatCurrency(policy.targetProfitPerCrate)} per crate</p>
           </div>
           <div>
-            <p className="text-xs text-gray-400 uppercase tracking-wider">Variance To Policy</p>
-            <p className={`text-2xl font-bold mt-1 ${profit.varianceToPolicy >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+            <p className="text-overline text-surface-600">Variance To Policy</p>
+            <p className={`text-metric mt-1 font-bold ${profit.varianceToPolicy >= 0 ? 'text-success-600' : 'text-error-600'}`}>
               {profit.varianceToPolicy >= 0 ? '+' : ''}{formatCurrency(Math.abs(profit.varianceToPolicy))}
             </p>
-            <p className="text-xs text-gray-400 mt-0.5">{formatCurrency(profit.profitPerCrate)} per crate</p>
+            <p className="text-caption text-surface-600 mt-0.5">{formatCurrency(profit.profitPerCrate)} per crate</p>
           </div>
         </div>
-      </div>
+      </Card>
 
       {/* Cost breakdown by egg code */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
-        <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-4">Cost Breakdown by Egg Code</h3>
-        <div className="overflow-x-auto">
+      <Card>
+        <div className="border-b border-surface-200 pb-4 mb-4">
+          <h3 className="text-overline text-surface-600">Cost Breakdown by Egg Code</h3>
+        </div>
+        <div className="overflow-x-auto custom-scrollbar">
           <table className="w-full min-w-max">
-          <thead>
-            <tr className="border-b border-gray-100">
-              <th className="text-left py-2 text-xs text-gray-500">Code</th>
-              <th className="text-right py-2 text-xs text-gray-500">Qty (Paid)</th>
-              <th className="text-right py-2 text-xs text-gray-500">Free</th>
-              <th className="text-right py-2 text-xs text-gray-500">Cost/Crate</th>
-              <th className="text-right py-2 text-xs text-gray-500">Subtotal</th>
-            </tr>
-          </thead>
-          <tbody>
-            {costs.eggCodes.map(ec => (
-              <tr key={ec.code} className="border-b border-gray-50">
-                <td className="py-2 font-mono font-semibold text-brand-600">{ec.code}</td>
-                <td className="py-2 text-sm text-right">{ec.quantity.toLocaleString()}</td>
-                <td className="py-2 text-sm text-right text-green-600">{ec.freeQty}</td>
-                <td className="py-2 text-sm text-right">{formatCurrency(ec.costPrice)}</td>
-                <td className="py-2 text-sm text-right font-medium">{formatCurrency(ec.subtotal)}</td>
+            <thead>
+              <tr className="border-b border-surface-200">
+                <th className="text-left py-2 text-caption text-surface-600">Code</th>
+                <th className="text-right py-2 text-caption text-surface-600">Qty (Paid)</th>
+                <th className="text-right py-2 text-caption text-surface-600">Free</th>
+                <th className="text-right py-2 text-caption text-surface-600">Cost/Crate</th>
+                <th className="text-right py-2 text-caption text-surface-600">Subtotal</th>
               </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr className="font-medium">
-              <td className="py-2 text-sm">Total Cost</td>
-              <td colSpan={3}></td>
-              <td className="py-2 text-sm text-right">{formatCurrency(costs.totalCost)}</td>
-            </tr>
-          </tfoot>
+            </thead>
+            <tbody>
+              {costs.eggCodes.map(ec => (
+                <tr key={ec.code} className="border-b border-surface-100">
+                  <td className="py-2 font-mono font-semibold text-brand-600">{ec.code}</td>
+                  <td className="py-2 text-body text-right">{ec.quantity.toLocaleString()}</td>
+                  <td className="py-2 text-body text-right text-success-600">{ec.freeQty}</td>
+                  <td className="py-2 text-body text-right">{formatCurrency(ec.costPrice)}</td>
+                  <td className="py-2 text-body text-right font-medium">{formatCurrency(ec.subtotal)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="font-medium">
+                <td className="py-2 text-body">Total Cost</td>
+                <td colSpan={3}></td>
+                <td className="py-2 text-body text-right">{formatCurrency(costs.totalCost)}</td>
+              </tr>
+            </tfoot>
           </table>
         </div>
-      </div>
+      </Card>
 
       {/* Sales breakdown */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
-        <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-4">Sales Breakdown</h3>
+      <Card>
+        <div className="border-b border-surface-200 pb-4 mb-4">
+          <h3 className="text-overline text-surface-600">Sales Breakdown</h3>
+        </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
           {Object.entries(sales.breakdown).map(([type, amount]) => (
-            <div key={type} className="border border-gray-100 rounded-lg p-3">
-              <p className="text-xs text-gray-400 capitalize">{type.replace('_', ' ').toLowerCase()}</p>
-              <p className="text-lg font-bold text-gray-900 mt-1">{formatCurrency(amount)}</p>
-              <p className="text-xs text-gray-400">{(sales.quantities[type] || 0).toLocaleString()} crates</p>
+            <div key={type} className="border border-surface-200 rounded-md p-3 shadow-xs">
+              <p className="text-caption text-surface-600 capitalize">{type.replace('_', ' ').toLowerCase()}</p>
+              <p className="text-metric text-surface-900 mt-1 font-bold">{formatCurrency(amount)}</p>
+              <p className="text-caption text-surface-600">{(sales.quantities[type] || 0).toLocaleString()} crates</p>
             </div>
           ))}
         </div>
-      </div>
+      </Card>
 
       {/* Inventory status */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
-        <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-4">Inventory Status</h3>
+      <Card>
+        <div className="border-b border-surface-200 pb-4 mb-4">
+          <h3 className="text-overline text-surface-600">Inventory Status</h3>
+        </div>
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 sm:gap-4">
           <div>
-            <p className="text-xs text-gray-400">Total Received</p>
-            <p className="text-lg font-semibold">{inventory.totalReceived.toLocaleString()}</p>
+            <p className="text-caption text-surface-600">Total Received</p>
+            <p className="text-metric text-surface-900 font-medium">{inventory.totalReceived.toLocaleString()}</p>
           </div>
           <div>
-            <p className="text-xs text-gray-400">Total Sold</p>
-            <p className="text-lg font-semibold">{inventory.totalSold.toLocaleString()}</p>
+            <p className="text-caption text-surface-600">Total Sold</p>
+            <p className="text-metric text-surface-900 font-medium">{inventory.totalSold.toLocaleString()}</p>
           </div>
           <div>
-            <p className="text-xs text-gray-400">Remaining</p>
-            <p className="text-lg font-semibold text-blue-600">{inventory.remaining.toLocaleString()}</p>
+            <p className="text-caption text-surface-600">Remaining</p>
+            <p className="text-metric text-info-600 font-medium">{inventory.remaining.toLocaleString()}</p>
           </div>
           <div>
-            <p className="text-xs text-gray-400">Booked Portion</p>
-            <p className="text-lg font-semibold text-orange-500">{inventory.bookedPortion.toLocaleString()}</p>
+            <p className="text-caption text-surface-600">Booked Portion</p>
+            <p className="text-metric text-brand-600 font-medium">{inventory.bookedPortion.toLocaleString()}</p>
           </div>
           <div>
-            <p className="text-xs text-gray-400">Available for Sale</p>
-            <p className="text-lg font-semibold text-green-600">{inventory.availableForSale.toLocaleString()}</p>
+            <p className="text-caption text-surface-600">Available for Sale</p>
+            <p className="text-metric text-success-600 font-medium">{inventory.availableForSale.toLocaleString()}</p>
           </div>
         </div>
-      </div>
+      </Card>
 
-      <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
+      <Card>
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
           <div>
-            <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Crack Control</h3>
-            <p className="text-sm text-gray-500 mt-1">Track mildly cracked crates sold at discount separately from totally damaged write-offs.</p>
+            <h3 className="text-overline text-surface-600">Crack Control</h3>
+            <p className="text-body text-surface-600 mt-1">Track mildly cracked crates sold at discount separately from totally damaged write-offs.</p>
           </div>
-          <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
-            cracks.crackAlert.level === 'ALERT'
-              ? 'bg-red-50 text-red-700'
-              : cracks.crackAlert.level === 'WATCH'
-                ? 'bg-amber-50 text-amber-700'
-                : 'bg-green-50 text-green-700'
-          }`}>
+          <Badge
+            variant={
+              cracks.crackAlert.level === 'ALERT'
+                ? 'error'
+                : cracks.crackAlert.level === 'WATCH'
+                  ? 'warning'
+                  : 'success'
+            }
+            size="sm"
+          >
             {cracks.crackAlert.label}
-          </span>
+          </Badge>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
           <div>
-            <p className="text-xs text-gray-400">Cracked Sold</p>
-            <p className="text-lg font-semibold">{cracks.crackedSoldQuantity.toLocaleString()} crates</p>
-            <p className="text-xs text-gray-400 mt-0.5">{formatCurrency(cracks.crackedSoldValue)}</p>
+            <p className="text-caption text-surface-600">Cracked Sold</p>
+            <p className="text-metric text-surface-900 font-medium">{cracks.crackedSoldQuantity.toLocaleString()} crates</p>
+            <p className="text-caption text-surface-600 mt-0.5">{formatCurrency(cracks.crackedSoldValue)}</p>
           </div>
           <div>
-            <p className="text-xs text-gray-400">Damaged Write-off</p>
-            <p className="text-lg font-semibold text-red-600">{cracks.totalDamagedWriteOff.toLocaleString()} crates</p>
+            <p className="text-caption text-surface-600">Damaged Write-off</p>
+            <p className="text-metric text-error-600 font-medium">{cracks.totalDamagedWriteOff.toLocaleString()} crates</p>
           </div>
           <div>
-            <p className="text-xs text-gray-400">Total Crack Impact</p>
-            <p className="text-lg font-semibold">{cracks.totalCrackImpact.toLocaleString()} crates</p>
+            <p className="text-caption text-surface-600">Total Crack Impact</p>
+            <p className="text-metric text-surface-900 font-medium">{cracks.totalCrackImpact.toLocaleString()} crates</p>
           </div>
           <div>
-            <p className="text-xs text-gray-400">Crack Rate</p>
-            <p className={`text-lg font-semibold ${
+            <p className="text-caption text-surface-600">Crack Rate</p>
+            <p className={`text-metric font-medium ${
               cracks.crackAlert.level === 'ALERT'
-                ? 'text-red-600'
+                ? 'text-error-600'
                 : cracks.crackAlert.level === 'WATCH'
-                  ? 'text-amber-600'
-                  : 'text-green-600'
+                  ? 'text-warning-600'
+                  : 'text-success-600'
             }`}>
               {cracks.crackRatePercent.toFixed(2)}%
             </p>
           </div>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }
@@ -938,7 +981,6 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
     setSubmitting(true);
     setError('');
 
-    // Validate egg codes
     const seenCodes = new Set();
     for (const ec of eggCodes) {
       const normalizedCode = normalizeEggCode(ec.code);
@@ -999,20 +1041,20 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="px-4 sm:px-6 py-4 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-900">Receive Batch: {batch.name}</h2>
-          <p className="text-xs sm:text-sm text-gray-500">Record what actually arrived from the farm, including FE mix, paid crates, and any extra free crates.</p>
+      <div className="bg-surface-0 rounded-lg shadow-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto custom-scrollbar" onClick={e => e.stopPropagation()}>
+        <div className="px-4 sm:px-6 py-4 border-b border-surface-200">
+          <h2 className="text-title text-surface-900">Receive Batch: {batch.name}</h2>
+          <p className="text-body text-surface-600 mt-1">Record what actually arrived from the farm, including FE mix, paid crates, and any extra free crates.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-5">
           {error && (
-            <div className="bg-red-50 text-red-600 px-3 py-2 rounded-lg text-sm">{error}</div>
+            <div className="bg-error-50 text-error-700 px-3 py-2 rounded-md text-body">{error}</div>
           )}
 
-          <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
-            <p className="text-sm font-semibold text-blue-900">What to enter here</p>
-            <div className="mt-2 space-y-2 text-sm text-blue-800">
+          <div className="rounded-md border border-info-200 bg-info-50 p-4">
+            <p className="text-body-medium font-medium text-info-900">What to enter here</p>
+            <div className="mt-2 space-y-2 text-body text-info-800">
               <p>1. Add one row for each FE code that arrived in this batch.</p>
               <p>2. Enter the paid crates for each FE code.</p>
               <p>3. Add any extra free crates from the farm in the same row.</p>
@@ -1020,57 +1062,51 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
           </div>
 
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
-              <p className="text-xs uppercase tracking-wider text-gray-500">Expected</p>
-              <p className="mt-1 text-lg font-bold text-gray-900">{formatNumber(batch.expectedQuantity)} crates</p>
+            <div className="rounded-md border border-surface-200 bg-surface-50 p-3 shadow-xs">
+              <p className="text-overline text-surface-600">Expected</p>
+              <p className="mt-1 text-metric text-surface-900">{formatNumber(batch.expectedQuantity)} crates</p>
             </div>
-            <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
-              <p className="text-xs uppercase tracking-wider text-gray-500">Paid</p>
-              <p className="mt-1 text-lg font-bold text-gray-900">{formatNumber(totalPaid)} crates</p>
+            <div className="rounded-md border border-surface-200 bg-surface-50 p-3 shadow-xs">
+              <p className="text-overline text-surface-600">Paid</p>
+              <p className="mt-1 text-metric text-surface-900">{formatNumber(totalPaid)} crates</p>
             </div>
-            <div className="rounded-xl border border-green-200 bg-green-50 p-3">
-              <p className="text-xs uppercase tracking-wider text-green-700">Free</p>
-              <p className="mt-1 text-lg font-bold text-green-900">{formatNumber(totalFree)} crates</p>
+            <div className="rounded-md border border-success-200 bg-success-50 p-3 shadow-xs">
+              <p className="text-overline text-success-700">Free</p>
+              <p className="mt-1 text-metric text-success-900">{formatNumber(totalFree)} crates</p>
             </div>
-            <div className={`rounded-xl border p-3 ${
-              expectedGap >= 0 ? 'border-blue-200 bg-blue-50' : 'border-amber-200 bg-amber-50'
+            <div className={`rounded-md border p-3 shadow-xs ${
+              expectedGap >= 0 ? 'border-info-200 bg-info-50' : 'border-warning-200 bg-warning-50'
             }`}>
-              <p className={`text-xs uppercase tracking-wider ${expectedGap >= 0 ? 'text-blue-700' : 'text-amber-700'}`}>Total arrived</p>
-              <p className={`mt-1 text-lg font-bold ${expectedGap >= 0 ? 'text-blue-900' : 'text-amber-900'}`}>{formatNumber(actualQuantity)} crates</p>
+              <p className={`text-overline ${expectedGap >= 0 ? 'text-info-700' : 'text-warning-700'}`}>Total arrived</p>
+              <p className={`mt-1 text-metric font-bold ${expectedGap >= 0 ? 'text-info-900' : 'text-warning-900'}`}>{formatNumber(actualQuantity)} crates</p>
             </div>
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Wholesale price for this batch</label>
-              <input
-                type="number"
-                required
-                min="1"
-                value={wholesalePrice}
-                onChange={e => setWholesalePrice(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Retail price for this batch</label>
-              <input
-                type="number"
-                required
-                min="1"
-                value={retailPrice}
-                onChange={e => setRetailPrice(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-              />
-            </div>
+            <Input
+              label="Wholesale price for this batch"
+              type="number"
+              required
+              min="1"
+              value={wholesalePrice}
+              onChange={e => setWholesalePrice(e.target.value)}
+            />
+            <Input
+              label="Retail price for this batch"
+              type="number"
+              required
+              min="1"
+              value={retailPrice}
+              onChange={e => setRetailPrice(e.target.value)}
+            />
           </div>
 
-          <div className={`rounded-xl border px-4 py-3 text-sm ${
+          <div className={`rounded-md border px-3 py-3 text-body ${
             expectedGap === 0
-              ? 'border-green-200 bg-green-50 text-green-800'
+              ? 'border-success-200 bg-success-50 text-success-800'
               : expectedGap > 0
-                ? 'border-blue-200 bg-blue-50 text-blue-800'
-                : 'border-amber-200 bg-amber-50 text-amber-800'
+                ? 'border-info-200 bg-info-50 text-info-800'
+                : 'border-warning-200 bg-warning-50 text-warning-800'
           }`}>
             {expectedGap === 0 && 'The total received matches the expected batch quantity exactly.'}
             {expectedGap > 0 && `This batch arrived with ${formatNumber(expectedGap)} more crate${expectedGap === 1 ? '' : 's'} than expected.`}
@@ -1080,93 +1116,93 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
           <div>
             <div className="flex items-center justify-between mb-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700">FE mix that arrived</label>
-                <p className="mt-1 text-xs text-gray-500">Known FE items will auto-fill their usual price when possible. New FE codes are allowed.</p>
+                <label className="text-body-medium font-medium text-surface-900">FE mix that arrived</label>
+                <p className="mt-1 text-body text-surface-600">Known FE items will auto-fill their usual price when possible. New FE codes are allowed.</p>
               </div>
               <button
                 type="button"
                 onClick={addEggCode}
-                className="text-brand-500 hover:text-brand-600 text-sm font-medium"
+                className="flex items-center gap-1.5 text-brand-600 hover:text-brand-700 text-body-medium font-medium transition-colors"
               >
-                + Add Egg Code
+                <IconPlus /> Add Code
               </button>
             </div>
 
             <div className="space-y-3">
               {eggCodes.map((ec, i) => (
-                <div key={i} className="rounded-xl border border-gray-200 p-3 sm:p-4">
+                <div key={i} className="rounded-md border border-surface-200 p-3 sm:p-4 shadow-xs">
                   <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 sm:items-end">
-                  <div className="sm:col-span-3">
-                    {i === 0 && <label className="block text-xs text-gray-500 mb-1">Code</label>}
-                    <input
-                      list="batch-receive-fe-codes"
-                      type="text"
-                      required
-                      placeholder="FE4600"
-                      value={ec.code}
-                      onChange={e => updateEggCode(i, 'code', e.target.value)}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-                    />
+                    <div className="sm:col-span-3">
+                      {i === 0 && <label className="block text-caption text-surface-600 mb-1">Code</label>}
+                      <Input
+                        list="batch-receive-fe-codes"
+                        type="text"
+                        required
+                        placeholder="FE4600"
+                        value={ec.code}
+                        onChange={e => updateEggCode(i, 'code', e.target.value)}
+                        size="sm"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      {i === 0 && <label className="block text-caption text-surface-600 mb-1">Cost/Crate</label>}
+                      <Input
+                        type="number"
+                        required
+                        min="1"
+                        placeholder="4600"
+                        value={ec.costPrice}
+                        onChange={e => updateEggCode(i, 'costPrice', e.target.value)}
+                        size="sm"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      {i === 0 && <label className="block text-caption text-surface-600 mb-1">Paid Qty</label>}
+                      <Input
+                        type="number"
+                        required
+                        min="1"
+                        placeholder="1800"
+                        value={ec.quantity}
+                        onChange={e => updateEggCode(i, 'quantity', e.target.value)}
+                        size="sm"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      {i === 0 && <label className="block text-caption text-surface-600 mb-1">Free Qty</label>}
+                      <Input
+                        type="number"
+                        min="0"
+                        placeholder="3"
+                        value={ec.freeQty}
+                        onChange={e => updateEggCode(i, 'freeQty', e.target.value)}
+                        size="sm"
+                      />
+                    </div>
+                    <div className="sm:col-span-1 flex items-center justify-start sm:justify-end">
+                      {eggCodes.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeEggCode(i)}
+                          className="text-error-400 hover:text-error-600 text-body px-2 py-2 transition-colors"
+                        >
+                          <IconTrash />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <div className="sm:col-span-2">
-                    {i === 0 && <label className="block text-xs text-gray-500 mb-1">Cost/Crate</label>}
-                    <input
-                      type="number"
-                      required
-                      min="1"
-                      placeholder="4600"
-                      value={ec.costPrice}
-                      onChange={e => updateEggCode(i, 'costPrice', e.target.value)}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-                    />
-                  </div>
-                  <div className="sm:col-span-2">
-                    {i === 0 && <label className="block text-xs text-gray-500 mb-1">Paid Qty</label>}
-                    <input
-                      type="number"
-                      required
-                      min="1"
-                      placeholder="1800"
-                      value={ec.quantity}
-                      onChange={e => updateEggCode(i, 'quantity', e.target.value)}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-                    />
-                  </div>
-                  <div className="sm:col-span-2">
-                    {i === 0 && <label className="block text-xs text-gray-500 mb-1">Free Qty</label>}
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="3"
-                      value={ec.freeQty}
-                      onChange={e => updateEggCode(i, 'freeQty', e.target.value)}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-                    />
-                  </div>
-                  <div className="sm:col-span-1 flex items-center justify-start sm:justify-end">
-                    {eggCodes.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeEggCode(i)}
-                        className="text-red-400 hover:text-red-600 text-sm px-2 py-2"
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </div>
-                  </div>
-                  <div className="mt-3 flex flex-col gap-2 text-xs sm:flex-row sm:items-center sm:justify-between">
-                    <div className="text-gray-500">
+                  <div className="mt-3 flex flex-col gap-2 text-caption sm:flex-row sm:items-center sm:justify-between">
+                    <div className="text-surface-600">
                       {knownItemsByCode.get(normalizeEggCode(ec.code)) ? (
-                        <>Matched item: <span className="font-medium text-gray-700">{knownItemsByCode.get(normalizeEggCode(ec.code)).displayName || knownItemsByCode.get(normalizeEggCode(ec.code)).name}</span></>
+                        <>Matched item: <span className="font-medium text-surface-900">{knownItemsByCode.get(normalizeEggCode(ec.code)).displayName || knownItemsByCode.get(normalizeEggCode(ec.code)).name}</span></>
                       ) : normalizeEggCode(ec.code) ? (
                         <>This FE code will be created as a new item if it does not already exist.</>
                       ) : (
                         <>Enter the FE code from the farm sheet.</>
                       )}
                     </div>
-                    <div className="text-gray-500">
-                      Row total: <span className="font-medium text-gray-900">{formatNumber((Number(ec.quantity) || 0) + (Number(ec.freeQty) || 0))} crates</span>
+                    <div className="text-surface-600">
+                      Row total: <span className="font-medium text-surface-900">{formatNumber((Number(ec.quantity) || 0) + (Number(ec.freeQty) || 0))} crates</span>
                     </div>
                   </div>
                 </div>
@@ -1183,17 +1219,13 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
             </datalist>
           </div>
 
-          <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-2">
-            <button type="button" onClick={onClose} className="w-full sm:w-auto px-4 py-2 text-sm text-gray-600 hover:text-gray-800 transition-colors">
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-2 border-t border-surface-200">
+            <Button variant="tertiary" size="md" onClick={onClose}>
               Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="w-full sm:w-auto bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors"
-            >
+            </Button>
+            <Button variant="primary" size="md" disabled={submitting} onClick={handleSubmit}>
               {submitting ? 'Receiving...' : 'Save Receipt Details'}
-            </button>
+            </Button>
           </div>
         </form>
       </div>
@@ -1235,34 +1267,31 @@ function BatchCountModal({ batch, onClose, onSaved }) {
     const count = result.count;
     return (
       <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-        <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="bg-surface-0 rounded-lg shadow-lg max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
           <div className="text-center mb-4">
-            <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-2">
-              <span className="text-green-600 text-xl">✓</span>
+            <div className="w-12 h-12 bg-success-100 rounded-full flex items-center justify-center mx-auto mb-2">
+              <IconCheck className="text-success-600 w-6 h-6" />
             </div>
-            <h3 className="text-lg font-bold">Count Saved</h3>
-            <p className="text-sm text-gray-500">{batch.name}</p>
+            <h3 className="text-heading text-surface-900">Count Saved</h3>
+            <p className="text-body text-surface-600 mt-1">{batch.name}</p>
           </div>
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between"><span className="text-gray-500">System count</span><span className="font-medium">{formatNumber(count.systemCount)} crates</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Physical count</span><span className="font-medium">{formatNumber(count.physicalCount)} crates</span></div>
-            <div className={`flex justify-between ${count.discrepancy === 0 ? 'text-green-600' : 'text-red-600 font-bold'}`}>
+          <div className="space-y-2 text-body">
+            <div className="flex justify-between"><span className="text-surface-600">System count</span><span className="font-medium text-surface-900">{formatNumber(count.systemCount)} crates</span></div>
+            <div className="flex justify-between"><span className="text-surface-600">Physical count</span><span className="font-medium text-surface-900">{formatNumber(count.physicalCount)} crates</span></div>
+            <div className={`flex justify-between ${count.discrepancy === 0 ? 'text-success-600' : 'text-error-600 font-bold'}`}>
               <span>Discrepancy</span>
               <span>{count.discrepancy > 0 ? '+' : ''}{formatNumber(count.discrepancy)}</span>
             </div>
             {count.crackedWriteOff > 0 && (
-              <div className="flex justify-between text-amber-600">
+              <div className="flex justify-between text-warning-600">
                 <span>Damaged write-off</span>
                 <span>{formatNumber(count.crackedWriteOff)} crates</span>
               </div>
             )}
           </div>
-          <button
-            onClick={() => { onSaved(); }}
-            className="mt-4 w-full rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
-          >
+          <Button variant="primary" size="md" className="mt-4 w-full" onClick={() => { onSaved(); }}>
             Done
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -1270,19 +1299,19 @@ function BatchCountModal({ batch, onClose, onSaved }) {
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="px-4 sm:px-6 py-4 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-900">Record Count: {batch.name}</h2>
-          <p className="text-xs sm:text-sm text-gray-500">Capture the floor count and any badly damaged crates for this batch.</p>
+      <div className="bg-surface-0 rounded-lg shadow-lg w-full max-w-lg max-h-[90vh] overflow-y-auto custom-scrollbar" onClick={(e) => e.stopPropagation()}>
+        <div className="px-4 sm:px-6 py-4 border-b border-surface-200">
+          <h2 className="text-title text-surface-900">Record Count: {batch.name}</h2>
+          <p className="text-body text-surface-600 mt-1">Capture the floor count and any badly damaged crates for this batch.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4">
           {error && (
-            <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>
+            <div className="rounded-md bg-error-50 px-3 py-2 text-body text-error-700">{error}</div>
           )}
 
-          <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
-            <p className="font-semibold text-blue-900">How to use this</p>
+          <div className="rounded-md border border-info-200 bg-info-50 p-4 text-body text-info-800">
+            <p className="font-medium text-info-900">How to use this</p>
             <div className="mt-2 space-y-2">
               <p>1. Enter the full crates still physically present.</p>
               <p>2. Add only the badly damaged crates that should be written off now.</p>
@@ -1291,73 +1320,63 @@ function BatchCountModal({ batch, onClose, onSaved }) {
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
-              <p className="text-xs uppercase tracking-wider text-blue-700">System count</p>
-              <p className="mt-1 text-lg font-bold text-blue-900">{formatNumber(overview.onHand)} crates</p>
-              <p className="mt-1 text-xs text-blue-700">Booked: {formatNumber(overview.totalBooked)} · Sale-ready: {formatNumber(overview.availableForSale)}</p>
+            <div className="rounded-md border border-info-200 bg-info-50 p-3 shadow-xs">
+              <p className="text-overline text-info-700">System count</p>
+              <p className="mt-1 text-metric text-info-900 font-bold">{formatNumber(overview.onHand)} crates</p>
+              <p className="mt-1 text-caption text-info-700">Booked: {formatNumber(overview.totalBooked)} · Sale-ready: {formatNumber(overview.availableForSale)}</p>
             </div>
-            <div className={`rounded-xl border p-3 ${
+            <div className={`rounded-md border p-3 shadow-xs ${
               differenceBeforeWriteOff === 0
-                ? 'border-green-200 bg-green-50'
-                : 'border-amber-200 bg-amber-50'
+                ? 'border-success-200 bg-success-50'
+                : 'border-warning-200 bg-warning-50'
             }`}>
-              <p className={`text-xs uppercase tracking-wider ${differenceBeforeWriteOff === 0 ? 'text-green-700' : 'text-amber-700'}`}>Before write-off</p>
-              <p className={`mt-1 text-lg font-bold ${differenceBeforeWriteOff === 0 ? 'text-green-900' : 'text-amber-900'}`}>
+              <p className={`text-overline ${differenceBeforeWriteOff === 0 ? 'text-success-700' : 'text-warning-700'}`}>Before write-off</p>
+              <p className={`mt-1 text-metric font-bold ${differenceBeforeWriteOff === 0 ? 'text-success-900' : 'text-warning-900'}`}>
                 {physicalCount === '' ? '—' : `${differenceBeforeWriteOff > 0 ? '+' : ''}${formatNumber(differenceBeforeWriteOff)}`}
               </p>
-              <p className={`mt-1 text-xs ${differenceBeforeWriteOff === 0 ? 'text-green-700' : 'text-amber-700'}`}>
+              <p className={`mt-1 text-caption ${differenceBeforeWriteOff === 0 ? 'text-success-700' : 'text-warning-700'}`}>
                 {physicalCount === '' ? 'Enter the physical count to compare it with the system.' : 'Difference between the floor count and the current system count.'}
               </p>
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Physical Count (crates)</label>
-            <input
-              type="number"
-              min="0"
-              required
-              value={physicalCount}
-              onChange={(e) => setPhysicalCount(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500"
-            />
-            <p className="mt-1 text-xs text-gray-400">Count only full crates that are still on the floor.</p>
-          </div>
+          <Input
+            label="Physical Count (crates)"
+            type="number"
+            min="0"
+            required
+            value={physicalCount}
+            onChange={(e) => setPhysicalCount(e.target.value)}
+            helpText="Count only full crates that are still on the floor."
+          />
+
+          <Input
+            label="Badly Damaged Crates to Write Off"
+            type="number"
+            min="0"
+            value={crackedWriteOff}
+            onChange={(e) => setCrackedWriteOff(e.target.value)}
+            helpText="Use this only for crates that can no longer be sold at all."
+          />
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Badly Damaged Crates to Write Off</label>
-            <input
-              type="number"
-              min="0"
-              value={crackedWriteOff}
-              onChange={(e) => setCrackedWriteOff(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500"
-            />
-            <p className="mt-1 text-xs text-gray-400">Use this only for crates that can no longer be sold at all.</p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+            <label className="block text-body-medium font-medium text-surface-900 mb-1">Notes</label>
             <textarea
               rows={3}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Optional note, for example where the loss happened or what the team observed..."
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500"
+              className="w-full rounded-md border border-surface-300 px-3 py-2 text-body outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-200 transition-colors"
             />
           </div>
 
-          <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-2">
-            <button type="button" onClick={onClose} className="w-full sm:w-auto px-4 py-2 text-sm text-gray-600 hover:text-gray-800 transition-colors">
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-2 border-t border-surface-200">
+            <Button variant="tertiary" size="md" onClick={onClose}>
               Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={saving || physicalCount === ''}
-              className="w-full sm:w-auto rounded-lg bg-green-600 px-6 py-2 text-sm font-medium text-white transition-colors hover:bg-green-700 disabled:opacity-50"
-            >
+            </Button>
+            <Button variant="primary" size="md" disabled={saving || physicalCount === ''} onClick={handleSubmit}>
               {saving ? 'Saving...' : 'Save Count'}
-            </button>
+            </Button>
           </div>
         </form>
       </div>
@@ -1377,7 +1396,6 @@ function CloseBatchModal({ batch, onClose, onClosed }) {
     try {
       const result = await api.patch(`/batches/${batch.id}/close`, {});
       if (result.warnings?.length > 0) {
-        // Show warnings but still close
         alert('Batch closed with warnings:\n' + result.warnings.join('\n'));
       }
       onClosed();
@@ -1390,31 +1408,27 @@ function CloseBatchModal({ batch, onClose, onClosed }) {
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
-        <div className="px-4 sm:px-6 py-4 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-900">Close Batch: {batch.name}</h2>
+      <div className="bg-surface-0 rounded-lg shadow-lg w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="px-4 sm:px-6 py-4 border-b border-surface-200">
+          <h2 className="text-title text-surface-900">Close Batch: {batch.name}</h2>
         </div>
         <div className="p-4 sm:p-6 space-y-4">
           {error && (
-            <div className="bg-red-50 text-red-600 px-3 py-2 rounded-lg text-sm">{error}</div>
+            <div className="bg-error-50 text-error-700 px-3 py-2 rounded-md text-body">{error}</div>
           )}
-          <p className="text-xs sm:text-sm text-gray-600">
+          <p className="text-body text-surface-600">
             Are you sure you want to close this batch? This action indicates the batch is fully sold or no longer active.
           </p>
-          <p className="text-xs sm:text-sm text-gray-500">
+          <p className="text-body text-surface-500">
             Confirmed bookings that haven't been picked up will remain on record. You can still view the batch analysis report after closing.
           </p>
-          <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-2">
-            <button type="button" onClick={onClose} className="w-full sm:w-auto px-4 py-2 text-sm text-gray-600 hover:text-gray-800 transition-colors">
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-2 border-t border-surface-200">
+            <Button variant="tertiary" size="md" onClick={onClose}>
               Cancel
-            </button>
-            <button
-              onClick={handleClose}
-              disabled={submitting}
-              className="w-full sm:w-auto bg-gray-700 hover:bg-gray-800 disabled:opacity-50 text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors"
-            >
+            </Button>
+            <Button variant="secondary" size="md" disabled={submitting} onClick={handleClose}>
               {submitting ? 'Closing...' : 'Close Batch'}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -1492,104 +1506,84 @@ function EditBatchModal({ batch, onClose, onUpdated }) {
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="px-4 sm:px-6 py-4 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-900">Edit Batch: {batch.name}</h2>
+      <div className="bg-surface-0 rounded-lg shadow-lg w-full max-w-lg max-h-[90vh] overflow-y-auto custom-scrollbar" onClick={e => e.stopPropagation()}>
+        <div className="px-4 sm:px-6 py-4 border-b border-surface-200">
+          <h2 className="text-title text-surface-900">Edit Batch: {batch.name}</h2>
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4">
           {error && (
-            <div className="bg-red-50 text-red-600 px-3 py-2 rounded-lg text-sm">{error}</div>
+            <div className="bg-error-50 text-error-700 px-3 py-2 rounded-md text-body">{error}</div>
           )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Expected Arrival Date</label>
-            <input
-              type="date"
+          <Input
+            label="Expected Arrival Date"
+            type="date"
+            required
+            value={form.expectedDate}
+            onChange={e => update('expectedDate', e.target.value)}
+          />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input
+              label="Expected Quantity (crates)"
+              type="number"
               required
-              value={form.expectedDate}
-              onChange={e => update('expectedDate', e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+              min="1"
+              value={form.expectedQuantity}
+              onChange={e => update('expectedQuantity', e.target.value)}
+            />
+            <Input
+              label="Available for Booking"
+              type="number"
+              required
+              min="0"
+              value={form.availableForBooking}
+              onChange={e => update('availableForBooking', e.target.value)}
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Expected Quantity (crates)</label>
-              <input
-                type="number"
-                required min="1"
-                value={form.expectedQuantity}
-                onChange={e => update('expectedQuantity', e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Available for Booking</label>
-              <input
-                type="number"
-                required min="0"
-                value={form.availableForBooking}
-                onChange={e => update('availableForBooking', e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-              />
-            </div>
-          </div>
+          <Select
+            label="Customer-facing egg type"
+            required
+            value={form.eggTypeKey}
+            onChange={e => update('eggTypeKey', e.target.value)}
+            options={(eggTypes.length > 0 ? eggTypes : [{ key: 'REGULAR', label: 'Regular Size Eggs' }]).map((eggType) => ({
+              value: eggType.key,
+              label: eggType.label,
+            }))}
+          />
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Customer-facing egg type</label>
-            <select
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input
+              label="Wholesale price"
+              type="number"
               required
-              value={form.eggTypeKey}
-              onChange={e => update('eggTypeKey', e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-            >
-              {(eggTypes.length > 0 ? eggTypes : [{ key: 'REGULAR', label: 'Regular Size Eggs' }]).map((eggType) => (
-                <option key={eggType.key} value={eggType.key}>{eggType.label}</option>
-              ))}
-            </select>
+              min="1"
+              value={form.wholesalePrice}
+              onChange={e => update('wholesalePrice', e.target.value)}
+            />
+            <Input
+              label="Retail price"
+              type="number"
+              required
+              min="1"
+              value={form.retailPrice}
+              onChange={e => update('retailPrice', e.target.value)}
+            />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Wholesale price</label>
-              <input
-                type="number"
-                required
-                min="1"
-                value={form.wholesalePrice}
-                onChange={e => update('wholesalePrice', e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Retail price</label>
-              <input
-                type="number"
-                required
-                min="1"
-                value={form.retailPrice}
-                onChange={e => update('retailPrice', e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-              />
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+          <div className="rounded-md border border-info-200 bg-info-50 px-4 py-3 text-body text-info-900">
             FE rows inside the batch can have different cost prices, but the batch uses one selling price for wholesale and one for retail.
           </div>
 
-          <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-2">
-            <button type="button" onClick={onClose} className="w-full sm:w-auto px-4 py-2 text-sm text-gray-600 hover:text-gray-800 transition-colors">
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-2 border-t border-surface-200">
+            <Button variant="tertiary" size="md" onClick={onClose}>
               Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="w-full sm:w-auto bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors"
-            >
+            </Button>
+            <Button variant="primary" size="md" disabled={submitting} onClick={handleSubmit}>
               {submitting ? 'Saving...' : 'Save Changes'}
-            </button>
+            </Button>
           </div>
         </form>
       </div>
@@ -1618,28 +1612,24 @@ function DeleteBatchModal({ batch, onClose, onDeleted }) {
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
-        <div className="px-4 sm:px-6 py-4 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-red-600">Delete Batch: {batch.name}</h2>
+      <div className="bg-surface-0 rounded-lg shadow-lg w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="px-4 sm:px-6 py-4 border-b border-surface-200">
+          <h2 className="text-title text-error-600">Delete Batch: {batch.name}</h2>
         </div>
         <div className="p-4 sm:p-6 space-y-4">
           {error && (
-            <div className="bg-red-50 text-red-600 px-3 py-2 rounded-lg text-sm">{error}</div>
+            <div className="bg-error-50 text-error-700 px-3 py-2 rounded-md text-body">{error}</div>
           )}
-          <p className="text-xs sm:text-sm text-gray-600">
+          <p className="text-body text-surface-600">
             Are you sure you want to permanently delete this batch? This action cannot be undone.
           </p>
-          <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-2">
-            <button type="button" onClick={onClose} className="w-full sm:w-auto px-4 py-2 text-sm text-gray-600 hover:text-gray-800 transition-colors">
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-2 border-t border-surface-200">
+            <Button variant="tertiary" size="md" onClick={onClose}>
               Cancel
-            </button>
-            <button
-              onClick={handleDelete}
-              disabled={submitting}
-              className="w-full sm:w-auto bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors"
-            >
+            </Button>
+            <Button variant="destructive" size="md" disabled={submitting} onClick={handleDelete}>
               {submitting ? 'Deleting...' : 'Delete Batch'}
-            </button>
+            </Button>
           </div>
         </div>
       </div>

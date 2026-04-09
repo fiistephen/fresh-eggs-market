@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { api } from '../../lib/api';
 import { buildCategoryMap } from './shared/constants';
+import { useToast } from '../../components/ui';
 
 // Views
 import TodayView from './TodayView';
@@ -328,7 +329,7 @@ export default function Banking() {
     <div className="space-y-4">
       {/* ── Header row ────────────────────────────────────── */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Banking</h1>
+        <h1 className="text-display text-surface-900">Banking</h1>
 
         {canRecord && (
           <div className="flex items-center gap-2">
@@ -337,21 +338,21 @@ export default function Banking() {
               <div className="flex">
                 <button
                   onClick={() => setShowRecordModal(true)}
-                  className="rounded-l-lg bg-brand-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-brand-700 transition-colors"
+                  className="rounded-l-lg bg-brand-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-brand-700 transition-colors duration-fast"
                 >
                   + Record entry
                 </button>
                 <button
                   onClick={() => setShowEntryMenu((v) => !v)}
-                  className="rounded-r-lg border-l border-brand-500 bg-brand-600 px-2 py-2 text-white hover:bg-brand-700 transition-colors"
+                  className="rounded-r-lg border-l border-brand-500 bg-brand-600 px-2 py-2 text-white hover:bg-brand-700 transition-colors duration-fast"
                 >
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
                 </button>
               </div>
               {showEntryMenu && (
-                <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
-                  <button onClick={() => { setShowBulkModal(true); setShowEntryMenu(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                    <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z" /></svg>
+                <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded-lg border border-surface-200 bg-surface-0 py-1 shadow-md">
+                  <button onClick={() => { setShowBulkModal(true); setShowEntryMenu(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 duration-fast">
+                    <svg className="h-4 w-4 text-surface-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z" /></svg>
                     Enter many at once
                   </button>
                 </div>
@@ -362,15 +363,15 @@ export default function Banking() {
             <div className="relative" ref={moreRef}>
               <button
                 onClick={() => setShowMoreMenu((v) => !v)}
-                className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                className="rounded-lg border border-surface-300 bg-surface-0 px-3 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 transition-colors duration-fast"
               >
-                More <span className="text-gray-400">&#9662;</span>
+                More <span className="text-surface-400">▼</span>
               </button>
               {showMoreMenu && (
-                <div className="absolute right-0 top-full z-20 mt-1 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
-                  <button onClick={() => { setShowTransferModal(true); setShowMoreMenu(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Move money</button>
-                  <button onClick={() => { setShowImportModal(true); setShowMoreMenu(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Import statement</button>
-                  {canViewReports && <button onClick={() => { setShowReconcileModal(true); setShowMoreMenu(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Reconcile balance</button>}
+                <div className="absolute right-0 top-full z-20 mt-1 w-48 rounded-lg border border-surface-200 bg-surface-0 py-1 shadow-md">
+                  <button onClick={() => { setShowTransferModal(true); setShowMoreMenu(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 duration-fast">Move money</button>
+                  <button onClick={() => { setShowImportModal(true); setShowMoreMenu(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 duration-fast">Import statement</button>
+                  {canViewReports && <button onClick={() => { setShowReconcileModal(true); setShowMoreMenu(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 duration-fast">Reconcile balance</button>}
                 </div>
               )}
             </div>
@@ -379,7 +380,7 @@ export default function Banking() {
       </div>
 
       {/* ── Horizontal tab strip ──────────────────────────── */}
-      <div className="flex items-center gap-1 overflow-x-auto border-b border-gray-200">
+      <div className="flex items-center gap-1 overflow-x-auto border-b border-surface-200">
         {TABS.filter((tab) => canViewReports || tab.key !== 'reports').map((tab) => {
           const isActive = activeView === tab.key;
           const badgeCount = tab.badge ? customerBookingQueue.length : 0;
@@ -387,15 +388,15 @@ export default function Banking() {
             <button
               key={tab.key}
               onClick={() => setActiveView(tab.key)}
-              className={`relative whitespace-nowrap px-4 py-2.5 text-sm font-medium transition-colors ${
+              className={`relative whitespace-nowrap px-4 py-2.5 text-sm font-medium transition-colors duration-fast ${
                 isActive
                   ? 'border-b-2 border-brand-600 text-brand-700'
-                  : 'text-gray-500 hover:text-gray-700'
+                  : 'text-surface-500 hover:text-surface-700'
               }`}
             >
               {tab.label}
               {tab.badge && badgeCount > 0 && (
-                <span className="ml-1.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-500 px-1.5 text-[11px] font-bold text-white">
+                <span className="ml-1.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-warning-500 px-1.5 text-[11px] font-bold text-white">
                   {badgeCount}
                 </span>
               )}
@@ -413,10 +414,10 @@ export default function Banking() {
                 key={reportTab.key}
                 type="button"
                 onClick={() => setActiveReport(reportTab.key)}
-                className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
+                className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors duration-fast ${
                   isActive
                     ? 'bg-brand-100 text-brand-700'
-                    : 'bg-white text-gray-600 hover:bg-gray-100'
+                    : 'bg-surface-0 text-surface-600 hover:bg-surface-100'
                 }`}
               >
                 {reportTab.label}
@@ -428,7 +429,7 @@ export default function Banking() {
 
       {/* Error banner */}
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-lg border border-error-200 bg-error-50 px-4 py-3 text-sm text-error-700">
           {error}
           <button onClick={() => setError('')} className="ml-2 font-medium underline">Dismiss</button>
         </div>

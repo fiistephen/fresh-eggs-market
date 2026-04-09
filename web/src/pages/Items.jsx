@@ -13,11 +13,24 @@ const DEFAULT_ITEM_FORM = {
 };
 
 const CATEGORY_STYLES = {
-  FE_EGGS: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  CRATES: 'border-blue-200 bg-blue-50 text-blue-700',
-  DELIVERY: 'border-amber-200 bg-amber-50 text-amber-700',
-  LEGACY_MISC: 'border-slate-200 bg-slate-50 text-slate-700',
+  FE_EGGS: 'border-success-200 bg-success-50 text-success-700',
+  CRATES: 'border-info-200 bg-info-50 text-info-700',
+  DELIVERY: 'border-warning-200 bg-warning-50 text-warning-700',
+  LEGACY_MISC: 'border-surface-200 bg-surface-100 text-surface-700',
 };
+
+// SVG Icons
+const AlertIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4v.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+);
+
+const EditIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+  </svg>
+);
 
 function formatCurrency(value) {
   if (value == null || value === '') return '—';
@@ -38,7 +51,7 @@ function formatDate(value) {
 }
 
 function categoryTone(category) {
-  return CATEGORY_STYLES[category] || 'border-gray-200 bg-gray-50 text-gray-700';
+  return CATEGORY_STYLES[category] || 'border-surface-200 bg-surface-100 text-surface-700';
 }
 
 export default function Items() {
@@ -152,8 +165,8 @@ export default function Items() {
 
   if (loading) {
     return (
-      <div className="py-16 text-center text-gray-400">
-        <div className="animate-pulse text-lg">Loading items...</div>
+      <div className="py-16 text-center text-surface-400">
+        <div className="animate-pulse text-lg text-body">Loading items...</div>
       </div>
     );
   }
@@ -162,18 +175,18 @@ export default function Items() {
     <div className="max-w-7xl mx-auto space-y-6">
       <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Items</h1>
-          <p className="text-sm text-gray-500 mt-1">
+          <h1 className="text-display text-surface-900">Items</h1>
+          <p className="text-body text-surface-600 mt-2">
             Manage what the business sells. Keep FE codes and other sellable items clear here so batches and reports stay consistent.
           </p>
         </div>
       </div>
 
       {error ? (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+        <div className="rounded-lg border border-error-200 bg-error-50 px-4 py-3 text-body text-error-700 shadow-xs">{error}</div>
       ) : null}
       {success ? (
-        <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{success}</div>
+        <div className="rounded-lg border border-success-200 bg-success-50 px-4 py-3 text-body text-success-700 shadow-xs">{success}</div>
       ) : null}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
@@ -188,13 +201,13 @@ export default function Items() {
       {visibleCategoryCards.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           {visibleCategoryCards.map((entry) => (
-            <div key={entry.category} className="rounded-2xl border border-gray-200 bg-white p-4">
+            <div key={entry.category} className="rounded-lg border border-surface-200 bg-surface-white p-4 shadow-xs">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold text-gray-900">{entry.label}</p>
-                  <p className="text-xs text-gray-500 mt-1">Active {entry.active} of {entry.total}</p>
+                  <p className="text-body-medium text-surface-900">{entry.label}</p>
+                  <p className="text-caption text-surface-600 mt-1">Active {entry.active} of {entry.total}</p>
                 </div>
-                <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${categoryTone(entry.category)}`}>
+                <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-caption font-medium ${categoryTone(entry.category)}`}>
                   {entry.total}
                 </span>
               </div>
@@ -203,11 +216,11 @@ export default function Items() {
         </div>
       ) : null}
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-5">
+      <section className="rounded-lg border border-surface-200 bg-surface-white p-5 shadow-xs">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">Find items</h2>
-            <p className="text-sm text-gray-500 mt-1">
+            <h2 className="text-heading text-surface-900">Find items</h2>
+            <p className="text-body text-surface-600 mt-1">
               Search by item name or code, then narrow the view by category or status.
             </p>
           </div>
@@ -217,19 +230,19 @@ export default function Items() {
               value={filters.search}
               onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))}
               placeholder="Search by item name or FE code"
-              className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+              className="w-full rounded-md border border-surface-300 bg-surface-white px-3 py-2 text-body placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
             />
             <select
               value={filters.category}
               onChange={(event) => setFilters((current) => ({ ...current, category: event.target.value }))}
-              className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+              className="w-full rounded-md border border-surface-300 bg-surface-white px-3 py-2 text-body focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
             >
               <option value="">All categories</option>
               {categories.map((category) => (
                 <option key={category.value} value={category.value}>{category.label}</option>
               ))}
             </select>
-            <label className="flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-700">
+            <label className="flex items-center gap-2 rounded-md border border-surface-200 bg-surface-50 px-3 py-2 text-body text-surface-700 cursor-pointer hover:bg-surface-100 transition-colors duration-fast">
               <input
                 type="checkbox"
                 checked={filters.includeInactive}
@@ -242,9 +255,9 @@ export default function Items() {
       </section>
 
       <section className="grid grid-cols-1 xl:grid-cols-[1.2fr,1.8fr] gap-6">
-        <div className="rounded-2xl border border-gray-200 bg-white p-5">
-          <h2 className="text-lg font-semibold text-gray-900">Add item</h2>
-          <p className="text-sm text-gray-500 mt-1">
+        <div className="rounded-lg border border-surface-200 bg-surface-white p-5 shadow-xs">
+          <h2 className="text-heading text-surface-900">Add item</h2>
+          <p className="text-body text-surface-600 mt-1">
             Add FE codes here before they are used in batches, or keep other sellable items ready for future sales workflows.
           </p>
 
@@ -256,7 +269,7 @@ export default function Items() {
                   value={form.code}
                   onChange={(event) => setForm((current) => ({ ...current, code: event.target.value.toUpperCase() }))}
                   placeholder="FE4600"
-                  className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                  className="w-full rounded-md border border-surface-300 bg-surface-white px-3 py-2 text-body placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                 />
               </Field>
               <Field label="Item name">
@@ -265,14 +278,14 @@ export default function Items() {
                   value={form.name}
                   onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
                   placeholder="FE4600"
-                  className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                  className="w-full rounded-md border border-surface-300 bg-surface-white px-3 py-2 text-body placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                 />
               </Field>
               <Field label="Category">
                 <select
                   value={form.category}
                   onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))}
-                  className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                  className="w-full rounded-md border border-surface-300 bg-surface-white px-3 py-2 text-body focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                 >
                   {categories.map((category) => (
                     <option key={category.value} value={category.value}>{category.label}</option>
@@ -285,7 +298,7 @@ export default function Items() {
                   value={form.unitLabel}
                   onChange={(event) => setForm((current) => ({ ...current, unitLabel: event.target.value }))}
                   placeholder="crate"
-                  className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                  className="w-full rounded-md border border-surface-300 bg-surface-white px-3 py-2 text-body placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                 />
               </Field>
               <Field label="Default wholesale price (NGN)">
@@ -294,7 +307,7 @@ export default function Items() {
                   min="0"
                   value={form.defaultWholesalePrice}
                   onChange={(event) => setForm((current) => ({ ...current, defaultWholesalePrice: event.target.value }))}
-                  className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                  className="w-full rounded-md border border-surface-300 bg-surface-white px-3 py-2 text-body focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                 />
               </Field>
               <Field label="Default retail price (NGN)">
@@ -303,7 +316,7 @@ export default function Items() {
                   min="0"
                   value={form.defaultRetailPrice}
                   onChange={(event) => setForm((current) => ({ ...current, defaultRetailPrice: event.target.value }))}
-                  className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                  className="w-full rounded-md border border-surface-300 bg-surface-white px-3 py-2 text-body focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                 />
               </Field>
             </div>
@@ -314,15 +327,16 @@ export default function Items() {
                 value={form.description}
                 onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
                 placeholder="Add any note that helps staff understand this item."
-                className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                className="w-full rounded-md border border-surface-300 bg-surface-white px-3 py-2 text-body placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
               />
             </Field>
 
-            <label className="flex items-center gap-2 text-sm text-gray-700">
+            <label className="flex items-center gap-2 text-body text-surface-700 cursor-pointer">
               <input
                 type="checkbox"
                 checked={form.isActive}
                 onChange={(event) => setForm((current) => ({ ...current, isActive: event.target.checked }))}
+                className="rounded-sm"
               />
               Make this item active now
             </label>
@@ -331,7 +345,7 @@ export default function Items() {
               <button
                 type="submit"
                 disabled={savingNew}
-                className="rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+                className="rounded-md bg-brand-600 px-4 py-2 text-body font-medium text-surface-white hover:bg-brand-700 disabled:opacity-50 transition-colors duration-fast"
               >
                 {savingNew ? 'Saving...' : 'Add item'}
               </button>
@@ -339,15 +353,15 @@ export default function Items() {
           </form>
         </div>
 
-        <div className="rounded-2xl border border-gray-200 bg-white p-5">
-          <h2 className="text-lg font-semibold text-gray-900">Item list</h2>
-          <p className="text-sm text-gray-500 mt-1">
+        <div className="rounded-lg border border-surface-200 bg-surface-white p-5 shadow-xs">
+          <h2 className="text-heading text-surface-900">Item list</h2>
+          <p className="text-body text-surface-600 mt-1">
             Review the catalog, keep old items inactive instead of deleting them, and watch how often each item has been used in batches.
           </p>
 
           <div className="space-y-4 mt-5">
             {items.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500">
+              <div className="rounded-lg border border-dashed border-surface-300 bg-surface-50 px-4 py-6 text-body text-surface-500">
                 No items match this view yet.
               </div>
             ) : items.map((item) => {
@@ -355,50 +369,51 @@ export default function Items() {
               const draft = drafts[item.id] || DEFAULT_ITEM_FORM;
 
               return (
-                <div key={item.id} className="rounded-2xl border border-gray-200 p-4">
+                <div key={item.id} className="rounded-lg border border-surface-200 bg-surface-white p-4 hover:border-surface-300 transition-colors duration-fast">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                    <div>
+                    <div className="flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-semibold text-gray-900">{item.displayName}</p>
-                        <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${categoryTone(item.category)}`}>
+                        <p className="text-body-medium text-surface-900">{item.displayName}</p>
+                        <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-caption font-medium ${categoryTone(item.category)}`}>
                           {item.categoryLabel}
                         </span>
                         {!item.isActive ? (
-                          <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-500">
+                          <span className="inline-flex items-center rounded-full border border-surface-200 bg-surface-100 px-2.5 py-1 text-caption font-medium text-surface-600">
                             Inactive
                           </span>
                         ) : null}
                       </div>
-                      <p className="mt-2 text-sm text-gray-500">
+                      <p className="mt-2 text-body text-surface-600">
                         {item.description || 'No extra note yet.'}
                       </p>
-                      <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-gray-500">
-                        <div>Used in batches: <span className="font-medium text-gray-700">{item.batchUsageCount}</span></div>
-                        <div>Total received: <span className="font-medium text-gray-700">{item.totalReceivedQuantity.toLocaleString()} {item.unitLabel}</span></div>
-                        <div>Default wholesale: <span className="font-medium text-gray-700">{formatCurrency(item.defaultWholesalePrice)}</span></div>
-                        <div>Default retail: <span className="font-medium text-gray-700">{formatCurrency(item.defaultRetailPrice)}</span></div>
-                        <div>Latest batch: <span className="font-medium text-gray-700">{item.latestBatch?.name || '—'}</span></div>
-                        <div>Latest receipt date: <span className="font-medium text-gray-700">{formatDate(item.latestBatch?.receivedDate)}</span></div>
+                      <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 text-caption text-surface-600">
+                        <div>Used in batches: <span className="font-medium text-surface-900">{item.batchUsageCount}</span></div>
+                        <div>Total received: <span className="font-medium text-surface-900">{item.totalReceivedQuantity.toLocaleString()} {item.unitLabel}</span></div>
+                        <div>Default wholesale: <span className="font-medium text-surface-900">{formatCurrency(item.defaultWholesalePrice)}</span></div>
+                        <div>Default retail: <span className="font-medium text-surface-900">{formatCurrency(item.defaultRetailPrice)}</span></div>
+                        <div>Latest batch: <span className="font-medium text-surface-900">{item.latestBatch?.name || '—'}</span></div>
+                        <div>Latest receipt date: <span className="font-medium text-surface-900">{formatDate(item.latestBatch?.receivedDate)}</span></div>
                       </div>
                     </div>
 
                     <button
                       type="button"
                       onClick={() => setEditingId(editing ? '' : item.id)}
-                      className="rounded-xl border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                      className="flex items-center gap-2 rounded-md border border-surface-300 bg-surface-white px-3 py-2 text-body font-medium text-surface-700 hover:bg-surface-50 transition-colors duration-fast flex-shrink-0"
                     >
-                      {editing ? 'Close edit' : 'Edit item'}
+                      <EditIcon />
+                      {editing ? 'Close edit' : 'Edit'}
                     </button>
                   </div>
 
                   {editing ? (
-                    <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4 pb-4 border-t border-surface-200 pt-4">
                       <Field label="Item code">
                         <input
                           type="text"
                           value={draft.code}
                           onChange={(event) => updateDraft(item.id, 'code', event.target.value.toUpperCase())}
-                          className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                          className="w-full rounded-md border border-surface-300 bg-surface-white px-3 py-2 text-body placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                         />
                       </Field>
                       <Field label="Item name">
@@ -406,14 +421,14 @@ export default function Items() {
                           type="text"
                           value={draft.name}
                           onChange={(event) => updateDraft(item.id, 'name', event.target.value)}
-                          className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                          className="w-full rounded-md border border-surface-300 bg-surface-white px-3 py-2 text-body placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                         />
                       </Field>
                       <Field label="Category">
                         <select
                           value={draft.category}
                           onChange={(event) => updateDraft(item.id, 'category', event.target.value)}
-                          className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                          className="w-full rounded-md border border-surface-300 bg-surface-white px-3 py-2 text-body focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                         >
                           {categories.map((category) => (
                             <option key={category.value} value={category.value}>{category.label}</option>
@@ -425,7 +440,7 @@ export default function Items() {
                           type="text"
                           value={draft.unitLabel}
                           onChange={(event) => updateDraft(item.id, 'unitLabel', event.target.value)}
-                          className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                          className="w-full rounded-md border border-surface-300 bg-surface-white px-3 py-2 text-body placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                         />
                       </Field>
                       <Field label="Default wholesale price (NGN)">
@@ -434,7 +449,7 @@ export default function Items() {
                           min="0"
                           value={draft.defaultWholesalePrice}
                           onChange={(event) => updateDraft(item.id, 'defaultWholesalePrice', event.target.value)}
-                          className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                          className="w-full rounded-md border border-surface-300 bg-surface-white px-3 py-2 text-body focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                         />
                       </Field>
                       <Field label="Default retail price (NGN)">
@@ -443,7 +458,7 @@ export default function Items() {
                           min="0"
                           value={draft.defaultRetailPrice}
                           onChange={(event) => updateDraft(item.id, 'defaultRetailPrice', event.target.value)}
-                          className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                          className="w-full rounded-md border border-surface-300 bg-surface-white px-3 py-2 text-body focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                         />
                       </Field>
                       <div className="md:col-span-2">
@@ -452,16 +467,17 @@ export default function Items() {
                             rows="3"
                             value={draft.description}
                             onChange={(event) => updateDraft(item.id, 'description', event.target.value)}
-                            className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                            className="w-full rounded-md border border-surface-300 bg-surface-white px-3 py-2 text-body placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                           />
                         </Field>
                       </div>
                       <div className="md:col-span-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <label className="flex items-center gap-2 text-sm text-gray-700">
+                        <label className="flex items-center gap-2 text-body text-surface-700 cursor-pointer">
                           <input
                             type="checkbox"
                             checked={draft.isActive}
                             onChange={(event) => updateDraft(item.id, 'isActive', event.target.checked)}
+                            className="rounded-sm"
                           />
                           Keep this item active
                         </label>
@@ -469,7 +485,7 @@ export default function Items() {
                           type="button"
                           onClick={() => saveItem(item.id)}
                           disabled={savingId === item.id}
-                          className="rounded-xl bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
+                          className="rounded-md bg-brand-600 px-4 py-2 text-body font-medium text-surface-white hover:bg-brand-700 disabled:opacity-50 transition-colors duration-fast"
                         >
                           {savingId === item.id ? 'Saving...' : 'Save item'}
                         </button>
@@ -489,7 +505,7 @@ export default function Items() {
 function Field({ label, children }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-sm font-medium text-gray-700">{label}</span>
+      <span className="mb-1 block text-body-medium text-surface-700">{label}</span>
       {children}
     </label>
   );
@@ -497,9 +513,9 @@ function Field({ label, children }) {
 
 function SummaryCard({ label, value }) {
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-4">
-      <p className="text-xs font-medium uppercase tracking-[0.16em] text-gray-500">{label}</p>
-      <p className="mt-3 text-2xl font-semibold text-gray-900">{Number(value || 0).toLocaleString()}</p>
+    <div className="rounded-lg border border-surface-200 bg-surface-white p-4 shadow-xs">
+      <p className="text-overline text-surface-600">{label}</p>
+      <p className="mt-3 text-metric text-surface-900">{Number(value || 0).toLocaleString()}</p>
     </div>
   );
 }
