@@ -102,7 +102,6 @@ export default function TodayView({ loading, accounts, imports, transactions, ca
                   <span className="text-green-600">In {fmtMoney(account.totalInflows)}</span>
                   <span className="text-red-500">Out {fmtMoney(account.totalOutflows)}</span>
                 </div>
-                <p className="text-gray-500">{account.transactionCount} transactions</p>
               </div>
             </div>
           );

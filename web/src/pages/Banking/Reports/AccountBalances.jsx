@@ -33,6 +33,10 @@ export default function AccountBalances({ accounts, reconciliations, loading }) 
                   {account.latestReconciliation ? fmtMoney(account.latestReconciliation.variance) : '—'}
                 </span>
               </div>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-500">Transactions</span>
+                <span className="text-gray-700">{account.transactionCount}</span>
+              </div>
             </div>
           </div>
         ))}

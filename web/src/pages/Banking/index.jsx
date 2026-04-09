@@ -60,6 +60,7 @@ export default function Banking() {
   const [importsTotal, setImportsTotal] = useState(0);
   const [importsPage, setImportsPage] = useState(1);
   const [importsSearch, setImportsSearch] = useState('');
+  const [importsSearchInput, setImportsSearchInput] = useState('');
   const [reconciliations, setReconciliations] = useState([]);
   const [transactionCategories, setTransactionCategories] = useState([]);
   const [selectedImportId, setSelectedImportId] = useState('');
@@ -131,6 +132,13 @@ export default function Banking() {
   useEffect(() => {
     if (activeView === 'imports') loadImports();
   }, [activeView, importsPage, importsSearch]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setImportsSearch(importsSearchInput);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [importsSearchInput]);
 
   useEffect(() => {
     if (activeView === 'reports' && activeReport === 'balances') loadReconciliations();
@@ -217,10 +225,7 @@ export default function Banking() {
       const nextImports = data.imports || [];
       setImports(nextImports);
       setImportsTotal(data.total || nextImports.length);
-      setSelectedImportId((current) => {
-        if (current && nextImports.some((r) => r.id === current)) return current;
-        return nextImports[0]?.id || '';
-      });
+      setSelectedImportId((current) => current || nextImports[0]?.id || '');
     } catch {
       setError('Failed to load statement imports');
     } finally {
@@ -471,10 +476,11 @@ export default function Banking() {
           importsPage={importsPage}
           importsPageSize={IMPORTS_PAGE_SIZE}
           importsSearch={importsSearch}
+          importsSearchInput={importsSearchInput}
           importsLoading={importsLoading}
           selectedImportId={selectedImportId}
           onSelectImport={setSelectedImportId}
-          onSearchChange={setImportsSearch}
+          onSearchChange={setImportsSearchInput}
           onPageChange={setImportsPage}
           importTotalPages={importTotalPages}
           selectedImport={selectedImport}

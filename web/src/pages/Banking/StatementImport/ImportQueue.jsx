@@ -12,6 +12,7 @@ export default function ImportsView({
   importsPage,
   importsPageSize,
   importsSearch,
+  importsSearchInput,
   importsLoading,
   selectedImportId,
   onSelectImport,
@@ -57,6 +58,7 @@ export default function ImportsView({
   const categoryOptions = [...new Set(editableVisibleLines.flatMap((line) => categoryOptionsForDirection(line.direction, categoryMap, line.selectedCategory || line.suggestedCategory || '')))];
   const importRangeStart = importsTotal === 0 ? 0 : (importsPage - 1) * importsPageSize + 1;
   const importRangeEnd = Math.min(importsPage * importsPageSize, importsTotal);
+  const suggestionMatches = importsSearchInput.trim() ? imports.slice(0, 6) : [];
 
   useEffect(() => {
     const visibleEditableIds = new Set(editableVisibleLines.map((l) => l.id));
@@ -104,7 +106,7 @@ export default function ImportsView({
   }
 
   /* ── No imports at all ───────────────────────────────── */
-  if (importsLoading) {
+  if (importsLoading && imports.length === 0) {
     return <div className="rounded-xl border border-gray-200 bg-white px-6 py-16 text-center text-sm text-gray-500">Loading statements…</div>;
   }
   if (imports.length === 0) {
@@ -127,13 +129,36 @@ export default function ImportsView({
             <h2 className="text-sm font-semibold text-gray-900">Import queue</h2>
             <p className="text-xs text-gray-500">Search and open the statement you want to review.</p>
           </div>
-          <input
-            type="text"
-            value={importsSearch}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search file name or account…"
-            className="min-w-[240px] flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
-          />
+          <div className="relative min-w-[240px] flex-1">
+            <input
+              type="text"
+              value={importsSearchInput}
+              onChange={(e) => onSearchChange(e.target.value)}
+              placeholder="Search file name, date, or account…"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+            />
+            {importsLoading && importsSearchInput.trim() && (
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-gray-400">Searching…</span>
+            )}
+            {suggestionMatches.length > 0 && (
+              <div className="absolute left-0 right-0 top-full z-10 mt-1 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg">
+                {suggestionMatches.map((rec) => (
+                  <button
+                    key={rec.id}
+                    type="button"
+                    onClick={() => onSelectImport(rec.id)}
+                    className="flex w-full items-start justify-between gap-3 border-b border-gray-100 px-3 py-2 text-left last:border-b-0 hover:bg-gray-50"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-gray-900">{rec.originalFilename}</p>
+                      <p className="mt-0.5 text-xs text-gray-500">{displayAccountName(rec.bankAccount)}</p>
+                    </div>
+                    <span className="shrink-0 text-[11px] text-gray-400">{rec.parsedRowCount} lines</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <span className="text-xs text-gray-500">
             {importsTotal > 0 ? `${importRangeStart}–${importRangeEnd} of ${importsTotal}` : 'No imports'}
           </span>
