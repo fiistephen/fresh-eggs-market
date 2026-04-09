@@ -202,7 +202,7 @@ function AuthModal({ open, onClose, onAuth, intent }) {
       localStorage.setItem('user', JSON.stringify(res.user));
       onAuth(res.user);
     } catch (err) {
-      setError(err.error || 'Something went wrong. Please try again.');
+      setError(err?.error || err?.message || 'Something went wrong. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -282,8 +282,12 @@ function BatchCard({ batch, signedIn, onAction, onRequireAuth }) {
   const price = isReady ? Number(batch.retailPrice) : Number(batch.wholesalePrice);
   const priceLabel = isReady ? 'Retail' : 'Wholesale';
   const available = isReady ? Number(batch.availableForSale || 0) : Number(batch.remainingAvailable || 0);
-  const total = isReady ? (Number(batch.totalReceived || 0) || available) : Number(batch.quantityAvailableForBooking || 0) || available;
-  const used = Math.max(0, total - available);
+  const used = isReady
+    ? Number(batch.totalBooked || 0) + Number(batch.heldForCheckout || 0)
+    : Number(batch.totalBooked || 0) + Number(batch.heldForCheckout || 0);
+  const total = isReady
+    ? Number(batch.onHand || 0)
+    : Number(batch.totalBookingCapacity || batch.availableForBooking || 0);
   const soldOut = available <= 0;
 
   function handleClick() {
@@ -337,7 +341,7 @@ function BatchCard({ batch, signedIn, onAction, onRequireAuth }) {
       </div>
 
       {/* Availability */}
-      <AvailabilityBar used={used} total={total > 0 ? total : 1} className="mt-4" />
+      <AvailabilityBar used={used} total={Math.max(total, available, 1)} className="mt-4" />
 
       {/* CTA */}
       <button

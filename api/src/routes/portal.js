@@ -707,6 +707,7 @@ export default async function portalRoutes(fastify) {
         result.push(mapPortalBatch(batch, eggTypes, {
           totalBooked,
           heldForCheckout: heldQty,
+          totalBookingCapacity: batch.availableForBooking,
           remainingAvailable,
         }));
       }
@@ -745,6 +746,10 @@ export default async function portalRoutes(fastify) {
         if (!availability || availability.availableForSale <= 0) continue;
 
         result.push(mapPortalBatch(batch, eggTypes, {
+          totalReceived: availability.batch.actualQuantity ?? availability.batch.eggCodes.reduce(
+            (sum, eggCode) => sum + eggCode.quantity + (eggCode.freeQty || 0),
+            0,
+          ),
           totalBooked: availability.totalBooked,
           totalSold: availability.totalSold,
           totalWrittenOff: availability.totalWrittenOff,
