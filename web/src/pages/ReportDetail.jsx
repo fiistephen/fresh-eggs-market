@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { getReportCard } from './reportsCatalog';
+import { EmptyState, NoticeBanner, PageHeader } from '../components/ui';
 
 const PAYMENT_LABELS = {
   CASH: 'Cash',
@@ -137,51 +138,53 @@ export default function ReportDetail() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-        <div>
-          <Link to="/reports" className="text-body text-brand-500 hover:text-brand-600 font-medium">
-            &larr; Back to Reports
-          </Link>
-          <div>
-              <h1 className="text-display text-surface-900">{report.title}</h1>
-              <p className="text-body text-surface-500 mt-1">{report.description}</p>
+      <PageHeader
+        title={report.title}
+        description={report.description}
+        compact
+        aside={(
+          <div className="bg-surface-0 rounded-lg border border-surface-200 p-4 shadow-xs flex flex-col sm:flex-row gap-3 sm:items-end">
+            <div>
+              <label className="block text-caption text-surface-500 mb-1">From</label>
+              <input
+                type="date"
+                value={filters.dateFrom}
+                onChange={(e) => setFilters((current) => ({ ...current, dateFrom: e.target.value }))}
+                className="border border-surface-300 rounded-md bg-surface-0 px-3 py-2 text-body placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+              />
+            </div>
+            <div>
+              <label className="block text-caption text-surface-500 mb-1">To</label>
+              <input
+                type="date"
+                value={filters.dateTo}
+                onChange={(e) => setFilters((current) => ({ ...current, dateTo: e.target.value }))}
+                className="border border-surface-300 rounded-md bg-surface-0 px-3 py-2 text-body placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+              />
             </div>
           </div>
-        </div>
+        )}
+      />
 
-        <div className="bg-surface-white rounded-lg border border-surface-200 p-4 shadow-xs flex flex-col sm:flex-row gap-3 sm:items-end">
-          <div>
-            <label className="block text-caption text-surface-500 mb-1">From</label>
-            <input
-              type="date"
-              value={filters.dateFrom}
-              onChange={(e) => setFilters((current) => ({ ...current, dateFrom: e.target.value }))}
-              className="border border-surface-300 rounded-md bg-surface-white px-3 py-2 text-body placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-            />
-          </div>
-          <div>
-            <label className="block text-caption text-surface-500 mb-1">To</label>
-            <input
-              type="date"
-              value={filters.dateTo}
-              onChange={(e) => setFilters((current) => ({ ...current, dateTo: e.target.value }))}
-              className="border border-surface-300 rounded-md bg-surface-white px-3 py-2 text-body placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-            />
-          </div>
-        </div>
-      </div>
+      <Link to="/reports" className="inline-flex text-body text-brand-500 hover:text-brand-600 font-medium">
+        &larr; Back to Reports
+      </Link>
 
       {error && (
-        <div className="bg-error-50 text-error-600 px-4 py-3 rounded-lg text-body">{error}</div>
+        <NoticeBanner tone="error">{error}</NoticeBanner>
       )}
 
       {loading ? (
-        <div className="bg-surface-white rounded-lg border border-surface-200 p-12 text-center text-surface-600 shadow-xs">
+        <div className="bg-surface-0 rounded-lg border border-surface-200 p-12 text-center text-surface-600 shadow-xs">
           <div className="animate-pulse text-body">Loading report...</div>
         </div>
       ) : !data ? (
-        <div className="bg-surface-white rounded-lg border border-surface-200 p-12 text-center text-surface-600 shadow-xs">
-          <div className="text-body">No data available for this report.</div>
+        <div className="bg-surface-0 rounded-lg border border-surface-200 p-12 shadow-xs">
+          <EmptyState
+            icon="📊"
+            title="No data available for this report"
+            description="Try widening the date range or come back after more activity has been recorded."
+          />
         </div>
       ) : (
         <ReportBody reportType={reportType} data={data} />
@@ -625,7 +628,7 @@ function ReceiptDetailModal({ receipt, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-4" onClick={onClose}>
       <div
-        className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-lg bg-surface-white shadow-xl"
+        className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-lg bg-surface-0 shadow-xl"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-surface-100 px-4 py-4 sm:px-6">
@@ -891,13 +894,13 @@ function ReceiptDetailCard({ receipt }) {
           <button
             type="button"
             onClick={handleCustomerPrint}
-            className="rounded-lg border border-green-300 bg-surface-white px-4 py-2 text-body font-medium text-success-700 hover:bg-success-100"
+            className="rounded-lg border border-green-300 bg-surface-0 px-4 py-2 text-body font-medium text-success-700 hover:bg-success-100"
           >
             Thermal print
           </button>
         </div>
 
-        <div className="mx-auto mt-5 max-w-md rounded-lg border border-dashed border-success-200 bg-surface-white p-5 shadow-sm">
+        <div className="mx-auto mt-5 max-w-md rounded-lg border border-dashed border-success-200 bg-surface-0 p-5 shadow-sm">
           <div className="text-center">
             <p className="text-lg font-bold text-surface-900">Fresh Eggs Market</p>
             <p className="text-caption uppercase tracking-[0.18em] text-surface-500">Customer Receipt</p>
@@ -1034,7 +1037,7 @@ function BatchSummaryReport({ data }) {
 
   return (
     <div className="space-y-6">
-      <div className="bg-surface-white rounded-lg border border-surface-200 p-4">
+      <div className="bg-surface-0 rounded-lg border border-surface-200 p-4">
         <p className="text-body font-medium text-surface-900">How to read this report</p>
         <p className="text-body text-surface-600 mt-1">
           This page compares each batch against the policy that was active when that batch started. The current company target is {formatCurrency(policy.targetProfitPerCrate)} profit per crate.
@@ -1138,7 +1141,7 @@ function BatchSummaryReport({ data }) {
                   </div>
 
                   <div className="text-left lg:text-right">
-                    <p className={`text-lg font-bold ${batch.varianceToPolicy >= 0 ? 'text-green-600' : 'text-error-600'}`}>
+                    <p className={`text-lg font-bold ${batch.varianceToPolicy >= 0 ? 'text-success-700' : 'text-error-600'}`}>
                       {formatSignedCurrency(batch.varianceToPolicy)}
                     </p>
                     <p className="text-caption text-surface-500 mt-1">Variance to policy target</p>
@@ -1210,7 +1213,7 @@ function InventoryControlReport({ data }) {
 
   return (
     <div className="space-y-6">
-      <div className="bg-surface-white rounded-lg border border-surface-200 p-4">
+      <div className="bg-surface-0 rounded-lg border border-surface-200 p-4">
         <p className="text-body font-medium text-surface-900">What needs attention</p>
         <p className="text-body text-surface-600 mt-1">
           This report helps the team catch stock issues early. Batches are flagged when cracks move close to or above the policy that applied to that batch, or when the last count has a discrepancy.
@@ -1311,7 +1314,7 @@ function InventoryControlReport({ data }) {
 
 function Panel({ title, body, children }) {
   return (
-    <section className="bg-surface-white rounded-lg border border-surface-200 p-5">
+    <section className="bg-surface-0 rounded-lg border border-surface-200 p-5">
       <h2 className="text-heading text-surface-900">{title}</h2>
       <p className="text-body text-surface-500 mt-1 mb-4">{body}</p>
       {children}
@@ -1321,7 +1324,7 @@ function Panel({ title, body, children }) {
 
 function SummaryCard({ label, value, hint }) {
   return (
-    <div className="bg-surface-white rounded-lg border border-surface-200 p-4">
+    <div className="bg-surface-0 rounded-lg border border-surface-200 p-4">
       <p className="text-caption text-surface-600 uppercase tracking-wider">{label}</p>
       <p className="text-xl font-bold text-surface-900 mt-1">{value}</p>
       {hint ? <p className="text-caption text-surface-500 mt-2">{hint}</p> : null}

@@ -8,7 +8,7 @@ const variants = {
   ghost:
     'text-surface-600 hover:bg-surface-100 active:bg-surface-200',
   danger:
-    'bg-error-500 text-white hover:bg-error-700 active:bg-red-800',
+    'bg-error-500 text-white hover:bg-error-700 active:bg-error-700',
   'danger-ghost':
     'text-error-500 hover:bg-error-50 active:bg-error-100',
 };

@@ -5,6 +5,7 @@ export const REPORT_CARDS = [
     description: 'Open a high-level investor and funder view with the key numbers for the period.',
     icon: '📌',
     accent: 'from-rose-50 to-white border-rose-200',
+    group: 'Management',
   },
   {
     key: 'sales-summary',
@@ -12,6 +13,7 @@ export const REPORT_CARDS = [
     description: 'See total sales, profit, and day-by-day movement for the period.',
     icon: '📈',
     accent: 'from-emerald-50 to-white border-emerald-200',
+    group: 'Sales',
   },
   {
     key: 'sales-by-item',
@@ -19,6 +21,7 @@ export const REPORT_CARDS = [
     description: 'Compare item codes, names, and sale types to see what sold best.',
     icon: '🥚',
     accent: 'from-blue-50 to-white border-blue-200',
+    group: 'Sales',
   },
   {
     key: 'sales-by-category',
@@ -26,6 +29,7 @@ export const REPORT_CARDS = [
     description: 'Review sales value by product category such as FE eggs, crates, or delivery.',
     icon: '🗂️',
     accent: 'from-amber-50 to-white border-amber-200',
+    group: 'Sales',
   },
   {
     key: 'sales-by-payment-type',
@@ -33,6 +37,7 @@ export const REPORT_CARDS = [
     description: 'Check how customers paid and the value from each payment type.',
     icon: '💳',
     accent: 'from-fuchsia-50 to-white border-fuchsia-200',
+    group: 'Sales',
   },
   {
     key: 'sales-by-employee',
@@ -40,6 +45,7 @@ export const REPORT_CARDS = [
     description: 'See who handled sales and how much value each staff member recorded.',
     icon: '👤',
     accent: 'from-sky-50 to-white border-sky-200',
+    group: 'Sales',
   },
   {
     key: 'receipts',
@@ -47,6 +53,7 @@ export const REPORT_CARDS = [
     description: 'Open the receipt log for the selected period and inspect the money trail.',
     icon: '🧾',
     accent: 'from-slate-50 to-white border-slate-200',
+    group: 'Sales',
   },
   {
     key: 'batch-summary',
@@ -54,6 +61,7 @@ export const REPORT_CARDS = [
     description: 'Review profit by batch, compare against company target, and spot weak batches quickly.',
     icon: '📦',
     accent: 'from-violet-50 to-white border-violet-200',
+    group: 'Operations',
   },
   {
     key: 'inventory-control',
@@ -61,6 +69,7 @@ export const REPORT_CARDS = [
     description: 'Track active stock, crack alerts, and count issues that need attention.',
     icon: '🚨',
     accent: 'from-orange-50 to-white border-orange-200',
+    group: 'Operations',
   },
 ];
 

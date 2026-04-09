@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
+import { NoticeBanner, PageHeader } from '../components/ui';
 
 
 // SVG Icons
@@ -343,21 +344,25 @@ export default function AdminConfig() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-display text-surface-900">Admin</h1>
-        <p className="text-sm text-surface-500 mt-1">
-          Manage the company rules and account setup that the rest of the app depends on.
-        </p>
-      </div>
+      <PageHeader
+        title="Admin"
+        description="Manage the company rules and account setup that the rest of the app depends on."
+        aside={(
+          <div className="rounded-full bg-brand-50 p-3 text-brand-600">
+            <SettingsIcon />
+          </div>
+        )}
+        compact
+      />
 
       {error ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+        <NoticeBanner tone="error">{error}</NoticeBanner>
       ) : null}
       {success ? (
-        <div className="rounded-lg border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">{success}</div>
+        <NoticeBanner tone="success">{success}</NoticeBanner>
       ) : null}
 
-      <section className="bg-surface-white rounded-lg border border-surface-200 p-5">
+      <section className="bg-surface-0 rounded-lg border border-surface-200 p-5">
         <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
           <div>
             <h2 className="text-heading text-surface-900">Customer Egg Types</h2>
@@ -369,7 +374,7 @@ export default function AdminConfig() {
             type="button"
             onClick={saveCustomerEggTypes}
             disabled={eggTypeSaving}
-            className="px-4 py-2 bg-brand-600 text-surface-white rounded-md text-body font-medium hover:bg-brand-700 transition-colors duration-fast disabled:opacity-50"
+            className="px-4 py-2 bg-brand-600 text-surface-0 rounded-md text-body font-medium hover:bg-brand-700 transition-colors duration-fast disabled:opacity-50"
           >
             {eggTypeSaving ? 'Saving...' : 'Save egg types'}
           </button>
@@ -418,7 +423,7 @@ export default function AdminConfig() {
 
       </section>
 
-      <section className="bg-surface-white rounded-lg border border-surface-200 p-5">
+      <section className="bg-surface-0 rounded-lg border border-surface-200 p-5">
         <h2 className="text-heading text-surface-900">Policy Settings</h2>
         <p className="text-sm text-surface-500 mt-1">
           These rules control how the app behaves. When you save a change, it becomes the rule for new work from that moment onward. Older records keep the earlier policy that applied when they were created.
@@ -548,7 +553,7 @@ export default function AdminConfig() {
             <button
               type="submit"
               disabled={policySaving}
-              className="px-4 py-2 bg-brand-600 text-surface-white rounded-md text-body font-medium hover:bg-brand-700 transition-colors duration-fast disabled:opacity-50"
+              className="px-4 py-2 bg-brand-600 text-surface-0 rounded-md text-body font-medium hover:bg-brand-700 transition-colors duration-fast disabled:opacity-50"
             >
               {policySaving ? 'Saving...' : 'Save policy settings'}
             </button>
@@ -562,7 +567,7 @@ export default function AdminConfig() {
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1040px]">
-              <thead className="bg-surface-white">
+              <thead className="bg-surface-0">
                 <tr className="border-b border-surface-100">
                   <th className="px-4 py-3 text-left text-overline-wide text-surface-500">Effective from</th>
                   <th className="px-4 py-3 text-left text-overline-wide text-surface-500">Profit / crate</th>
@@ -607,7 +612,7 @@ export default function AdminConfig() {
         </div>
       </section>
 
-      <section className="bg-surface-white rounded-lg border border-surface-200 p-5">
+      <section className="bg-surface-0 rounded-lg border border-surface-200 p-5">
         <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
           <div>
             <h2 className="text-heading text-surface-900">Bank Accounts</h2>
@@ -718,7 +723,7 @@ export default function AdminConfig() {
                         type="button"
                         onClick={() => saveAccount(account.id)}
                         disabled={savingAccountId === account.id}
-                        className="px-4 py-2 bg-brand-600 text-surface-white rounded-md text-body font-medium hover:bg-brand-700 transition-colors duration-fast disabled:opacity-50"
+                        className="px-4 py-2 bg-brand-600 text-surface-0 rounded-md text-body font-medium hover:bg-brand-700 transition-colors duration-fast disabled:opacity-50"
                       >
                         {savingAccountId === account.id ? 'Saving...' : 'Save bank account'}
                       </button>
@@ -809,7 +814,7 @@ export default function AdminConfig() {
               <button
                 type="submit"
                 disabled={creatingAccount}
-                className="px-4 py-2 bg-brand-600 text-surface-white rounded-md text-body font-medium hover:bg-brand-700 transition-colors duration-fast disabled:opacity-50"
+                className="px-4 py-2 bg-brand-600 text-surface-0 rounded-md text-body font-medium hover:bg-brand-700 transition-colors duration-fast disabled:opacity-50"
               >
                 {creatingAccount ? 'Adding...' : 'Add bank account'}
               </button>
@@ -818,7 +823,7 @@ export default function AdminConfig() {
         </div>
       </section>
 
-      <section className="bg-surface-white rounded-lg border border-surface-200 p-5">
+      <section className="bg-surface-0 rounded-lg border border-surface-200 p-5">
         <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
           <div>
             <h2 className="text-heading text-surface-900">Transaction Categories</h2>
@@ -830,7 +835,7 @@ export default function AdminConfig() {
             type="button"
             onClick={saveTransactionCategories}
             disabled={transactionCategorySaving}
-            className="px-4 py-2 bg-brand-600 text-surface-white rounded-md text-body font-medium hover:bg-brand-700 transition-colors duration-fast disabled:opacity-50"
+            className="px-4 py-2 bg-brand-600 text-surface-0 rounded-md text-body font-medium hover:bg-brand-700 transition-colors duration-fast disabled:opacity-50"
           >
             {transactionCategorySaving ? 'Saving...' : 'Save categories'}
           </button>
@@ -846,7 +851,7 @@ export default function AdminConfig() {
                     <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${
                       entry.direction === 'INFLOW'
                         ? 'border-success-200 bg-success-50 text-success-700'
-                        : 'border-red-200 bg-red-50 text-red-700'
+                        : 'border-error-100 bg-error-50 text-error-700'
                     }`}>
                       {entry.direction === 'INFLOW' ? 'Money in' : 'Money out'}
                     </span>

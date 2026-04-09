@@ -9,3 +9,5 @@ export { default as EmptyState } from './EmptyState';
 export { default as Tooltip } from './Tooltip';
 export { default as Skeleton, SkeletonCard, SkeletonTable, SkeletonMetric } from './Skeleton';
 export { default as FilterChip } from './FilterChip';
+export { default as PageHeader } from './PageHeader';
+export { default as NoticeBanner } from './NoticeBanner';

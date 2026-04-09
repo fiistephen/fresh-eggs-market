@@ -107,11 +107,11 @@ export default function ImportsView({
 
   /* ── No imports at all ───────────────────────────────── */
   if (importsLoading && imports.length === 0) {
-    return <div className=”rounded-lg border border-surface-200 bg-surface-0 px-6 py-16 text-center text-body text-surface-500”>Loading statements…</div>;
+    return <div className="rounded-lg border border-surface-200 bg-surface-0 px-6 py-16 text-center text-body text-surface-500">Loading statements…</div>;
   }
   if (imports.length === 0) {
     return (
-      <div className=”rounded-lg border border-surface-200 bg-surface-0 px-6 py-16”>
+      <div className="rounded-lg border border-surface-200 bg-surface-0 px-6 py-16">
         <EmptyState
           title={importsSearch.trim() ? 'No statements match that search' : 'No bank statements imported yet'}
           body={importsSearch.trim() ? 'Try a different file name or clear the search to see all statement imports.' : 'Use the “Import statement” button to upload a Providus CSV.'}
@@ -121,45 +121,45 @@ export default function ImportsView({
   }
 
   return (
-    <div className=”space-y-3”>
+    <div className="space-y-3">
       {/* ── Statement queue ──────────────────────────────── */}
-      <div className=”rounded-lg border border-surface-200 bg-surface-0”>
-        <div className=”flex flex-wrap items-center gap-3 border-b border-surface-100 px-5 py-4”>
+      <div className="rounded-lg border border-surface-200 bg-surface-0">
+        <div className="flex flex-wrap items-center gap-3 border-b border-surface-100 px-5 py-4">
           <div>
-            <h2 className=”text-body-medium font-semibold text-surface-900”>Import queue</h2>
-            <p className=”text-caption text-surface-500”>Search and open the statement you want to review.</p>
+            <h2 className="text-body-medium font-semibold text-surface-900">Import queue</h2>
+            <p className="text-caption text-surface-500">Search and open the statement you want to review.</p>
           </div>
-          <div className=”relative min-w-[240px] flex-1”>
+          <div className="relative min-w-[240px] flex-1">
             <input
-              type=”text”
+              type="text"
               value={importsSearchInput}
               onChange={(e) => onSearchChange(e.target.value)}
-              placeholder=”Search file name, date, or account…”
-              className=”w-full rounded-md border border-surface-200 px-3 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500”
+              placeholder="Search file name, date, or account..."
+              className="w-full rounded-md border border-surface-200 px-3 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500"
             />
             {importsLoading && importsSearchInput.trim() && (
-              <span className=”absolute right-3 top-1/2 -translate-y-1/2 text-caption text-surface-400”>Searching…</span>
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-caption text-surface-400">Searching...</span>
             )}
             {suggestionMatches.length > 0 && (
-              <div className=”absolute left-0 right-0 top-full z-10 mt-1 overflow-hidden rounded-lg border border-surface-200 bg-surface-0 shadow-lg”>
+              <div className="absolute left-0 right-0 top-full z-10 mt-1 overflow-hidden rounded-lg border border-surface-200 bg-surface-0 shadow-lg">
                 {suggestionMatches.map((rec) => (
                   <button
                     key={rec.id}
-                    type=”button”
+                    type="button"
                     onClick={() => onSelectImport(rec.id)}
-                    className=”flex w-full items-start justify-between gap-3 border-b border-surface-100 px-3 py-2 text-left last:border-b-0 hover:bg-surface-50”
+                    className="flex w-full items-start justify-between gap-3 border-b border-surface-100 px-3 py-2 text-left last:border-b-0 hover:bg-surface-50"
                   >
-                    <div className=”min-w-0”>
-                      <p className=”truncate text-body-medium font-medium text-surface-900”>{rec.originalFilename}</p>
-                      <p className=”mt-0.5 text-caption text-surface-500”>{displayAccountName(rec.bankAccount)}</p>
+                    <div className="min-w-0">
+                      <p className="truncate text-body-medium font-medium text-surface-900">{rec.originalFilename}</p>
+                      <p className="mt-0.5 text-caption text-surface-500">{displayAccountName(rec.bankAccount)}</p>
                     </div>
-                    <span className=”shrink-0 text-caption text-surface-400”>{rec.parsedRowCount} lines</span>
+                    <span className="shrink-0 text-caption text-surface-400">{rec.parsedRowCount} lines</span>
                   </button>
                 ))}
               </div>
             )}
           </div>
-          <span className=”text-caption text-surface-500”>
+          <span className="text-caption text-surface-500">
             {importsTotal > 0 ? `${importRangeStart}–${importRangeEnd} of ${importsTotal}` : 'No imports'}
           </span>
         </div>

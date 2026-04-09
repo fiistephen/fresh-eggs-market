@@ -7,7 +7,7 @@ export default function ProtectedRoute({ children, roles }) {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
-        <div className="text-gray-500">Loading...</div>
+        <div className="text-surface-500">Loading...</div>
       </div>
     );
   }
@@ -17,7 +17,7 @@ export default function ProtectedRoute({ children, roles }) {
   if (roles && !roles.includes(user.role)) {
     return (
       <div className="flex items-center justify-center h-screen">
-        <div className="text-red-500 text-center">
+        <div className="text-error-500 text-center">
           <h2 className="text-xl font-bold">Access Denied</h2>
           <p className="mt-2">You don't have permission to view this page.</p>
         </div>

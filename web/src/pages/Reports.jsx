@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { REPORT_CARDS } from './reportsCatalog';
+import { NoticeBanner, PageHeader } from '../components/ui';
 
 // SVG Icons
 const BarChartIcon = () => (
@@ -44,46 +45,61 @@ function getReportIcon(reportType) {
 }
 
 export default function Reports() {
+  const groups = [
+    { name: 'Management', description: 'High-level views for decision-making, investors, and business review.' },
+    { name: 'Sales', description: 'Revenue, receipts, payment mix, and staff performance.' },
+    { name: 'Operations', description: 'Batch performance, stock health, and control signals.' },
+  ];
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-display text-surface-900">Reports</h1>
-        <p className="text-body text-surface-600 mt-2">
-          Choose the report you want to open. Each report now has its own page so it is easier to read and use.
-        </p>
-      </div>
+      <PageHeader
+        title="Reports"
+        description="Choose the report you want to open. Reports are grouped by the kind of question you are trying to answer."
+      />
 
-      <div className="bg-surface-50 rounded-lg border border-surface-200 p-4 shadow-xs">
-        <p className="text-body-medium text-surface-900">How to use this page</p>
-        <p className="text-body text-surface-600 mt-1">
-          Start by opening one report card. Then choose the date range inside that report page.
-        </p>
-      </div>
+      <NoticeBanner tone="neutral" compact title="Quick tip">
+        Open one report first, then choose the date range inside that report page.
+      </NoticeBanner>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-        {REPORT_CARDS.map((report) => (
-          <Link
-            key={report.key}
-            to={`/reports/${report.key}`}
-            className="rounded-lg border border-surface-200 bg-surface-white p-5 hover:shadow-md transition-shadow duration-normal hover:border-brand-300 group"
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1">
-                <div className="text-brand-600 group-hover:text-brand-700 transition-colors duration-normal">
-                  {getReportIcon(report.key)}
-                </div>
-                <h2 className="text-title text-surface-900 mt-4">{report.title}</h2>
-                <p className="text-body text-surface-600 mt-2">{report.description}</p>
-              </div>
-              <div className="flex-shrink-0">
-                <svg className="w-5 h-5 text-brand-600 group-hover:translate-x-0.5 transition-transform duration-normal" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </div>
+      {groups.map((group) => {
+        const reports = REPORT_CARDS.filter((report) => report.group === group.name);
+        if (reports.length === 0) return null;
+
+        return (
+          <section key={group.name} className="space-y-3">
+            <div>
+              <h2 className="text-heading text-surface-900">{group.name}</h2>
+              <p className="mt-1 text-body text-surface-600">{group.description}</p>
             </div>
-          </Link>
-        ))}
-      </div>
+
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+              {reports.map((report) => (
+                <Link
+                  key={report.key}
+                  to={`/reports/${report.key}`}
+                  className="rounded-lg border border-surface-200 bg-surface-0 p-5 hover:shadow-md transition-shadow duration-normal hover:border-brand-300 group"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="text-brand-600 group-hover:text-brand-700 transition-colors duration-normal">
+                        {getReportIcon(report.key)}
+                      </div>
+                      <h3 className="text-title text-surface-900 mt-4">{report.title}</h3>
+                      <p className="text-body text-surface-600 mt-2">{report.description}</p>
+                    </div>
+                    <div className="flex-shrink-0">
+                      <svg className="w-5 h-5 text-brand-600 group-hover:translate-x-0.5 transition-transform duration-normal" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </section>
+        );
+      })}
     </div>
   );
 }

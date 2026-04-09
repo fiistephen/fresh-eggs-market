@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
+import { EmptyState, NoticeBanner, PageHeader } from '../components/ui';
 
 const DEFAULT_ITEM_FORM = {
   code: '',
@@ -165,28 +166,24 @@ export default function Items() {
 
   if (loading) {
     return (
-      <div className="py-16 text-center text-surface-400">
-        <div className="animate-pulse text-lg text-body">Loading items...</div>
+      <div className="rounded-lg border border-surface-200 bg-surface-0 p-12 text-center text-surface-600 shadow-xs">
+        <div className="animate-pulse text-body">Loading items...</div>
       </div>
     );
   }
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
-      <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <h1 className="text-display text-surface-900">Items</h1>
-          <p className="text-body text-surface-600 mt-2">
-            Manage what the business sells. Keep FE codes and other sellable items clear here so batches and reports stay consistent.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title="Items"
+        description="Manage what the business sells. Keep FE codes and other sellable items clear here so batches and reports stay consistent."
+      />
 
       {error ? (
-        <div className="rounded-lg border border-error-200 bg-error-50 px-4 py-3 text-body text-error-700 shadow-xs">{error}</div>
+        <NoticeBanner tone="error">{error}</NoticeBanner>
       ) : null}
       {success ? (
-        <div className="rounded-lg border border-success-200 bg-success-50 px-4 py-3 text-body text-success-700 shadow-xs">{success}</div>
+        <NoticeBanner tone="success">{success}</NoticeBanner>
       ) : null}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
@@ -201,7 +198,7 @@ export default function Items() {
       {visibleCategoryCards.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           {visibleCategoryCards.map((entry) => (
-            <div key={entry.category} className="rounded-lg border border-surface-200 bg-surface-white p-4 shadow-xs">
+            <div key={entry.category} className="rounded-lg border border-surface-200 bg-surface-0 p-4 shadow-xs">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-body-medium text-surface-900">{entry.label}</p>
@@ -216,7 +213,7 @@ export default function Items() {
         </div>
       ) : null}
 
-      <section className="rounded-lg border border-surface-200 bg-surface-white p-5 shadow-xs">
+      <section className="rounded-lg border border-surface-200 bg-surface-0 p-5 shadow-xs">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div>
             <h2 className="text-heading text-surface-900">Find items</h2>
@@ -230,12 +227,12 @@ export default function Items() {
               value={filters.search}
               onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))}
               placeholder="Search by item name or FE code"
-              className="w-full rounded-md border border-surface-300 bg-surface-white px-3 py-2 text-body placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+              className="w-full rounded-md border border-surface-300 bg-surface-0 px-3 py-2 text-body placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
             />
             <select
               value={filters.category}
               onChange={(event) => setFilters((current) => ({ ...current, category: event.target.value }))}
-              className="w-full rounded-md border border-surface-300 bg-surface-white px-3 py-2 text-body focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+              className="w-full rounded-md border border-surface-300 bg-surface-0 px-3 py-2 text-body focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
             >
               <option value="">All categories</option>
               {categories.map((category) => (
@@ -255,7 +252,7 @@ export default function Items() {
       </section>
 
       <section className="grid grid-cols-1 xl:grid-cols-[1.2fr,1.8fr] gap-6">
-        <div className="rounded-lg border border-surface-200 bg-surface-white p-5 shadow-xs">
+        <div className="rounded-lg border border-surface-200 bg-surface-0 p-5 shadow-xs">
           <h2 className="text-heading text-surface-900">Add item</h2>
           <p className="text-body text-surface-600 mt-1">
             Add FE codes here before they are used in batches, or keep other sellable items ready for future sales workflows.
@@ -269,7 +266,7 @@ export default function Items() {
                   value={form.code}
                   onChange={(event) => setForm((current) => ({ ...current, code: event.target.value.toUpperCase() }))}
                   placeholder="FE4600"
-                  className="w-full rounded-md border border-surface-300 bg-surface-white px-3 py-2 text-body placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                  className="w-full rounded-md border border-surface-300 bg-surface-0 px-3 py-2 text-body placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                 />
               </Field>
               <Field label="Item name">
@@ -278,14 +275,14 @@ export default function Items() {
                   value={form.name}
                   onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
                   placeholder="FE4600"
-                  className="w-full rounded-md border border-surface-300 bg-surface-white px-3 py-2 text-body placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                  className="w-full rounded-md border border-surface-300 bg-surface-0 px-3 py-2 text-body placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                 />
               </Field>
               <Field label="Category">
                 <select
                   value={form.category}
                   onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))}
-                  className="w-full rounded-md border border-surface-300 bg-surface-white px-3 py-2 text-body focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                  className="w-full rounded-md border border-surface-300 bg-surface-0 px-3 py-2 text-body focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                 >
                   {categories.map((category) => (
                     <option key={category.value} value={category.value}>{category.label}</option>
@@ -298,7 +295,7 @@ export default function Items() {
                   value={form.unitLabel}
                   onChange={(event) => setForm((current) => ({ ...current, unitLabel: event.target.value }))}
                   placeholder="crate"
-                  className="w-full rounded-md border border-surface-300 bg-surface-white px-3 py-2 text-body placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                  className="w-full rounded-md border border-surface-300 bg-surface-0 px-3 py-2 text-body placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                 />
               </Field>
               <Field label="Default wholesale price (NGN)">
@@ -307,7 +304,7 @@ export default function Items() {
                   min="0"
                   value={form.defaultWholesalePrice}
                   onChange={(event) => setForm((current) => ({ ...current, defaultWholesalePrice: event.target.value }))}
-                  className="w-full rounded-md border border-surface-300 bg-surface-white px-3 py-2 text-body focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                  className="w-full rounded-md border border-surface-300 bg-surface-0 px-3 py-2 text-body focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                 />
               </Field>
               <Field label="Default retail price (NGN)">
@@ -316,7 +313,7 @@ export default function Items() {
                   min="0"
                   value={form.defaultRetailPrice}
                   onChange={(event) => setForm((current) => ({ ...current, defaultRetailPrice: event.target.value }))}
-                  className="w-full rounded-md border border-surface-300 bg-surface-white px-3 py-2 text-body focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                  className="w-full rounded-md border border-surface-300 bg-surface-0 px-3 py-2 text-body focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                 />
               </Field>
             </div>
@@ -327,7 +324,7 @@ export default function Items() {
                 value={form.description}
                 onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
                 placeholder="Add any note that helps staff understand this item."
-                className="w-full rounded-md border border-surface-300 bg-surface-white px-3 py-2 text-body placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                className="w-full rounded-md border border-surface-300 bg-surface-0 px-3 py-2 text-body placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
               />
             </Field>
 
@@ -345,7 +342,7 @@ export default function Items() {
               <button
                 type="submit"
                 disabled={savingNew}
-                className="rounded-md bg-brand-600 px-4 py-2 text-body font-medium text-surface-white hover:bg-brand-700 disabled:opacity-50 transition-colors duration-fast"
+                className="rounded-md bg-brand-600 px-4 py-2 text-body font-medium text-surface-0 hover:bg-brand-700 disabled:opacity-50 transition-colors duration-fast"
               >
                 {savingNew ? 'Saving...' : 'Add item'}
               </button>
@@ -353,7 +350,7 @@ export default function Items() {
           </form>
         </div>
 
-        <div className="rounded-lg border border-surface-200 bg-surface-white p-5 shadow-xs">
+        <div className="rounded-lg border border-surface-200 bg-surface-0 p-5 shadow-xs">
           <h2 className="text-heading text-surface-900">Item list</h2>
           <p className="text-body text-surface-600 mt-1">
             Review the catalog, keep old items inactive instead of deleting them, and watch how often each item has been used in batches.
@@ -361,15 +358,20 @@ export default function Items() {
 
           <div className="space-y-4 mt-5">
             {items.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-surface-300 bg-surface-50 px-4 py-6 text-body text-surface-500">
-                No items match this view yet.
+              <div className="rounded-lg border border-dashed border-surface-300 bg-surface-50 px-4 py-6">
+                <EmptyState
+                  icon="🥚"
+                  title="No items match this view yet"
+                  description="Try clearing a filter or add a new item to start building the catalog."
+                  className="py-4"
+                />
               </div>
             ) : items.map((item) => {
               const editing = editingId === item.id;
               const draft = drafts[item.id] || DEFAULT_ITEM_FORM;
 
               return (
-                <div key={item.id} className="rounded-lg border border-surface-200 bg-surface-white p-4 hover:border-surface-300 transition-colors duration-fast">
+                <div key={item.id} className="rounded-lg border border-surface-200 bg-surface-0 p-4 hover:border-surface-300 transition-colors duration-fast">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="flex-1">
                       <div className="flex flex-wrap items-center gap-2">
@@ -399,7 +401,7 @@ export default function Items() {
                     <button
                       type="button"
                       onClick={() => setEditingId(editing ? '' : item.id)}
-                      className="flex items-center gap-2 rounded-md border border-surface-300 bg-surface-white px-3 py-2 text-body font-medium text-surface-700 hover:bg-surface-50 transition-colors duration-fast flex-shrink-0"
+                      className="flex items-center gap-2 rounded-md border border-surface-300 bg-surface-0 px-3 py-2 text-body font-medium text-surface-700 hover:bg-surface-50 transition-colors duration-fast flex-shrink-0"
                     >
                       <EditIcon />
                       {editing ? 'Close edit' : 'Edit'}
@@ -413,7 +415,7 @@ export default function Items() {
                           type="text"
                           value={draft.code}
                           onChange={(event) => updateDraft(item.id, 'code', event.target.value.toUpperCase())}
-                          className="w-full rounded-md border border-surface-300 bg-surface-white px-3 py-2 text-body placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                          className="w-full rounded-md border border-surface-300 bg-surface-0 px-3 py-2 text-body placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                         />
                       </Field>
                       <Field label="Item name">
@@ -421,14 +423,14 @@ export default function Items() {
                           type="text"
                           value={draft.name}
                           onChange={(event) => updateDraft(item.id, 'name', event.target.value)}
-                          className="w-full rounded-md border border-surface-300 bg-surface-white px-3 py-2 text-body placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                          className="w-full rounded-md border border-surface-300 bg-surface-0 px-3 py-2 text-body placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                         />
                       </Field>
                       <Field label="Category">
                         <select
                           value={draft.category}
                           onChange={(event) => updateDraft(item.id, 'category', event.target.value)}
-                          className="w-full rounded-md border border-surface-300 bg-surface-white px-3 py-2 text-body focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                          className="w-full rounded-md border border-surface-300 bg-surface-0 px-3 py-2 text-body focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                         >
                           {categories.map((category) => (
                             <option key={category.value} value={category.value}>{category.label}</option>
@@ -440,7 +442,7 @@ export default function Items() {
                           type="text"
                           value={draft.unitLabel}
                           onChange={(event) => updateDraft(item.id, 'unitLabel', event.target.value)}
-                          className="w-full rounded-md border border-surface-300 bg-surface-white px-3 py-2 text-body placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                          className="w-full rounded-md border border-surface-300 bg-surface-0 px-3 py-2 text-body placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                         />
                       </Field>
                       <Field label="Default wholesale price (NGN)">
@@ -449,7 +451,7 @@ export default function Items() {
                           min="0"
                           value={draft.defaultWholesalePrice}
                           onChange={(event) => updateDraft(item.id, 'defaultWholesalePrice', event.target.value)}
-                          className="w-full rounded-md border border-surface-300 bg-surface-white px-3 py-2 text-body focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                          className="w-full rounded-md border border-surface-300 bg-surface-0 px-3 py-2 text-body focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                         />
                       </Field>
                       <Field label="Default retail price (NGN)">
@@ -458,7 +460,7 @@ export default function Items() {
                           min="0"
                           value={draft.defaultRetailPrice}
                           onChange={(event) => updateDraft(item.id, 'defaultRetailPrice', event.target.value)}
-                          className="w-full rounded-md border border-surface-300 bg-surface-white px-3 py-2 text-body focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                          className="w-full rounded-md border border-surface-300 bg-surface-0 px-3 py-2 text-body focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                         />
                       </Field>
                       <div className="md:col-span-2">
@@ -467,7 +469,7 @@ export default function Items() {
                             rows="3"
                             value={draft.description}
                             onChange={(event) => updateDraft(item.id, 'description', event.target.value)}
-                            className="w-full rounded-md border border-surface-300 bg-surface-white px-3 py-2 text-body placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                            className="w-full rounded-md border border-surface-300 bg-surface-0 px-3 py-2 text-body placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                           />
                         </Field>
                       </div>
@@ -485,7 +487,7 @@ export default function Items() {
                           type="button"
                           onClick={() => saveItem(item.id)}
                           disabled={savingId === item.id}
-                          className="rounded-md bg-brand-600 px-4 py-2 text-body font-medium text-surface-white hover:bg-brand-700 disabled:opacity-50 transition-colors duration-fast"
+                          className="rounded-md bg-brand-600 px-4 py-2 text-body font-medium text-surface-0 hover:bg-brand-700 disabled:opacity-50 transition-colors duration-fast"
                         >
                           {savingId === item.id ? 'Saving...' : 'Save item'}
                         </button>
@@ -513,7 +515,7 @@ function Field({ label, children }) {
 
 function SummaryCard({ label, value }) {
   return (
-    <div className="rounded-lg border border-surface-200 bg-surface-white p-4 shadow-xs">
+    <div className="rounded-lg border border-surface-200 bg-surface-0 p-4 shadow-xs">
       <p className="text-overline text-surface-600">{label}</p>
       <p className="mt-3 text-metric text-surface-900">{Number(value || 0).toLocaleString()}</p>
     </div>
