@@ -448,12 +448,6 @@ function CheckoutModal({ batch, profile, policy, onClose, onFinished }) {
       if (paymentMethod === 'CARD' && res.authorizationUrl) {
         const normalizedEmail = checkoutEmail.trim().toLowerCase();
         if (normalizedEmail) {
-          setProfile((current) => current ? ({
-            ...current,
-            user: current.user ? { ...current.user, email: normalizedEmail } : current.user,
-            customer: current.customer ? { ...current.customer, email: normalizedEmail } : current.customer,
-          }) : current);
-
           const storedUser = localStorage.getItem('user');
           if (storedUser) {
             try {
