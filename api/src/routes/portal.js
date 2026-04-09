@@ -90,6 +90,48 @@ function buildPortalCustomerEmail(user, customer, checkoutEmail = null) {
   return email || null;
 }
 
+async function persistPortalCheckoutEmail({ user, customer, checkoutEmail }) {
+  const normalizedEmail = normalizeEmail(checkoutEmail);
+  if (!normalizedEmail) return buildPortalCustomerEmail(user, customer, null);
+  if (!isValidEmail(normalizedEmail)) {
+    throw new Error('Enter a valid email address before continuing to card payment.');
+  }
+
+  const existingUser = await prisma.user.findFirst({
+    where: {
+      email: normalizedEmail,
+      NOT: { id: user.id },
+    },
+    select: { id: true },
+  });
+
+  if (existingUser) {
+    throw new Error('That email is already linked to another account. Use a different email or sign in with that email.');
+  }
+
+  const updates = [];
+  if (user.email !== normalizedEmail) {
+    updates.push(prisma.user.update({
+      where: { id: user.id },
+      data: { email: normalizedEmail },
+    }));
+    user.email = normalizedEmail;
+  }
+  if (customer.email !== normalizedEmail) {
+    updates.push(prisma.customer.update({
+      where: { id: customer.id },
+      data: { email: normalizedEmail },
+    }));
+    customer.email = normalizedEmail;
+  }
+
+  if (updates.length) {
+    await prisma.$transaction(updates);
+  }
+
+  return normalizedEmail;
+}
+
 function getRequestOrigin(request) {
   return request.headers.origin || config.corsOrigin || 'http://localhost:5173';
 }
@@ -913,9 +955,16 @@ export default async function portalRoutes(fastify) {
       });
       if (!batch) return reply.code(404).send({ error: 'Batch not found.' });
 
-      const cardPaymentEmail = buildPortalCustomerEmail(user, customer, checkoutEmail);
-      if (paymentMethod === 'CARD' && (!cardPaymentEmail || !isValidEmail(cardPaymentEmail))) {
-        return reply.code(400).send({ error: 'Enter a valid email address before continuing to card payment.' });
+      let cardPaymentEmail = buildPortalCustomerEmail(user, customer, checkoutEmail);
+      if (paymentMethod === 'CARD') {
+        try {
+          cardPaymentEmail = await persistPortalCheckoutEmail({ user, customer, checkoutEmail });
+        } catch (error) {
+          return reply.code(400).send({ error: error.message });
+        }
+        if (!cardPaymentEmail || !isValidEmail(cardPaymentEmail)) {
+          return reply.code(400).send({ error: 'Enter a valid email address before continuing to card payment.' });
+        }
       }
 
       let orderValue = 0;

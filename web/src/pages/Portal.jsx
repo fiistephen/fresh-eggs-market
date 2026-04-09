@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
 import { Button, Input, Modal, Card, Badge, EmptyState } from '../components/ui';
 
+/* ─── Formatters ─── */
 const fmt = (n) => Number(n || 0).toLocaleString('en-NG');
 const fmtMoney = (n) => '₦' + Number(n || 0).toLocaleString('en-NG', { minimumFractionDigits: 0 });
-const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-NG', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : '—');
-const fmtDateTime = (d) => (d ? new Date(d).toLocaleString('en-NG', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—');
+const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-NG', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+const fmtDateTime = (d) => d ? new Date(d).toLocaleString('en-NG', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
 
+/* ─── Constants ─── */
 const TRANSFER_DETAILS = {
   bankName: 'Providus Bank',
   accountNumber: '5401952310',
@@ -20,6 +21,9 @@ const PICKUP_DETAILS = {
   lineTwo: 'Immediately after Sunbeth Energies Filling Station, Before Dominion City Church, Before Lagos Business School, Lekki-Epe ExpressWay',
 };
 
+const WHATSAPP_NUMBER = '2349160007184';
+const WHATSAPP_URL = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent('Hello, I have a question about my egg order.')}`;
+
 function profileDisplayName(profile, user) {
   if (profile?.customer?.name) return profile.customer.name;
   const fullName = [profile?.user?.firstName, profile?.user?.lastName].filter(Boolean).join(' ').trim();
@@ -28,96 +32,166 @@ function profileDisplayName(profile, user) {
   return fallbackUser || user?.phone || user?.email || 'Customer';
 }
 
-// SVG Icons
-const IconChevronRight = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="9 18 15 12 9 6" />
-  </svg>
-);
+/* ─── Icons (20×20 stroke) ─── */
+const Icon = {
+  whatsapp: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+    </svg>
+  ),
+  egg: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22c4.418 0 8-4.03 8-9s-3.582-11-8-11S4 8.03 4 13s3.582 9 8 9z" />
+    </svg>
+  ),
+  truck: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="1" y="3" width="15" height="13" rx="1" /><polygon points="16 8 20 8 23 11 23 16 16 16 16 8" />
+      <circle cx="5.5" cy="18.5" r="2.5" /><circle cx="18.5" cy="18.5" r="2.5" />
+    </svg>
+  ),
+  check: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  ),
+  clock: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+    </svg>
+  ),
+  mapPin: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" /><circle cx="12" cy="10" r="3" />
+    </svg>
+  ),
+  creditCard: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="1" y="4" width="22" height="16" rx="2" /><line x1="1" y1="10" x2="23" y2="10" />
+    </svg>
+  ),
+  bank: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 21h18M3 10h18M5 6l7-3 7 3" /><path d="M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3" />
+    </svg>
+  ),
+  package: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" />
+      <polyline points="3.27 6.96 12 12.01 20.73 6.96" /><line x1="12" y1="22.08" x2="12" y2="12" />
+    </svg>
+  ),
+  arrowRight: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" />
+    </svg>
+  ),
+  user: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" />
+    </svg>
+  ),
+  logout: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />
+    </svg>
+  ),
+  chevronDown: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  ),
+  filter: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+    </svg>
+  ),
+  refresh: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" />
+    </svg>
+  ),
+};
 
-const IconCheck = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="20 6 9 17 4 12" />
-  </svg>
-);
+/* ─── Shared micro-components ─── */
 
-const IconAlertCircle = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="10" />
-    <line x1="12" y1="8" x2="12" y2="12" />
-    <line x1="12" y1="16" x2="12.01" y2="16" />
-  </svg>
-);
+function Metric({ label, value, className = '' }) {
+  return (
+    <div className={className}>
+      <p className="text-caption text-surface-500">{label}</p>
+      <p className="mt-0.5 text-body-medium text-surface-800">{value}</p>
+    </div>
+  );
+}
 
-const IconInfo = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="10" />
-    <line x1="12" y1="16" x2="12" y2="12" />
-    <line x1="12" y1="8" x2="12.01" y2="8" />
-  </svg>
-);
+function StatusDot({ tone }) {
+  const colors = {
+    success: 'bg-success-500',
+    warning: 'bg-warning-500',
+    error: 'bg-error-500',
+    info: 'bg-info-500',
+    neutral: 'bg-surface-400',
+  };
+  return <span className={`inline-block w-2 h-2 rounded-full ${colors[tone] || colors.neutral}`} />;
+}
 
-const IconCreditCard = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
-    <line x1="1" y1="10" x2="23" y2="10" />
-  </svg>
-);
+function AvailabilityBar({ used, total, className = '' }) {
+  const pct = total > 0 ? Math.min(100, (used / total) * 100) : 0;
+  const remaining = total - used;
+  const urgency = pct > 80 ? 'bg-error-500' : pct > 50 ? 'bg-warning-500' : 'bg-success-500';
+  return (
+    <div className={className}>
+      <div className="flex items-center justify-between text-caption text-surface-600 mb-1">
+        <span>{fmt(remaining)} available</span>
+        <span>{Math.round(pct)}% taken</span>
+      </div>
+      <div className="h-1.5 bg-surface-200 rounded-full overflow-hidden">
+        <div className={`h-full rounded-full transition-all duration-normal ${urgency}`} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
 
-const IconBank = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="2" y1="8" x2="22" y2="8" />
-    <path d="M4 20h16a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2z" />
-    <line x1="12" y1="12" x2="12" y2="16" />
-  </svg>
-);
+/* ─── WhatsApp FAB ─── */
+function WhatsAppFAB() {
+  return (
+    <a
+      href={WHATSAPP_URL}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="fixed bottom-6 right-6 z-50 flex items-center gap-2 bg-[#25D366] text-white pl-4 pr-5 py-3 rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-normal"
+      aria-label="Chat on WhatsApp"
+    >
+      {Icon.whatsapp}
+      <span className="text-body-medium font-medium hidden sm:inline">Need help?</span>
+    </a>
+  );
+}
 
-const IconBox = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-  </svg>
-);
-
-const IconCalendar = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="4" width="18" height="18" rx="2" />
-    <line x1="16" y1="2" x2="16" y2="6" />
-    <line x1="8" y1="2" x2="8" y2="6" />
-    <line x1="3" y1="10" x2="21" y2="10" />
-  </svg>
-);
-
-const IconMapPin = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-    <circle cx="12" cy="10" r="3" />
-  </svg>
-);
-
-const IconClock = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="10" />
-    <polyline points="12 6 12 12 16 14" />
-  </svg>
-);
-
-function AuthPanel({ onAuth }) {
+/* ═══════════════════════════════════════════════════════
+   AUTH MODAL — stays overlaid, doesn't lose context
+   ═══════════════════════════════════════════════════════ */
+function AuthModal({ open, onClose, onAuth, intent }) {
   const [mode, setMode] = useState('login');
   const [form, setForm] = useState({ name: '', email: '', phone: '', identifier: '', password: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  async function handleSubmit(event) {
-    event.preventDefault();
+  useEffect(() => {
+    if (open) { setError(''); }
+  }, [open, mode]);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
     setLoading(true);
     setError('');
     try {
-      const response = mode === 'register'
+      const res = mode === 'register'
         ? await api.post('/portal/register', form)
         : await api.post('/auth/login', { identifier: form.identifier, password: form.password });
-      api.setTokens(response.accessToken, response.refreshToken);
-      localStorage.setItem('user', JSON.stringify(response.user));
-      onAuth(response.user);
+      api.setTokens(res.accessToken, res.refreshToken);
+      localStorage.setItem('user', JSON.stringify(res.user));
+      onAuth(res.user);
     } catch (err) {
       setError(err.error || 'Something went wrong. Please try again.');
     } finally {
@@ -125,18 +199,26 @@ function AuthPanel({ onAuth }) {
     }
   }
 
+  if (!open) return null;
+
   return (
-    <div className="mx-auto max-w-md">
-      <Card variant="default" className="border border-surface-200">
+    <Modal title={mode === 'login' ? 'Sign in to continue' : 'Create your account'} open={open} onClose={onClose}>
+      <div className="space-y-5">
+        {intent && (
+          <p className="text-body text-surface-600">
+            {intent === 'book-upcoming'
+              ? 'Sign in to book an upcoming batch at wholesale price.'
+              : 'Sign in to buy eggs that are ready for pickup.'}
+          </p>
+        )}
+
         {/* Tab toggle */}
-        <div className="flex gap-2 mb-6">
+        <div className="flex gap-1 p-1 bg-surface-100 rounded-md">
           <button
             type="button"
             onClick={() => { setMode('login'); setError(''); }}
-            className={`flex-1 py-2.5 px-4 rounded-md text-body-medium font-medium transition-all duration-fast ${
-              mode === 'login'
-                ? 'bg-brand-500 text-surface-900 shadow-xs'
-                : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
+            className={`flex-1 py-2 rounded-sm text-caption-medium font-medium transition-all duration-fast ${
+              mode === 'login' ? 'bg-surface-0 text-surface-900 shadow-xs' : 'text-surface-500 hover:text-surface-700'
             }`}
           >
             Sign in
@@ -144,704 +226,318 @@ function AuthPanel({ onAuth }) {
           <button
             type="button"
             onClick={() => { setMode('register'); setError(''); }}
-            className={`flex-1 py-2.5 px-4 rounded-md text-body-medium font-medium transition-all duration-fast ${
-              mode === 'register'
-                ? 'bg-brand-500 text-surface-900 shadow-xs'
-                : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
+            className={`flex-1 py-2 rounded-sm text-caption-medium font-medium transition-all duration-fast ${
+              mode === 'register' ? 'bg-surface-0 text-surface-900 shadow-xs' : 'text-surface-500 hover:text-surface-700'
             }`}
           >
-            Create account
+            New account
           </button>
         </div>
 
         {error && (
-          <div className="mb-4 p-3 rounded-md bg-error-50 border border-error-200 text-body text-error-700">
-            {error}
-          </div>
+          <div className="p-3 rounded-md bg-error-50 border border-error-100 text-body text-error-700">{error}</div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-3">
           {mode === 'register' && (
             <>
-              <Input
-                label="Full name"
-                type="text"
-                required
-                value={form.name}
-                onChange={(e) => setForm((current) => ({ ...current, name: e.target.value }))}
-                placeholder="e.g. Adunni Okafor"
-              />
-              <Input
-                label="Phone number"
-                type="tel"
-                required
-                value={form.phone}
-                onChange={(e) => setForm((current) => ({ ...current, phone: e.target.value }))}
-                placeholder="e.g. 08012345678"
-              />
+              <Input label="Full name" required value={form.name}
+                onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Adunni Okafor" />
+              <Input label="Phone number" type="tel" required value={form.phone}
+                onChange={(e) => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="08012345678" />
+              <Input label="Email (optional)" type="email" value={form.email}
+                onChange={(e) => setForm(f => ({ ...f, email: e.target.value }))} placeholder="you@example.com" />
             </>
           )}
-
-          {mode === 'register' ? (
-            <Input
-              label="Email (optional)"
-              type="email"
-              value={form.email}
-              onChange={(e) => setForm((current) => ({ ...current, email: e.target.value }))}
-              placeholder="you@example.com"
-            />
-          ) : (
-            <Input
-              label="Phone number or email"
-              type="text"
-              required
-              value={form.identifier}
-              onChange={(e) => setForm((current) => ({ ...current, identifier: e.target.value }))}
-              placeholder="e.g. 08012345678 or you@example.com"
-            />
+          {mode === 'login' && (
+            <Input label="Phone or email" required value={form.identifier}
+              onChange={(e) => setForm(f => ({ ...f, identifier: e.target.value }))} placeholder="08012345678 or email" />
           )}
-
-          <Input
-            label="Password"
-            type="password"
-            required
-            minLength={8}
-            value={form.password}
-            onChange={(e) => setForm((current) => ({ ...current, password: e.target.value }))}
-            hint={mode === 'register' ? 'Use at least 8 characters.' : null}
-          />
-
-          <Button
-            variant="primary"
-            size="lg"
-            loading={loading}
-            className="w-full"
-          >
+          <Input label="Password" type="password" required minLength={8} value={form.password}
+            onChange={(e) => setForm(f => ({ ...f, password: e.target.value }))}
+            hint={mode === 'register' ? 'At least 8 characters' : undefined} />
+          <Button variant="primary" size="lg" loading={loading} className="w-full mt-2">
             {mode === 'register' ? 'Create account' : 'Sign in'}
           </Button>
         </form>
-      </Card>
-    </div>
-  );
-}
-
-function Metric({ label, value }) {
-  return (
-    <div>
-      <p className="text-caption text-surface-500 font-medium">{label}</p>
-      <p className="mt-1 text-body-medium font-semibold text-surface-800">{value}</p>
-    </div>
-  );
-}
-
-function PickupAddressCard({ title = 'Pickup address' }) {
-  return (
-    <Card variant="outlined" className="border border-surface-200 p-4 text-body">
-      <div className="flex items-start gap-3">
-        <div className="mt-0.5 text-brand-700">
-          <IconMapPin />
-        </div>
-        <div className="space-y-2">
-          <p className="text-body-medium font-semibold text-surface-900">{title}</p>
-          <p className="text-body text-surface-700">{PICKUP_DETAILS.lineOne}</p>
-          <p className="text-caption text-surface-500">{PICKUP_DETAILS.lineTwo}</p>
-        </div>
-      </div>
-    </Card>
-  );
-}
-
-function PortalActionCard({ mode, title, subtitle, priceText, note, signedIn, active, onOpen, onSignIn }) {
-  const isBuyNow = mode === 'buy-now';
-  return (
-    <Card
-      variant="outlined"
-      className={`border transition-all duration-fast ${
-        active ? 'border-brand-300 bg-brand-50/60 shadow-sm' : 'border-surface-200 bg-surface-0'
-      }`}
-    >
-      <div className="flex items-start justify-between gap-4">
-        <div className={`flex h-11 w-11 items-center justify-center rounded-full ${
-          isBuyNow ? 'bg-success-50 text-success-700' : 'bg-brand-100 text-brand-800'
-        }`}>
-          {isBuyNow ? <IconBox /> : <IconCalendar />}
-        </div>
-        <Badge status={isBuyNow ? 'success' : 'warning'}>{isBuyNow ? 'Ready now' : 'Plan ahead'}</Badge>
-      </div>
-      <h3 className="mt-4 text-title font-semibold text-surface-900">{title}</h3>
-      <p className="mt-2 text-body text-surface-600">{subtitle}</p>
-      <div className="mt-4 rounded-md bg-surface-50 p-3">
-        <p className="text-caption font-medium text-surface-500">Price</p>
-        <p className="mt-1 text-body-medium font-semibold text-surface-900">{priceText}</p>
-        <p className="mt-1 text-caption text-surface-500">{note}</p>
-      </div>
-      <div className="mt-5 flex gap-3">
-        <Button variant="secondary" size="md" className="flex-1" onClick={onOpen}>
-          {isBuyNow ? 'See what is ready now' : 'See upcoming batches'}
-        </Button>
-        <Button variant="primary" size="md" className="flex-1" onClick={onSignIn}>
-          {signedIn ? (isBuyNow ? 'Buy now' : 'Book now') : (isBuyNow ? 'Sign in to buy' : 'Sign in to book')}
-        </Button>
-      </div>
-    </Card>
-  );
-}
-
-function PortalLanding({ activeTab, signedIn, onPickMode, onSignIn }) {
-  return (
-    <div className="space-y-6">
-      <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-        <Card variant="default" className="border border-surface-200 bg-gradient-to-br from-surface-0 via-brand-50 to-surface-50">
-          <Badge status="warning">Fresh eggs, simple ordering</Badge>
-          <h2 className="mt-4 text-display font-bold text-surface-900 max-w-2xl">
-            Buy what is ready now, or lock in your upcoming batch before it arrives.
-          </h2>
-          <p className="mt-4 max-w-2xl text-body text-surface-600">
-            Choose the path that fits your need today. Buy-now orders use retail price and are approved for pickup after successful card payment. Upcoming batch bookings use wholesale price and hold your crates once payment starts.
-          </p>
-
-          <div className="mt-6 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-md border border-surface-200 bg-surface-0 p-4">
-              <div className="mb-2 text-brand-700"><IconBox /></div>
-              <p className="text-body-medium font-semibold text-surface-900">Buy now</p>
-              <p className="mt-1 text-caption text-surface-500">See only batches that are already received and ready to pickup.</p>
-            </div>
-            <div className="rounded-md border border-surface-200 bg-surface-0 p-4">
-              <div className="mb-2 text-brand-700"><IconCalendar /></div>
-              <p className="text-body-medium font-semibold text-surface-900">Book upcoming</p>
-              <p className="mt-1 text-caption text-surface-500">Reserve crates early at wholesale price before the batch lands.</p>
-            </div>
-            <div className="rounded-md border border-surface-200 bg-surface-0 p-4">
-              <div className="mb-2 text-brand-700"><IconClock /></div>
-              <p className="text-body-medium font-semibold text-surface-900">Quick next steps</p>
-              <p className="mt-1 text-caption text-surface-500">Pay by card or transfer. Card gives immediate payment result.</p>
-            </div>
-          </div>
-        </Card>
-
-        <div className="grid gap-4">
-          <PortalActionCard
-            mode="buy-now"
-            title="Buy eggs now"
-            subtitle="For eggs that are already available and can be picked up as soon as payment is approved."
-            priceText="Retail price"
-            note="Best for same-day or urgent pickup."
-            signedIn={signedIn}
-            active={activeTab === 'buy-now'}
-            onOpen={() => onPickMode('buy-now')}
-            onSignIn={() => onSignIn('buy-now')}
-          />
-          <PortalActionCard
-            mode="book-upcoming"
-            title="Book upcoming batch"
-            subtitle="For eggs that are still on the way. Reserve your crates early and pay the booking amount now."
-            priceText="Wholesale price"
-            note="Best for planned restock and larger orders."
-            signedIn={signedIn}
-            active={activeTab === 'book-upcoming'}
-            onOpen={() => onPickMode('book-upcoming')}
-            onSignIn={() => onSignIn('book-upcoming')}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PaymentSuccessModal({ result, onClose }) {
-  if (!result?.order) return null;
-  const { order, message } = result;
-  const isBuyNow = order.kind === 'BUY_NOW';
-  const title = isBuyNow ? 'Payment confirmed' : 'Booking confirmed';
-  const referenceLabel = isBuyNow ? 'Order number' : 'Booking number';
-
-  return (
-    <Modal title={title} open={true} onClose={onClose}>
-      <div className="space-y-4">
-        <div className="rounded-md border border-success-200 bg-success-50 p-4">
-          <div className="flex items-start gap-3">
-            <div className="mt-0.5 text-success-700"><IconCheck /></div>
-            <div>
-              <p className="text-body-medium font-semibold text-success-800">{message}</p>
-              <p className="mt-1 text-caption text-success-700">
-                Keep the {referenceLabel.toLowerCase()} below. You may need it when you come for pickup or when you contact the team.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <Card variant="outlined" className="border-2 border-brand-300 bg-brand-50 p-4">
-          <p className="text-caption font-medium uppercase tracking-wide text-brand-800">{referenceLabel}</p>
-          <p className="mt-2 text-display font-bold text-surface-900">{order.reference || '—'}</p>
-        </Card>
-
-        <Card variant="outlined" className="border border-surface-200 p-4 text-body">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Metric label="Batch" value={order.batch?.name || '—'} />
-            <Metric label="Egg type" value={order.eggTypeLabel || order.batch?.eggTypeLabel || '—'} />
-            <Metric label="Crates" value={`${fmt(order.quantity)} crates`} />
-            <Metric label="Amount paid" value={fmtMoney(order.amountPaid)} />
-            <Metric label="Payment remaining" value={fmtMoney(order.balance)} />
-            <Metric label="Expected batch date" value={fmtDate(order.expectedDate)} />
-            <Metric label="Pickup window start" value={fmtDateTime(order.pickupWindowStart)} />
-            <Metric label="Pickup window end" value={fmtDateTime(order.pickupWindowEnd)} />
-          </div>
-        </Card>
-
-        <Card variant="outlined" className="border border-info-200 bg-info-50 p-4">
-          <p className="text-body-medium font-semibold text-info-900">What to do next</p>
-          <div className="mt-3 space-y-2 text-body text-info-800">
-            {isBuyNow ? (
-              <>
-                <p>1. Your eggs are approved for pickup from today until the next 3 days.</p>
-                <p>2. Bring your order number when coming for pickup.</p>
-                <p>3. If someone else is picking up for you, share the order number with them.</p>
-              </>
-            ) : (
-              <>
-                <p>1. Your booking has been saved and your crates are held for you.</p>
-                <p>2. Keep your booking number safe for future reference.</p>
-                <p>3. When the batch arrives, you can use this booking number for pickup and support.</p>
-              </>
-            )}
-          </div>
-        </Card>
-
-        <PickupAddressCard title="Pickup address" />
-
-        <Button variant="primary" size="lg" onClick={onClose} className="w-full">
-          Done
-        </Button>
       </div>
     </Modal>
   );
 }
 
-function BatchCard({ batch, actionLabel, helperText, priceLabel, onAction, disabled, batchMode }) {
-  const primaryPrice = batchMode === 'buy-now' ? Number(batch.retailPrice) : Number(batch.wholesalePrice);
-  const primaryPriceLabel = batchMode === 'buy-now' ? 'Retail' : 'Wholesale';
+/* ═══════════════════════════════════════════════════════
+   BATCH CARD — unified, shows relevant info per status
+   ═══════════════════════════════════════════════════════ */
+function BatchCard({ batch, signedIn, onAction, onRequireAuth }) {
+  const isReady = batch.status === 'RECEIVED';
+  const price = isReady ? Number(batch.retailPrice) : Number(batch.wholesalePrice);
+  const priceLabel = isReady ? 'Retail' : 'Wholesale';
+  const available = isReady ? Number(batch.availableForSale || 0) : Number(batch.remainingAvailable || 0);
+  const total = isReady ? (Number(batch.totalReceived || 0) || available) : Number(batch.quantityAvailableForBooking || 0) || available;
+  const used = Math.max(0, total - available);
+  const soldOut = available <= 0;
+
+  function handleClick() {
+    if (!signedIn) { onRequireAuth(isReady ? 'buy-now' : 'book-upcoming'); return; }
+    onAction(batch);
+  }
+
+  const ctaLabel = soldOut
+    ? 'Sold out'
+    : signedIn
+      ? (isReady ? 'Buy now' : 'Book now')
+      : (isReady ? 'Sign in to buy now' : 'Sign in to book now');
 
   return (
-    <Card variant="outlined" className="border border-surface-200">
-      <div className="flex items-start justify-between gap-4 mb-4">
-        <div>
-          <p className="text-overline text-brand-600">{batch.eggTypeLabel || 'Regular Size Eggs'}</p>
-          <h3 className="mt-2 text-title text-surface-800">{batch.name}</h3>
-          <p className="mt-1 text-body text-surface-500">{helperText}</p>
+    <div className={`group relative bg-surface-0 border rounded-lg p-5 transition-all duration-fast hover:shadow-md ${
+      soldOut ? 'border-surface-200 opacity-60' : 'border-surface-200 hover:border-brand-300'
+    }`}>
+      {/* Status chip */}
+      <div className="flex items-center justify-between mb-3">
+        <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-caption-medium ${
+          isReady ? 'bg-success-50 text-success-700' : 'bg-brand-50 text-brand-700'
+        }`}>
+          <StatusDot tone={isReady ? 'success' : 'warning'} />
+          {isReady ? 'Ready for pickup' : 'Arriving soon'}
         </div>
-        <div className="text-right flex-shrink-0">
-          <p className="text-caption text-surface-500">{priceLabel}</p>
-          <p className="mt-2 text-display text-surface-900">{fmtMoney(primaryPrice)}</p>
-          <p className="text-caption text-surface-600">{primaryPriceLabel}</p>
-          {batchMode === 'book-upcoming' && (
-            <p className="mt-1 text-body-medium font-semibold text-warning-700">{fmtMoney(batch.retailPrice)} retail now</p>
-          )}
-        </div>
-      </div>
-
-      <div className={`rounded-md ${batchMode === 'buy-now' ? 'grid grid-cols-2' : 'grid grid-cols-3'} gap-3 bg-surface-50 p-3 mb-4`}>
-        {batchMode === 'buy-now' ? (
-          <>
-            <Metric label="Available to buy" value={`${fmt(batch.availableForSale)} crates`} />
-            <Metric label="Received" value={fmtDate(batch.receivedDate || batch.expectedDate)} />
-          </>
-        ) : (
-          <>
-            <Metric label="Available to book" value={`${fmt(batch.remainingAvailable)} crates`} />
-            <Metric label="Already booked" value={`${fmt(batch.totalBooked)} crates`} />
-            <Metric label="Expected date" value={fmtDate(batch.expectedDate)} />
-          </>
+        {!isReady && batch.expectedDate && (
+          <span className="flex items-center gap-1 text-caption text-surface-500">
+            {Icon.clock} {fmtDate(batch.expectedDate)}
+          </span>
         )}
       </div>
 
-      <Button
-        variant={disabled ? 'secondary' : 'primary'}
-        size="lg"
-        onClick={() => onAction(batch)}
-        disabled={disabled}
-        className="w-full"
-      >
-        {actionLabel}
-      </Button>
-    </Card>
-  );
-}
+      {/* Batch name + egg type */}
+      <h3 className="text-heading text-surface-900">{batch.name}</h3>
+      <p className="text-caption text-surface-500 mt-0.5">{batch.eggTypeLabel || 'Eggs'}</p>
 
-function PaymentMethodSelector({ paymentMethod, setPaymentMethod }) {
-  return (
-    <div className="grid gap-3 md:grid-cols-2">
-      <button
-        type="button"
-        onClick={() => setPaymentMethod('CARD')}
-        className={`p-4 rounded-md border transition-all duration-fast ${
-          paymentMethod === 'CARD'
-            ? 'border-brand-300 bg-brand-50'
-            : 'border-surface-200 bg-surface-0 hover:border-brand-200'
-        }`}
-      >
-        <div className="flex items-start gap-3">
-          <IconCreditCard />
-          <div className="text-left">
-            <p className="text-body-medium font-semibold text-surface-800">Pay online with card</p>
-            <p className="mt-1 text-caption text-surface-500">Pay now and get an immediate payment result.</p>
+      {/* Price */}
+      <div className="mt-4 flex items-end justify-between">
+        <div>
+          <p className="text-metric text-surface-900">{fmtMoney(price)}</p>
+          <p className="text-caption text-surface-500">{priceLabel} per crate</p>
+        </div>
+        {!isReady && batch.retailPrice && Number(batch.retailPrice) !== price && (
+          <div className="text-right">
+            <p className="text-caption text-surface-400 line-through">{fmtMoney(batch.retailPrice)}</p>
+            <p className="text-caption-medium text-success-700">
+              Save {fmtMoney(Number(batch.retailPrice) - price)}
+            </p>
           </div>
-        </div>
-      </button>
-      <button
-        type="button"
-        onClick={() => setPaymentMethod('TRANSFER')}
-        className={`p-4 rounded-md border transition-all duration-fast ${
-          paymentMethod === 'TRANSFER'
-            ? 'border-brand-300 bg-brand-50'
-            : 'border-surface-200 bg-surface-0 hover:border-brand-200'
-        }`}
-      >
-        <div className="flex items-start gap-3">
-          <IconBank />
-          <div className="text-left">
-            <p className="text-body-medium font-semibold text-surface-800">Pay by transfer</p>
-            <p className="mt-1 text-caption text-surface-500">Your crates stay held while admin confirms the transfer.</p>
-          </div>
-        </div>
-      </button>
-    </div>
-  );
-}
-
-function TransferInstructions({ amount, title = 'Transfer details' }) {
-  return (
-    <div className="rounded-md border border-warning-200 bg-warning-50 p-4">
-      <p className="text-body-medium font-semibold text-surface-800">{title}</p>
-      <div className="mt-3 space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-body text-surface-600">Bank name</span>
-          <span className="text-body-medium font-semibold text-surface-800">{TRANSFER_DETAILS.bankName}</span>
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="text-body text-surface-600">Account number</span>
-          <span className="text-body-medium font-semibold text-surface-800">{TRANSFER_DETAILS.accountNumber}</span>
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="text-body text-surface-600">Account name</span>
-          <span className="text-body-medium font-semibold text-surface-800">{TRANSFER_DETAILS.accountName}</span>
-        </div>
-        <div className="flex items-center justify-between pt-2 border-t border-warning-200">
-          <span className="text-body font-semibold text-surface-700">Amount to transfer</span>
-          <span className="text-title font-semibold text-success-700">{fmtMoney(amount)}</span>
-        </div>
+        )}
       </div>
+
+      {/* Availability */}
+      <AvailabilityBar used={used} total={total > 0 ? total : 1} className="mt-4" />
+
+      {/* CTA */}
+      <button
+        onClick={handleClick}
+        disabled={soldOut}
+        className={`mt-4 w-full flex items-center justify-center gap-2 py-2.5 rounded-md text-body-medium font-medium transition-all duration-fast ${
+          soldOut
+            ? 'bg-surface-100 text-surface-400 cursor-not-allowed'
+            : isReady
+              ? 'bg-brand-500 text-surface-900 hover:bg-brand-400 active:bg-brand-600 shadow-xs'
+              : 'bg-surface-900 text-surface-0 hover:bg-surface-800 active:bg-surface-700 shadow-xs'
+        }`}
+      >
+        {ctaLabel}
+        {!soldOut && <span className="opacity-70">{Icon.arrowRight}</span>}
+      </button>
     </div>
   );
 }
 
-function BookingCheckoutModal({ batch, profile, policy, onClose, onFinished }) {
+/* ═══════════════════════════════════════════════════════
+   CHECKOUT FLOW — unified, step-based
+   ═══════════════════════════════════════════════════════ */
+function CheckoutModal({ batch, profile, policy, onClose, onFinished }) {
+  const isReady = batch.status === 'RECEIVED';
+  const unitPrice = isReady ? Number(batch.retailPrice) : Number(batch.wholesalePrice);
+  const minPaymentPercent = isReady ? 100 : Number(policy?.bookingMinimumPaymentPercent || 80);
+
+  const orderLimitProfile = profile?.orderLimitProfile || null;
+  const availableQty = isReady ? Number(batch.availableForSale || 0) : Number(batch.remainingAvailable || 0);
+  const perOrderLimit = Number(orderLimitProfile?.currentPerOrderLimit || policy?.maxBookingCratesPerOrder || 100);
+  const maxQty = Math.min(availableQty, perOrderLimit);
+
+  const [step, setStep] = useState('quantity');
   const [quantity, setQuantity] = useState('');
   const [amountToPay, setAmountToPay] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('CARD');
-  const [checkoutEmail, setCheckoutEmail] = useState(profile?.user?.email || '');
+  const [checkoutEmail, setCheckoutEmail] = useState(profile?.user?.email || profile?.customer?.email || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(null);
 
-  const minPaymentPercent = Number(policy?.bookingMinimumPaymentPercent || 80);
-  const orderLimitProfile = profile?.orderLimitProfile || null;
-  const availableToBook = Number(batch.remainingAvailable || 0);
-  const currentPerOrderLimit = Number(orderLimitProfile?.currentPerOrderLimit || policy?.maxBookingCratesPerOrder || 100);
-  const maxQty = Math.min(availableToBook, currentPerOrderLimit);
-  const quantityValue = parseInt(quantity, 10) || 0;
-  const orderValue = quantityValue * Number(batch.wholesalePrice);
+  useEffect(() => {
+    setCheckoutEmail(profile?.user?.email || profile?.customer?.email || '');
+  }, [profile?.user?.email, profile?.customer?.email]);
+
+  const qtyVal = parseInt(quantity, 10) || 0;
+  const orderValue = qtyVal * unitPrice;
   const minPayment = orderValue * (minPaymentPercent / 100);
-  const payNow = Number(amountToPay || 0);
-  const balanceLeft = Math.max(0, orderValue - payNow);
-  const quantityError = useMemo(() => {
+  const payNow = isReady ? orderValue : (Number(amountToPay) || 0);
+  const balance = Math.max(0, orderValue - payNow);
+
+  const qtyError = useMemo(() => {
     if (!quantity) return '';
-    if (!Number.isInteger(quantityValue) || quantityValue < 1) {
-      return 'Enter at least 1 crate.';
-    }
-    if (quantityValue > availableToBook) {
-      return `Only ${fmt(availableToBook)} crates are still available to book.`;
-    }
-    if (quantityValue > currentPerOrderLimit) {
+    if (!Number.isInteger(qtyVal) || qtyVal < 1) return 'Enter at least 1 crate.';
+    if (qtyVal > availableQty) return `Only ${fmt(availableQty)} crates available.`;
+    if (qtyVal > perOrderLimit) {
       return orderLimitProfile?.isUsingEarlyOrderLimit
-        ? `Your first ${Number(orderLimitProfile.earlyOrderLimitCount || 0)} orders can be up to ${fmt(currentPerOrderLimit)} crates each.`
-        : `You can book up to ${fmt(currentPerOrderLimit)} crates in one order.`;
+        ? `Limit: ${fmt(perOrderLimit)} crates for your first ${orderLimitProfile.earlyOrderLimitCount} orders.`
+        : `Maximum ${fmt(perOrderLimit)} crates per order.`;
     }
     return '';
-  }, [quantity, quantityValue, availableToBook, currentPerOrderLimit, orderLimitProfile]);
+  }, [quantity, qtyVal, availableQty, perOrderLimit, orderLimitProfile]);
 
-  const paymentError = useMemo(() => {
-    if (!amountToPay || quantityError) return '';
-    if (payNow < minPayment) {
-      return `You need to pay at least ${fmtMoney(minPayment)} now to continue.`;
-    }
-    if (payNow > orderValue) {
-      return 'Amount to pay now cannot be more than the full booking value.';
-    }
+  const payError = useMemo(() => {
+    if (isReady || !amountToPay) return '';
+    if (payNow < minPayment) return `Minimum payment is ${fmtMoney(minPayment)} (${minPaymentPercent}%).`;
+    if (payNow > orderValue) return 'Cannot exceed the order value.';
     return '';
-  }, [amountToPay, payNow, minPayment, orderValue, quantityError]);
+  }, [isReady, amountToPay, payNow, minPayment, orderValue, minPaymentPercent]);
 
-  async function handleSubmit(event) {
-    event.preventDefault();
-    if (quantityError || paymentError) {
-      setError(quantityError || paymentError);
-      return;
-    }
+  function goToPayment() {
+    if (qtyError || qtyVal < 1) return;
+    if (isReady) { setAmountToPay(String(orderValue)); }
+    setStep('payment');
+  }
+
+  async function handleSubmit() {
+    if (qtyError || (!isReady && payError)) return;
     setLoading(true);
     setError('');
     try {
-      const response = await api.post('/portal/checkouts', {
-        checkoutType: 'BOOK_UPCOMING',
+      const body = {
+        checkoutType: isReady ? 'BUY_NOW' : 'BOOK_UPCOMING',
         batchId: batch.id,
-        quantity: quantityValue,
-        amountToPay: payNow,
+        quantity: qtyVal,
         paymentMethod,
-        checkoutEmail: paymentMethod === 'CARD' ? checkoutEmail.trim() : undefined,
-      });
+        ...(isReady ? {} : { amountToPay: payNow }),
+        ...(paymentMethod === 'CARD' ? { checkoutEmail: checkoutEmail.trim() } : {}),
+      };
+      const res = await api.post('/portal/checkouts', body);
 
-      if (paymentMethod === 'CARD' && response.authorizationUrl) {
-        window.location.assign(response.authorizationUrl);
+      if (paymentMethod === 'CARD' && res.authorizationUrl) {
+        const normalizedEmail = checkoutEmail.trim().toLowerCase();
+        if (normalizedEmail) {
+          setProfile((current) => current ? ({
+            ...current,
+            user: current.user ? { ...current.user, email: normalizedEmail } : current.user,
+            customer: current.customer ? { ...current.customer, email: normalizedEmail } : current.customer,
+          }) : current);
+
+          const storedUser = localStorage.getItem('user');
+          if (storedUser) {
+            try {
+              const parsed = JSON.parse(storedUser);
+              localStorage.setItem('user', JSON.stringify({ ...parsed, email: normalizedEmail }));
+            } catch {
+              // Ignore malformed local user state
+            }
+          }
+        }
+        window.location.assign(res.authorizationUrl);
         return;
       }
-
-      setSuccess(response);
+      setSuccess(res);
+      setStep('success');
     } catch (err) {
-      setError(err.error || 'Could not start this booking payment.');
+      setError(err.error || 'Something went wrong. Please try again.');
     } finally {
       setLoading(false);
     }
   }
 
-  if (success) {
-    return (
-      <Modal title="Booking hold created" open={true} onClose={onClose}>
-        <div className="space-y-4">
-          <div className="rounded-md border border-success-200 bg-success-50 p-3 text-body text-success-700">
-            {success.message}
-          </div>
-          <Card variant="outlined" className="border border-surface-200 p-4 text-body">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between"><span className="text-surface-600">Batch</span><span className="font-semibold text-surface-900">{success.checkout.batch.name}</span></div>
-              <div className="flex items-center justify-between"><span className="text-surface-600">Egg type</span><span className="font-semibold text-surface-900">{success.checkout.batch.eggTypeLabel}</span></div>
-              <div className="flex items-center justify-between"><span className="text-surface-600">Crates held</span><span className="font-semibold text-surface-900">{success.checkout.quantity}</span></div>
-              <div className="flex items-center justify-between"><span className="text-surface-600">Booking value</span><span className="font-semibold text-surface-900">{fmtMoney(success.checkout.orderValue)}</span></div>
-              <div className="flex items-center justify-between"><span className="text-surface-600">Paying now</span><span className="font-semibold text-success-700">{fmtMoney(success.checkout.amountToPay)}</span></div>
-              <div className="flex items-center justify-between"><span className="text-surface-600">Balance left</span><span className="font-semibold text-surface-900">{fmtMoney(success.checkout.balanceAfterPayment)}</span></div>
-            </div>
-          </Card>
-          <TransferInstructions amount={success.checkout.amountToPay} />
-          <Button variant="primary" size="lg" onClick={() => { onFinished(); onClose(); }} className="w-full">
-            Done
-          </Button>
-        </div>
-      </Modal>
-    );
+  function continueFromPayment() {
+    if (paymentMethod === 'TRANSFER') {
+      setStep('transfer');
+      return;
+    }
+    handleSubmit();
   }
 
-  return (
-    <Modal title="Book upcoming batch" open={true} onClose={onClose}>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="rounded-md border border-info-200 bg-info-50 p-3 text-body text-info-700">
-          Your crates will be held as soon as you continue. Card payment confirms the payment immediately. Transfer keeps the hold while admin confirms the transfer.
-        </div>
+  if (step === 'success' && success) {
+    const co = success.checkout || success.order || {};
+    const reference = co.reference || success.order?.reference;
+    const nextSteps = paymentMethod === 'TRANSFER'
+      ? [
+          'We have reserved your crates and sent your order to the team for transfer review.',
+          'The team will first confirm they have seen the transfer.',
+          'Final confirmation happens when the matching bank statement line is linked.',
+          'You can track the status in My Orders.',
+        ]
+      : isReady
+        ? [
+            'Your payment is confirmed.',
+            'Come for pickup from today until the next 3 days.',
+            'Show your order number when you arrive.',
+          ]
+        : [
+            'Your payment is confirmed and your booking is saved.',
+            'Your crates remain held for you.',
+            'Watch My Orders for batch arrival and pickup updates.',
+          ];
 
-        <Card variant="outlined" className="border border-surface-200 p-4 text-body">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between"><span className="text-surface-600">Batch</span><span className="font-semibold text-surface-900">{batch.name}</span></div>
-            <div className="flex items-center justify-between"><span className="text-surface-600">Egg type</span><span className="font-semibold text-surface-900">{batch.eggTypeLabel}</span></div>
-            <div className="flex items-center justify-between"><span className="text-surface-600">Expected date</span><span className="font-semibold text-surface-900">{fmtDate(batch.expectedDate)}</span></div>
-            <div className="flex items-center justify-between"><span className="text-surface-600">Available to book</span><span className="font-semibold text-surface-900">{fmt(batch.remainingAvailable)} crates</span></div>
-            {orderLimitProfile?.isUsingEarlyOrderLimit && (
-              <div className="mt-2 rounded-md border border-warning-200 bg-warning-50 px-3 py-2 text-caption text-warning-800">
-                Your first {Number(orderLimitProfile.earlyOrderLimitCount || 0)} orders can be up to {Number(orderLimitProfile.currentPerOrderLimit || 0)} crates each. You have {Number(orderLimitProfile.earlyOrdersRemaining || 0)} order{Number(orderLimitProfile.earlyOrdersRemaining || 0) === 1 ? '' : 's'} left at this limit.
+    return (
+      <Modal title={paymentMethod === 'TRANSFER' ? 'Transfer submitted' : 'Payment confirmed'} open={true} onClose={() => { onFinished('orders'); onClose(); }}>
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 p-4 rounded-lg bg-success-50 border border-success-100">
+            <div className="mt-0.5 text-success-700 shrink-0">{Icon.check}</div>
+            <div>
+              <p className="text-body-medium font-semibold text-success-800">{success.message || 'Order confirmed'}</p>
+              <p className="text-caption text-success-700 mt-1">Your details are saved in My Orders so you can come back to this anytime.</p>
+            </div>
+          </div>
+
+          {reference && (
+            <div className="text-center py-4 px-4 rounded-lg border-2 border-brand-200 bg-brand-50">
+              <p className="text-caption-medium text-brand-700 uppercase tracking-wider">{isReady ? 'Order number' : 'Booking number'}</p>
+              <p className="text-metric-lg text-surface-900 mt-1 font-mono">{reference}</p>
+              <p className="text-caption text-surface-500 mt-2">Keep this number for pickup and support.</p>
+            </div>
+          )}
+
+          <div className="rounded-lg border border-surface-200 divide-y divide-surface-100">
+            <div className="p-4 grid grid-cols-2 gap-3">
+              <Metric label="Batch" value={co.batch?.name || batch.name} />
+              <Metric label="Egg type" value={co.batch?.eggTypeLabel || batch.eggTypeLabel || '—'} />
+              <Metric label="Crates" value={`${fmt(co.quantity || qtyVal)}`} />
+              <Metric label={paymentMethod === 'TRANSFER' ? 'Amount to confirm' : 'Amount paid'} value={fmtMoney(co.amountToPay || co.orderValue || orderValue)} />
+            </div>
+            {!isReady && (
+              <div className="p-4 grid grid-cols-2 gap-3">
+                <Metric label="Balance remaining" value={fmtMoney(co.balanceAfterPayment ?? balance)} />
+                <Metric label="Expected date" value={fmtDate(batch.expectedDate)} />
               </div>
             )}
           </div>
-        </Card>
 
-        {error && (
-          <div className="rounded-md border border-error-200 bg-error-50 p-3 text-body text-error-700">
-            {error}
-          </div>
-        )}
-
-        <Input
-          label="How many crates do you want?"
-          type="number"
-          min="1"
-          max={maxQty}
-          required
-          value={quantity}
-          onChange={(e) => setQuantity(e.target.value)}
-          hint={`You can book up to ${maxQty} crates in this step.`}
-        />
-
-        {quantityError ? (
-          <div className="rounded-md border border-warning-200 bg-warning-50 p-3 text-body text-warning-800">
-            {quantityError}
-          </div>
-        ) : quantityValue > 0 ? (
-          <div className="rounded-md border border-success-200 bg-success-50 p-3 text-body text-success-800">
-            {fmt(quantityValue)} crates are available for this booking.
-          </div>
-        ) : null}
-
-        {quantityValue > 0 && (
-          <Card variant="tinted" tint="bg-success-50" className="p-4 text-body">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between"><span className="text-surface-600">Booking value</span><span className="font-semibold text-surface-900">{fmtMoney(orderValue)}</span></div>
-              <div className="flex items-center justify-between"><span className="text-surface-600">Minimum payment now</span><span className="font-semibold text-surface-900">{fmtMoney(minPayment)}</span></div>
+          <div className="rounded-lg border border-surface-200 bg-surface-50 p-4">
+            <p className="text-body-medium font-semibold text-surface-800">What to do next</p>
+            <div className="mt-3 space-y-2 text-body text-surface-700">
+              {nextSteps.map((item) => (
+                <div key={item} className="flex items-start gap-2">
+                  <span className="mt-1 text-brand-700 shrink-0">{Icon.check}</span>
+                  <span>{item}</span>
+                </div>
+              ))}
             </div>
-          </Card>
-        )}
-
-        <Input
-          label="How much do you want to pay now?"
-          type="number"
-          min={minPayment || 0}
-          max={orderValue || undefined}
-          step="0.01"
-          required
-          value={amountToPay}
-          onChange={(e) => setAmountToPay(e.target.value)}
-          hint={`Minimum is ${minPaymentPercent}% of the booking value.`}
-        />
-
-        {paymentError ? (
-          <div className="rounded-md border border-warning-200 bg-warning-50 p-3 text-body text-warning-800">
-            {paymentError}
           </div>
-        ) : null}
 
-        {payNow > 0 && (
-          <Card variant="outlined" className="border border-surface-200 p-4 text-body">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between"><span className="text-surface-600">Paying now</span><span className="font-semibold text-surface-900">{fmtMoney(payNow)}</span></div>
-              <div className="flex items-center justify-between"><span className="text-surface-600">Balance left after this payment</span><span className="font-semibold text-surface-900">{fmtMoney(balanceLeft)}</span></div>
+          <div className="flex items-start gap-3 p-4 rounded-lg border border-surface-200 bg-surface-50">
+            <span className="text-brand-700 mt-0.5 shrink-0">{Icon.mapPin}</span>
+            <div>
+              <p className="text-body-medium font-semibold text-surface-800">Pickup location</p>
+              <p className="text-caption text-surface-600 mt-1">{PICKUP_DETAILS.lineOne}</p>
+              <p className="text-caption text-surface-500 mt-0.5">{PICKUP_DETAILS.lineTwo}</p>
             </div>
-          </Card>
-        )}
-
-        <div>
-          <p className="text-body-medium font-semibold text-surface-700 mb-3">Choose payment method</p>
-          <PaymentMethodSelector paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod} />
-        </div>
-
-        {paymentMethod === 'TRANSFER' && payNow > 0 && (
-          <TransferInstructions amount={payNow} title="Transfer to this account after you continue" />
-        )}
-
-        {paymentMethod === 'CARD' && (
-          <Input
-            label="Email for card payment"
-            type="email"
-            required
-            value={checkoutEmail}
-            onChange={(e) => setCheckoutEmail(e.target.value)}
-            placeholder="you@example.com"
-            hint="Paystack needs a real email address for card checkout. You can type one here even if your portal account was created without email."
-          />
-        )}
-
-        <div className="flex gap-3 pt-4">
-          <Button variant="secondary" size="lg" onClick={onClose} className="flex-1">
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            size="lg"
-            loading={loading}
-            disabled={quantityValue < 1 || payNow <= 0 || Boolean(quantityError) || Boolean(paymentError)}
-            className="flex-1"
-          >
-            {paymentMethod === 'CARD' ? 'Continue to card payment' : 'Hold crates and pay by transfer'}
-          </Button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-
-function BuyNowCheckoutModal({ batch, profile, policy, onClose, onFinished }) {
-  const [quantity, setQuantity] = useState('1');
-  const [paymentMethod, setPaymentMethod] = useState('CARD');
-  const [checkoutEmail, setCheckoutEmail] = useState(profile?.user?.email || '');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState(null);
-
-  const quantityValue = parseInt(quantity, 10) || 0;
-  const unitPrice = Number(batch.retailPrice);
-  const orderLimitProfile = profile?.orderLimitProfile || null;
-  const availableToBuy = Number(batch.availableForSale || 0);
-  const currentPerOrderLimit = Number(orderLimitProfile?.currentPerOrderLimit || policy?.maxBookingCratesPerOrder || 100);
-  const maxQty = Math.min(availableToBuy, currentPerOrderLimit);
-  const orderValue = quantityValue * unitPrice;
-  const quantityError = useMemo(() => {
-    if (!quantity) return '';
-    if (!Number.isInteger(quantityValue) || quantityValue < 1) {
-      return 'Enter at least 1 crate.';
-    }
-    if (quantityValue > availableToBuy) {
-      return `Only ${fmt(availableToBuy)} crates are still available to buy.`;
-    }
-    if (quantityValue > currentPerOrderLimit) {
-      return orderLimitProfile?.isUsingEarlyOrderLimit
-        ? `Your first ${Number(orderLimitProfile.earlyOrderLimitCount || 0)} orders can be up to ${fmt(currentPerOrderLimit)} crates each.`
-        : `You can buy up to ${fmt(currentPerOrderLimit)} crates in one order.`;
-    }
-    return '';
-  }, [quantity, quantityValue, availableToBuy, currentPerOrderLimit, orderLimitProfile]);
-
-  async function handleSubmit(event) {
-    event.preventDefault();
-    if (quantityError) {
-      setError(quantityError);
-      return;
-    }
-    setLoading(true);
-    setError('');
-    try {
-      const response = await api.post('/portal/checkouts', {
-        checkoutType: 'BUY_NOW',
-        batchId: batch.id,
-        quantity: quantityValue,
-        paymentMethod,
-        checkoutEmail: paymentMethod === 'CARD' ? checkoutEmail.trim() : undefined,
-      });
-
-      if (paymentMethod === 'CARD' && response.authorizationUrl) {
-        window.location.assign(response.authorizationUrl);
-        return;
-      }
-
-      setSuccess(response);
-    } catch (err) {
-      setError(err.error || 'Could not start this buy-now payment.');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  if (success) {
-    return (
-      <Modal title="Crates held for transfer" open={true} onClose={onClose}>
-        <div className="space-y-4">
-          <div className="rounded-md border border-success-200 bg-success-50 p-3 text-body text-success-700">
-            {success.message}
           </div>
-          <Card variant="outlined" className="border border-surface-200 p-4 text-body">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between"><span className="text-surface-600">Batch</span><span className="font-semibold text-surface-900">{success.checkout.batch.name}</span></div>
-              <div className="flex items-center justify-between"><span className="text-surface-600">Egg type</span><span className="font-semibold text-surface-900">{success.checkout.batch.eggTypeLabel}</span></div>
-              <div className="flex items-center justify-between"><span className="text-surface-600">Crates held</span><span className="font-semibold text-surface-900">{success.checkout.quantity}</span></div>
-              <div className="flex items-center justify-between"><span className="text-surface-600">Total to pay</span><span className="font-semibold text-success-700">{fmtMoney(success.checkout.amountToPay)}</span></div>
-            </div>
-          </Card>
-          <TransferInstructions amount={success.checkout.amountToPay} />
-          <div className="rounded-md border border-info-200 bg-info-50 p-3 text-body text-info-700">
-            Once the transfer is confirmed, your eggs will be approved for pickup from today until the next 3 days.
-          </div>
-          <Button variant="primary" size="lg" onClick={() => { onFinished(); onClose(); }} className="w-full">
+
+          <Button variant="primary" size="lg" className="w-full" onClick={() => { onFinished('orders'); onClose(); }}>
             Done
           </Button>
         </div>
@@ -849,115 +545,248 @@ function BuyNowCheckoutModal({ batch, profile, policy, onClose, onFinished }) {
     );
   }
 
+  if (step === 'transfer') {
+    return (
+      <Modal title={isReady ? 'Make your transfer' : 'Make this booking transfer'} open={true} onClose={onClose}>
+        <div className="space-y-4">
+          {error && (
+            <div className="p-3 rounded-md bg-error-50 border border-error-100 text-body text-error-700">{error}</div>
+          )}
+
+          <div className="rounded-lg border border-warning-200 bg-warning-50 p-4 space-y-3">
+            <p className="text-body-medium font-semibold text-surface-800">Transfer to this account</p>
+            <div className="space-y-2 text-body">
+              {[
+                ['Bank', TRANSFER_DETAILS.bankName],
+                ['Account number', TRANSFER_DETAILS.accountNumber],
+                ['Account name', TRANSFER_DETAILS.accountName],
+              ].map(([k, v]) => (
+                <div key={k} className="flex justify-between gap-4">
+                  <span className="text-surface-600">{k}</span>
+                  <span className="font-semibold text-surface-800 text-right">{v}</span>
+                </div>
+              ))}
+              <div className="flex justify-between pt-2 border-t border-warning-200">
+                <span className="font-semibold text-surface-700">Amount</span>
+                <span className="text-heading font-bold text-success-700">{fmtMoney(payNow)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-surface-200 bg-surface-50 p-4">
+            <p className="text-body-medium font-semibold text-surface-800">Before you continue</p>
+            <div className="mt-3 space-y-2 text-body text-surface-700">
+              <div className="flex items-start gap-2">
+                <span className="mt-1 text-brand-700 shrink-0">{Icon.check}</span>
+                <span>Make the transfer from your bank app or bank branch first.</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="mt-1 text-brand-700 shrink-0">{Icon.check}</span>
+                <span>When you click <span className="font-semibold">I have made the transfer</span>, we will reserve these crates for you and send the order to the team for review.</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="mt-1 text-brand-700 shrink-0">{Icon.check}</span>
+                <span>The final financial confirmation still depends on the bank statement record.</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <Button variant="secondary" size="lg" onClick={() => setStep('payment')} className="flex-1">Back</Button>
+            <Button variant="primary" size="lg" loading={loading} className="flex-1" onClick={handleSubmit}>
+              I have made the transfer
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
+  if (step === 'payment') {
+    return (
+      <Modal title={isReady ? 'Confirm payment' : 'Payment details'} open={true} onClose={onClose}>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between p-3 rounded-lg bg-surface-50 border border-surface-100">
+            <div>
+              <p className="text-body-medium text-surface-800">{batch.name} · {qtyVal} crate{qtyVal !== 1 ? 's' : ''}</p>
+              <p className="text-caption text-surface-500">{batch.eggTypeLabel || 'Eggs'}</p>
+            </div>
+            <p className="text-heading font-bold text-surface-900">{fmtMoney(orderValue)}</p>
+          </div>
+
+          {error && (
+            <div className="p-3 rounded-md bg-error-50 border border-error-100 text-body text-error-700">{error}</div>
+          )}
+
+          {!isReady && (
+            <>
+              <Input
+                label="How much are you paying now?"
+                type="number"
+                min={minPayment || 0}
+                max={orderValue}
+                step="0.01"
+                required
+                value={amountToPay}
+                onChange={(e) => setAmountToPay(e.target.value)}
+                hint={`Minimum ${minPaymentPercent}% = ${fmtMoney(minPayment)}`}
+              />
+              {payError && (
+                <p className="text-caption text-error-600">{payError}</p>
+              )}
+              {payNow > 0 && !payError && (
+                <div className="flex justify-between p-3 rounded-md bg-surface-50 text-body">
+                  <span className="text-surface-600">Balance after this payment</span>
+                  <span className="font-semibold text-surface-800">{fmtMoney(balance)}</span>
+                </div>
+              )}
+            </>
+          )}
+
+          <div>
+            <p className="text-body-medium font-medium text-surface-700 mb-2">Payment method</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {[
+                { key: 'CARD', icon: Icon.creditCard, label: 'Pay with card', desc: 'Instant payment and confirmation' },
+                { key: 'TRANSFER', icon: Icon.bank, label: 'Pay by transfer', desc: 'You will transfer first, then notify us here' },
+              ].map(({ key, icon, label, desc }) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setPaymentMethod(key)}
+                  className={`flex items-start gap-3 p-3 rounded-md border text-left transition-all duration-fast ${
+                    paymentMethod === key
+                      ? 'border-brand-300 bg-brand-50 ring-1 ring-brand-200'
+                      : 'border-surface-200 hover:border-surface-300'
+                  }`}
+                >
+                  <span className={paymentMethod === key ? 'text-brand-700' : 'text-surface-400'}>{icon}</span>
+                  <div>
+                    <p className="text-body-medium font-medium text-surface-800">{label}</p>
+                    <p className="text-caption text-surface-500">{desc}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {paymentMethod === 'CARD' && (
+            <Input
+              label="Email for payment receipt"
+              type="email"
+              required
+              value={checkoutEmail}
+              onChange={(e) => setCheckoutEmail(e.target.value)}
+              placeholder="you@example.com"
+              hint="Paystack sends the payment receipt to this email."
+            />
+          )}
+
+          {paymentMethod === 'TRANSFER' && (
+            <div className="p-3 rounded-md bg-warning-50 border border-warning-100 text-caption text-warning-800">
+              In the next step, we'll show the transfer details. Your crates are only held after you click <span className="font-semibold">I have made the transfer</span>.
+            </div>
+          )}
+
+          <div className="flex gap-3 pt-2">
+            <Button variant="secondary" size="lg" onClick={() => setStep('quantity')} className="flex-1">Back</Button>
+            <Button
+              variant="primary" size="lg" loading={loading} className="flex-1"
+              disabled={(!isReady && (payNow <= 0 || Boolean(payError))) || (paymentMethod === 'CARD' && !checkoutEmail.trim())}
+              onClick={continueFromPayment}
+            >
+              {paymentMethod === 'CARD' ? 'Continue to card payment' : 'Continue'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
   return (
-    <Modal title="Buy eggs now" open={true} onClose={onClose}>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="rounded-md border border-warning-200 bg-warning-50 p-3 text-body text-warning-800">
-          Your crates will be held as soon as you continue. Card payment approves the order for pickup immediately. Transfer keeps the crates held while admin confirms the transfer.
+    <Modal title={isReady ? 'How many crates?' : 'Book your crates'} open={true} onClose={onClose}>
+      <div className="space-y-4">
+        <div className="flex items-start justify-between p-4 rounded-lg bg-surface-50 border border-surface-100">
+          <div>
+            <p className="text-heading text-surface-900">{batch.name}</p>
+            <p className="text-caption text-surface-500">{batch.eggTypeLabel || 'Eggs'}</p>
+            {!isReady && batch.expectedDate && (
+              <p className="flex items-center gap-1 text-caption text-surface-500 mt-1">
+                {Icon.clock} Expected {fmtDate(batch.expectedDate)}
+              </p>
+            )}
+          </div>
+          <div className="text-right">
+            <p className="text-metric text-surface-900">{fmtMoney(unitPrice)}</p>
+            <p className="text-caption text-surface-500">{isReady ? 'Retail' : 'Wholesale'} / crate</p>
+          </div>
         </div>
 
-        <Card variant="outlined" className="border border-surface-200 p-4 text-body">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between"><span className="text-surface-600">Batch</span><span className="font-semibold text-surface-900">{batch.name}</span></div>
-            <div className="flex items-center justify-between"><span className="text-surface-600">Egg type</span><span className="font-semibold text-surface-900">{batch.eggTypeLabel}</span></div>
-            <div className="flex items-center justify-between"><span className="text-surface-600">Available to buy</span><span className="font-semibold text-surface-900">{fmt(batch.availableForSale)} crates</span></div>
-            <div className="flex items-center justify-between"><span className="text-surface-600">Received</span><span className="font-semibold text-surface-900">{fmtDate(batch.receivedDate || batch.expectedDate)}</span></div>
-          </div>
-        </Card>
-
         {orderLimitProfile?.isUsingEarlyOrderLimit && (
-          <div className="rounded-md border border-warning-200 bg-warning-50 p-3 text-body text-warning-800">
-            Your first {Number(orderLimitProfile.earlyOrderLimitCount || 0)} orders can be up to {Number(orderLimitProfile.currentPerOrderLimit || 0)} crates each. You have {Number(orderLimitProfile.earlyOrdersRemaining || 0)} order{Number(orderLimitProfile.earlyOrdersRemaining || 0) === 1 ? '' : 's'} left at this limit.
-          </div>
-        )}
-
-        {error && (
-          <div className="rounded-md border border-error-200 bg-error-50 p-3 text-body text-error-700">
-            {error}
+          <div className="p-3 rounded-md bg-info-50 border border-info-100 text-caption text-info-700">
+            Your first {orderLimitProfile.earlyOrderLimitCount} orders can be up to {fmt(perOrderLimit)} crates each.
+            You have {orderLimitProfile.earlyOrdersRemaining} order{orderLimitProfile.earlyOrdersRemaining === 1 ? '' : 's'} left at this limit.
           </div>
         )}
 
         <Input
-          label="How many crates do you want to buy?"
+          label="Number of crates"
           type="number"
           min="1"
           max={maxQty}
           required
           value={quantity}
           onChange={(e) => setQuantity(e.target.value)}
-          hint={`You can buy up to ${fmt(maxQty)} crates right now.`}
+          hint={`Up to ${fmt(maxQty)} crates`}
+          error={qtyError || undefined}
         />
 
-        {quantityError ? (
-          <div className="rounded-md border border-warning-200 bg-warning-50 p-3 text-body text-warning-800">
-            {quantityError}
+        {quantity && qtyError && (
+          <div className="rounded-lg border border-error-200 bg-error-50 p-3 text-body text-error-700">
+            {qtyError}
           </div>
-        ) : quantityValue > 0 ? (
-          <div className="rounded-md border border-success-200 bg-success-50 p-3 text-body text-success-800">
-            {fmt(quantityValue)} crates are available to buy right now.
-          </div>
-        ) : null}
-
-        <Card variant="tinted" tint="bg-success-50" className="p-4 text-body">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between"><span className="text-surface-600">Price per crate</span><span className="font-semibold text-surface-900">{fmtMoney(unitPrice)}</span></div>
-            <div className="flex items-center justify-between"><span className="text-surface-600">Price used</span><span className="font-semibold text-surface-900">Retail price</span></div>
-            <div className="flex items-center justify-between pt-2 border-t border-success-200"><span className="text-surface-700 font-semibold">Total to pay</span><span className="text-title font-semibold text-surface-900">{fmtMoney(orderValue)}</span></div>
-          </div>
-        </Card>
-
-        <div>
-          <p className="text-body-medium font-semibold text-surface-700 mb-3">Choose payment method</p>
-          <PaymentMethodSelector paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod} />
-        </div>
-
-        {paymentMethod === 'TRANSFER' && orderValue > 0 && (
-          <TransferInstructions amount={orderValue} title="Transfer to this account after you continue" />
         )}
 
-        {paymentMethod === 'CARD' && (
-          <Input
-            label="Email for card payment"
-            type="email"
-            required
-            value={checkoutEmail}
-            onChange={(e) => setCheckoutEmail(e.target.value)}
-            placeholder="you@example.com"
-            hint="Paystack needs a real email address for card checkout. You can type one here even if your portal account was created without email."
-          />
+        {qtyVal > 0 && !qtyError && (
+          <div className="rounded-lg border border-surface-200 p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-body text-surface-600">{fmt(qtyVal)} crate{qtyVal !== 1 ? 's' : ''} × {fmtMoney(unitPrice)}</span>
+              <span className="text-title font-bold text-surface-900">{fmtMoney(orderValue)}</span>
+            </div>
+            {!isReady && (
+              <p className="text-caption text-surface-500 mt-2">
+                You'll pay at least {minPaymentPercent}% ({fmtMoney(orderValue * minPaymentPercent / 100)}) in the next step.
+              </p>
+            )}
+          </div>
         )}
 
-        <div className="flex gap-3 pt-4">
-          <Button variant="secondary" size="lg" onClick={onClose} className="flex-1">
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            size="lg"
-            loading={loading}
-            disabled={quantityValue < 1 || Boolean(quantityError)}
-            className="flex-1"
-          >
-            {paymentMethod === 'CARD' ? 'Continue to card payment' : 'Hold crates and pay by transfer'}
+        <div className="flex gap-3 pt-2">
+          <Button variant="secondary" size="lg" onClick={onClose} className="flex-1">Cancel</Button>
+          <Button variant="primary" size="lg" onClick={goToPayment} disabled={qtyVal < 1 || Boolean(qtyError)} className="flex-1">
+            Continue
           </Button>
         </div>
-      </form>
+      </div>
     </Modal>
   );
 }
 
+/* ═══════════════════════════════════════════════════════
+   ORDER DETAIL MODAL
+   ═══════════════════════════════════════════════════════ */
 function getOrderStatus(order) {
   if (order.kind === 'BOOKING') {
     if (order.source === 'BOOKING_CHECKOUT') {
-      if (order.status === 'AWAITING_PAYMENT') return { label: 'Waiting for card payment', tone: 'warning' };
-      if (order.status === 'AWAITING_TRANSFER') return { label: 'Waiting for transfer confirmation', tone: 'info' };
-      if (order.status === 'ADMIN_CONFIRMED') return { label: 'Waiting for bank statement confirmation', tone: 'warning' };
+      if (order.status === 'AWAITING_PAYMENT') return { label: 'Awaiting card payment', tone: 'warning' };
+      if (order.status === 'AWAITING_TRANSFER') return { label: 'Awaiting transfer', tone: 'info' };
+      if (order.status === 'ADMIN_CONFIRMED') return { label: 'Transfer seen — confirming', tone: 'warning' };
       if (order.status === 'FAILED') return { label: 'Payment failed', tone: 'error' };
-      if (order.status === 'PAID') return { label: 'Booking confirmed', tone: 'success' };
+      if (order.status === 'PAID') return { label: 'Confirmed', tone: 'success' };
       if (order.status === 'PICKED_UP') return { label: 'Completed', tone: 'success' };
       if (order.status === 'CANCELLED') return { label: 'Cancelled', tone: 'error' };
     } else {
-      if (order.status === 'CONFIRMED' && order.batchArrived) return { label: 'Batch has arrived', tone: 'success' };
+      if (order.status === 'CONFIRMED' && order.batchArrived) return { label: 'Ready for pickup', tone: 'success' };
       if (order.status === 'CONFIRMED') return { label: 'Booking confirmed', tone: 'success' };
       if (order.status === 'PICKED_UP') return { label: 'Picked up', tone: 'neutral' };
       if (order.status === 'CANCELLED') return { label: 'Cancelled', tone: 'error' };
@@ -965,48 +794,41 @@ function getOrderStatus(order) {
   }
   if (order.kind === 'BUY_NOW') {
     if (order.source === 'BUY_NOW_CHECKOUT') {
-      if (order.status === 'AWAITING_PAYMENT') return { label: 'Waiting for card payment', tone: 'warning' };
-      if (order.status === 'AWAITING_TRANSFER') return { label: 'Waiting for transfer confirmation', tone: 'info' };
+      if (order.status === 'AWAITING_PAYMENT') return { label: 'Awaiting card payment', tone: 'warning' };
+      if (order.status === 'AWAITING_TRANSFER') return { label: 'Awaiting transfer', tone: 'info' };
       if (order.status === 'FAILED') return { label: 'Payment failed', tone: 'error' };
       if (order.status === 'CANCELLED') return { label: 'Cancelled', tone: 'error' };
     }
-    if (order.status === 'APPROVED_FOR_PICKUP') return { label: 'Approved for pickup', tone: 'success' };
-    if (order.status === 'AWAITING_TRANSFER') return { label: 'Waiting for transfer', tone: 'warning' };
+    if (order.status === 'APPROVED_FOR_PICKUP') return { label: 'Ready for pickup', tone: 'success' };
+    if (order.status === 'AWAITING_TRANSFER') return { label: 'Awaiting transfer', tone: 'warning' };
     if (order.status === 'PICKED_UP') return { label: 'Picked up', tone: 'neutral' };
     if (order.status === 'CANCELLED') return { label: 'Cancelled', tone: 'error' };
   }
-  return { label: 'Pending', tone: 'warning' };
+  return { label: 'Processing', tone: 'warning' };
 }
 
-function getOrderPaymentText(order) {
-  if (order.paymentMethod === 'CARD') return 'Card payment';
-  if (order.paymentMethod === 'TRANSFER') return 'Bank transfer';
-  if (order.paymentMethod === 'CASH') return 'Cash payment';
-  return 'Payment method unknown';
-}
-
-function getOrderNextStep(order) {
+function getNextStep(order) {
   if (order.kind === 'BOOKING') {
     if (order.source === 'BOOKING_CHECKOUT') {
-      if (order.status === 'AWAITING_PAYMENT') return 'Complete your card payment to confirm the hold.';
-      if (order.status === 'AWAITING_TRANSFER') return `Transfer ${fmtMoney(order.amountToPay || order.orderValue)} and wait for admin confirmation.`;
-      if (order.status === 'ADMIN_CONFIRMED') return 'The transfer has been seen by the team. Your booking will become fully confirmed after the matching bank statement line is linked.';
-      if (order.status === 'FAILED') return 'This payment was not completed. You can try again.';
-      if (order.status === 'PICKED_UP') return 'Your eggs have been picked up.';
+      if (order.status === 'AWAITING_PAYMENT') return 'Complete your card payment to confirm the booking.';
+      if (order.status === 'AWAITING_TRANSFER') return `Transfer ${fmtMoney(order.amountToPay || order.orderValue)} to complete your booking.`;
+      if (order.status === 'ADMIN_CONFIRMED') return 'Your transfer has been seen. Full confirmation is in progress.';
+      if (order.status === 'FAILED') return 'Payment was not completed. You can place a new order.';
+      if (order.status === 'PICKED_UP') return 'Order complete.';
     } else {
-      if (order.status === 'CONFIRMED' && order.batchArrived) return 'Your batch has arrived. Please come for pickup.';
-      if (order.status === 'CONFIRMED') return `Your booking is confirmed. Expected on ${fmtDate(order.batch.expectedDate)}.`;
-      if (order.status === 'PICKED_UP') return 'Your eggs have been picked up.';
+      if (order.status === 'CONFIRMED' && order.batchArrived) return 'Your batch has arrived. Come for pickup!';
+      if (order.status === 'CONFIRMED') return `Batch expected on ${fmtDate(order.batch?.expectedDate)}.`;
+      if (order.status === 'PICKED_UP') return 'Order complete.';
     }
   }
   if (order.kind === 'BUY_NOW') {
     if (order.source === 'BUY_NOW_CHECKOUT') {
-      if (order.status === 'AWAITING_PAYMENT') return 'Complete your card payment to hold and approve this order.';
-      if (order.status === 'AWAITING_TRANSFER') return `Transfer ${fmtMoney(order.amountToPay || order.orderValue)} and wait for admin confirmation.`;
-      if (order.status === 'FAILED') return 'This payment was not completed. You can try again.';
+      if (order.status === 'AWAITING_PAYMENT') return 'Complete your card payment to confirm this order.';
+      if (order.status === 'AWAITING_TRANSFER') return `Transfer ${fmtMoney(order.amountToPay || order.orderValue)} to confirm this order.`;
+      if (order.status === 'FAILED') return 'Payment was not completed. You can place a new order.';
     }
-    if (order.status === 'APPROVED_FOR_PICKUP') return 'Your eggs are ready for pickup from today until the next 3 days.';
-    if (order.status === 'PICKED_UP') return 'Your eggs have been picked up.';
+    if (order.status === 'APPROVED_FOR_PICKUP') return 'Your eggs are ready! Pick up within 3 days.';
+    if (order.status === 'PICKED_UP') return 'Order complete.';
   }
   return 'Your order is being processed.';
 }
@@ -1014,513 +836,643 @@ function getOrderNextStep(order) {
 function OrderDetailModal({ order, onClose }) {
   if (!order) return null;
   const status = getOrderStatus(order);
-  const paymentText = getOrderPaymentText(order);
-  const nextStep = getOrderNextStep(order);
+  const nextStep = getNextStep(order);
+  const needsTransfer = order.status === 'AWAITING_TRANSFER';
 
   return (
     <Modal title="Order details" open={true} onClose={onClose}>
       <div className="space-y-4">
-        <div className="flex items-center justify-between gap-3">
+        {/* Header */}
+        <div className="flex items-center justify-between">
           <div>
-            <p className="text-caption text-surface-500">{order.kind === 'BOOKING' ? 'Upcoming booking' : 'Buy now order'}</p>
-            <h3 className="mt-1 text-title font-semibold text-surface-900">{order.batch?.name || 'Order'}</h3>
+            <p className="text-caption text-surface-500">{order.kind === 'BOOKING' ? 'Booking' : 'Purchase'}</p>
+            <h3 className="text-title font-semibold text-surface-900">{order.batch?.name || 'Order'}</h3>
           </div>
           <Badge status={status.tone}>{status.label}</Badge>
         </div>
 
-        <Card variant="outlined" className="border border-surface-200 p-4 text-body">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Metric label="Egg type" value={order.eggTypeLabel || order.batch?.eggTypeLabel || '—'} />
-            <Metric label="Quantity" value={`${fmt(order.quantity)} crates`} />
-            <Metric label="Order value" value={fmtMoney(order.orderValue)} />
-            <Metric label="Payment made" value={fmtMoney(order.amountPaid)} />
-            <Metric label="Payment remaining" value={fmtMoney(order.balance)} />
-            <Metric label="Payment progress" value={`${Number(order.paymentPercent || 0)}%`} />
-            <Metric label="Payment method" value={paymentText} />
-            <Metric label="Price used" value={order.priceType === 'WHOLESALE' ? 'Wholesale' : order.priceType === 'RETAIL' ? 'Retail' : '—'} />
-          </div>
-        </Card>
-
-        <Card variant="outlined" className="border border-surface-200 p-4 text-body">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Metric label="Order date" value={fmtDateTime(order.createdAt)} />
-            <Metric label="Last updated" value={fmtDateTime(order.updatedAt)} />
-            <Metric label="Expected batch date" value={fmtDate(order.expectedDate)} />
-            <Metric label="Batch arrival" value={order.batchArrived ? fmtDate(order.batchArrivalDate || order.batch?.receivedDate) : 'Not arrived yet'} />
-            <Metric label="Pickup window start" value={fmtDateTime(order.pickupWindowStart)} />
-            <Metric label="Pickup window end" value={fmtDateTime(order.pickupWindowEnd)} />
-            <Metric label="Payment window ends" value={fmtDateTime(order.paymentWindowEndsAt)} />
-            <Metric label="Reference" value={order.reference || '—'} />
-          </div>
-        </Card>
-
-        <div className="rounded-md border border-info-200 bg-info-50 p-3 text-body text-info-700">
+        {/* Next step — prominent */}
+        <div className={`p-3 rounded-lg text-body ${
+          status.tone === 'success' ? 'bg-success-50 border border-success-100 text-success-800'
+          : status.tone === 'error' ? 'bg-error-50 border border-error-100 text-error-700'
+          : 'bg-info-50 border border-info-100 text-info-700'
+        }`}>
           {nextStep}
         </div>
 
-        {order.notes ? (
-          <Card variant="outlined" className="border border-surface-200 p-4 text-body">
-            <p className="text-caption text-surface-500 mb-1">Notes</p>
-            <p className="text-body text-surface-800">{order.notes}</p>
-          </Card>
-        ) : null}
+        {/* Transfer details if needed */}
+        {needsTransfer && (
+          <div className="rounded-lg border border-warning-200 bg-warning-50 p-4 space-y-2 text-body">
+            <p className="font-semibold text-surface-800">Transfer to</p>
+            {[
+              ['Bank', TRANSFER_DETAILS.bankName],
+              ['Account', TRANSFER_DETAILS.accountNumber],
+              ['Name', TRANSFER_DETAILS.accountName],
+            ].map(([k, v]) => (
+              <div key={k} className="flex justify-between">
+                <span className="text-surface-600">{k}</span>
+                <span className="font-semibold text-surface-800">{v}</span>
+              </div>
+            ))}
+            <div className="flex justify-between pt-2 border-t border-warning-200">
+              <span className="font-semibold text-surface-700">Amount</span>
+              <span className="font-bold text-success-700">{fmtMoney(order.amountToPay || order.orderValue)}</span>
+            </div>
+          </div>
+        )}
 
-        <Button variant="primary" size="lg" onClick={onClose} className="w-full">
-          Close
-        </Button>
+        {/* Order info */}
+        <div className="rounded-lg border border-surface-200 divide-y divide-surface-100">
+          <div className="p-4 grid grid-cols-2 gap-3">
+            <Metric label="Egg type" value={order.eggTypeLabel || order.batch?.eggTypeLabel || '—'} />
+            <Metric label="Quantity" value={`${fmt(order.quantity)} crates`} />
+            <Metric label="Order value" value={fmtMoney(order.orderValue)} />
+            <Metric label="Paid" value={fmtMoney(order.amountPaid)} />
+            {order.balance > 0 && <Metric label="Remaining" value={fmtMoney(order.balance)} />}
+            <Metric label="Payment" value={order.paymentMethod === 'CARD' ? 'Card' : order.paymentMethod === 'TRANSFER' ? 'Transfer' : order.paymentMethod || '—'} />
+          </div>
+          <div className="p-4 grid grid-cols-2 gap-3">
+            <Metric label="Order date" value={fmtDateTime(order.createdAt)} />
+            <Metric label="Reference" value={order.reference || '—'} />
+            {order.pickupWindowStart && <Metric label="Pickup from" value={fmtDateTime(order.pickupWindowStart)} />}
+            {order.pickupWindowEnd && <Metric label="Pickup until" value={fmtDateTime(order.pickupWindowEnd)} />}
+          </div>
+        </div>
+
+        {order.notes && (
+          <div className="p-3 rounded-md bg-surface-50 border border-surface-100">
+            <p className="text-caption text-surface-500 mb-1">Notes</p>
+            <p className="text-body text-surface-700">{order.notes}</p>
+          </div>
+        )}
+
+        <Button variant="primary" size="lg" onClick={onClose} className="w-full">Close</Button>
       </div>
     </Modal>
   );
 }
 
-function MyActivity({ orders, loading, onOpenOrder }) {
+/* ═══════════════════════════════════════════════════════
+   MY ORDERS — with action-needed prioritization
+   ═══════════════════════════════════════════════════════ */
+function MyOrders({ orders, loading, onOpenOrder }) {
+  const [filter, setFilter] = useState('all');
+
   if (loading) {
     return (
-      <div className="text-center py-12">
-        <p className="text-body text-surface-500">Loading your activity...</p>
+      <div className="text-center py-16">
+        <div className="animate-spin w-6 h-6 border-2 border-surface-300 border-t-brand-500 rounded-full mx-auto" />
+        <p className="text-body text-surface-500 mt-3">Loading your orders...</p>
       </div>
     );
   }
 
   if (!orders || orders.length === 0) {
     return (
-      <EmptyState
-        icon={<IconBox className="w-12 h-12" />}
-        title="No previous orders yet"
-        description="You have not placed any bookings or purchases yet. Browse available batches to get started."
-      />
-    );
-  }
-
-  return (
-    <div className="space-y-3">
-      {orders.map((order) => {
-        const status = getOrderStatus(order);
-        const paymentText = getOrderPaymentText(order);
-        const nextStep = getOrderNextStep(order);
-        const batchDate = order.batch?.expectedDate || order.batch?.receivedDate;
-
-        return (
-          <Card
-            key={order.id}
-            variant="outlined"
-            className="border border-surface-200 cursor-pointer hover:shadow-md transition-shadow"
-            onClick={() => onOpenOrder?.(order)}
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1">
-                <div className="flex items-center gap-3 mb-2">
-                  <h4 className="text-body-medium font-semibold text-surface-800">{order.batch?.name || 'Order'}</h4>
-                  <Badge status={status.tone}>{status.label}</Badge>
-                </div>
-                <p className="text-caption text-surface-600 mb-2">{order.kind === 'BOOKING' ? `Booking for ${order.quantity} crates` : `Purchase of ${order.quantity} crates`}</p>
-                <p className="text-caption text-surface-500">{nextStep}</p>
-                <div className="mt-2 flex items-center gap-4 text-caption text-surface-500">
-                  <span>{paymentText}</span>
-                  <span>{fmtDate(order.createdAt)}</span>
-                  {order.batchArrived ? <span>Batch arrived</span> : null}
-                </div>
-              </div>
-              <div className="text-right flex-shrink-0">
-                <p className="text-title font-semibold text-surface-900">{fmtMoney(order.orderValue || 0)}</p>
-                <p className="mt-1 text-caption text-brand-700">Open details</p>
-              </div>
-            </div>
-          </Card>
-        );
-      })}
-    </div>
-  );
-}
-
-function OpenBatchesView({ batches, loading, browseMode, signedIn, onRequireAuth, onBooking, onBuyNow }) {
-  if (loading) {
-    return (
-      <div className="text-center py-12">
-        <p className="text-body text-surface-500">Loading available batches...</p>
+      <div className="text-center py-16">
+        <div className="w-14 h-14 rounded-full bg-surface-100 flex items-center justify-center mx-auto mb-4 text-surface-400">
+          {Icon.package}
+        </div>
+        <h3 className="text-heading text-surface-800">No orders yet</h3>
+        <p className="text-body text-surface-500 mt-1 max-w-sm mx-auto">Choose a ready-now or upcoming batch above and place your first order.</p>
       </div>
     );
   }
 
-  if (!batches || batches.length === 0) {
-    return (
-      <EmptyState
-        icon={<IconBox className="w-12 h-12" />}
-        title="No batches available"
-        description="Check back soon for fresh batches of eggs. We'll notify you when new batches arrive."
-      />
-    );
-  }
+  const needsAction = (o) => ['AWAITING_PAYMENT', 'AWAITING_TRANSFER'].includes(o.status);
+  const isActive = (o) => ['CONFIRMED', 'PAID', 'APPROVED_FOR_PICKUP', 'ADMIN_CONFIRMED'].includes(o.status) || (o.status === 'CONFIRMED' && o.batchArrived);
+  const isComplete = (o) => ['PICKED_UP', 'CANCELLED', 'FAILED'].includes(o.status);
 
-  const upcomingBatches = batches.filter((b) => b.status === 'OPEN');
-  const buyNowBatches = batches.filter((b) => b.status === 'RECEIVED');
+  const filtered = orders.filter((o) => {
+    if (filter === 'action') return needsAction(o);
+    if (filter === 'active') return isActive(o);
+    if (filter === 'complete') return isComplete(o);
+    return true;
+  });
 
-  function handleAction(mode, batch) {
-    if (!signedIn) {
-      onRequireAuth?.(mode);
-      return;
-    }
-
-    if (mode === 'buy-now') onBuyNow(batch);
-    else onBooking(batch);
-  }
+  const actionCount = orders.filter(needsAction).length;
 
   return (
-    <div className="space-y-8">
-      {browseMode === 'book-upcoming' && (
-        <div>
-          <h3 className="text-heading text-surface-800 mb-4">Book upcoming batch</h3>
-          {upcomingBatches.length > 0 ? (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {upcomingBatches.map((batch) => (
-                <BatchCard
-                  key={batch.id}
-                  batch={batch}
-                  actionLabel={signedIn ? 'Book now' : 'Sign in to book'}
-                  helperText="Expected soon"
-                  priceLabel="Wholesale"
-                  onAction={() => handleAction('book-upcoming', batch)}
-                  disabled={false}
-                  batchMode="book-upcoming"
-                />
-              ))}
-            </div>
-          ) : (
-            <EmptyState
-              icon={<IconBox className="w-12 h-12" />}
-              title="No open batches for booking"
-              description="There are no upcoming batches open for booking right now. Please check back later."
-            />
-          )}
-        </div>
-      )}
+    <div className="space-y-4">
+      {/* Filter pills */}
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {[
+          { key: 'all', label: 'All' },
+          { key: 'action', label: `Needs action${actionCount > 0 ? ` (${actionCount})` : ''}` },
+          { key: 'active', label: 'Active' },
+          { key: 'complete', label: 'Completed' },
+        ].map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setFilter(key)}
+            className={`whitespace-nowrap px-3 py-1.5 rounded-full text-caption-medium transition-all duration-fast ${
+              filter === key
+                ? 'bg-surface-900 text-surface-0'
+                : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
-      {browseMode === 'buy-now' && (
-        <div>
-          <h3 className="text-heading text-surface-800 mb-4">Buy eggs now</h3>
-          {buyNowBatches.length > 0 ? (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {buyNowBatches.map((batch) => (
-                <BatchCard
-                  key={batch.id}
-                  batch={batch}
-                  actionLabel={signedIn ? 'Buy now' : 'Sign in to buy'}
-                  helperText="Ready to pickup"
-                  priceLabel="Retail"
-                  onAction={() => handleAction('buy-now', batch)}
-                  disabled={batch.availableForSale <= 0}
-                  batchMode="buy-now"
-                />
-              ))}
-            </div>
-          ) : (
-            <EmptyState
-              icon={<IconBox className="w-12 h-12" />}
-              title="No eggs ready right now"
-              description="There are no currently available batches to buy right now. You can check the upcoming batches instead."
-            />
-          )}
+      {filtered.length === 0 ? (
+        <p className="text-center py-8 text-body text-surface-500">No orders in this category.</p>
+      ) : (
+        <div className="space-y-2">
+          {filtered.map((order) => {
+            const status = getOrderStatus(order);
+            const nextStep = getNextStep(order);
+            const action = needsAction(order);
+
+            return (
+              <button
+                key={order.id}
+                onClick={() => onOpenOrder(order)}
+                className={`w-full text-left p-4 rounded-lg border transition-all duration-fast hover:shadow-sm ${
+                  action ? 'border-warning-200 bg-warning-50/40' : 'border-surface-200 bg-surface-0 hover:border-surface-300'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-body-medium font-semibold text-surface-800 truncate">{order.batch?.name || 'Order'}</span>
+                      <Badge status={status.tone}>{status.label}</Badge>
+                    </div>
+                    <p className="text-caption text-surface-600 truncate">{nextStep}</p>
+                    <div className="flex items-center gap-3 mt-1.5 text-caption text-surface-400">
+                      <span>{fmt(order.quantity)} crates</span>
+                      <span>{fmtDate(order.createdAt)}</span>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-body-medium font-semibold text-surface-900">{fmtMoney(order.orderValue || 0)}</p>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
   );
 }
 
+/* ═══════════════════════════════════════════════════════
+   PAYMENT VERIFICATION BANNER
+   ═══════════════════════════════════════════════════════ */
+function PaymentSuccessModal({ result, onClose }) {
+  if (!result?.order) return null;
+  const order = result.order;
+  const isBooking = order.kind === 'BOOKING';
+  const nextSteps = isBooking
+    ? [
+        'Your booking is now confirmed and the crates are held for you.',
+        'We will update My Orders when the batch arrives.',
+        'Bring your booking number when you come for pickup.',
+      ]
+    : [
+        'Your payment is confirmed.',
+        'Come for pickup from today until the next 3 days.',
+        'Bring your order number when you arrive.',
+      ];
+
+  return (
+    <Modal title="Payment confirmed" open={true} onClose={onClose}>
+      <div className="space-y-4">
+        <div className="flex items-start gap-3 p-4 rounded-lg bg-success-50 border border-success-100">
+          <span className="text-success-700 mt-0.5 shrink-0">{Icon.check}</span>
+          <div>
+            <p className="text-body-medium font-semibold text-success-800">{result.message}</p>
+            <p className="text-caption text-success-700 mt-1">Keep your reference number for pickup.</p>
+          </div>
+        </div>
+
+        {order.reference && (
+          <div className="text-center py-4 px-4 rounded-lg border-2 border-brand-200 bg-brand-50">
+            <p className="text-caption-medium text-brand-700 uppercase tracking-wider">{isBooking ? 'Booking' : 'Order'} reference</p>
+            <p className="text-metric-lg text-surface-900 mt-1 font-mono">{order.reference}</p>
+            <p className="text-caption text-surface-500 mt-2">Keep this number handy for pickup and support.</p>
+          </div>
+        )}
+
+        <div className="rounded-lg border border-surface-200 p-4 grid grid-cols-2 gap-3">
+          <Metric label="Batch" value={order.batch?.name || '—'} />
+          <Metric label="Crates" value={`${fmt(order.quantity)}`} />
+          <Metric label="Amount paid" value={fmtMoney(order.amountPaid)} />
+          {order.balance > 0 && <Metric label="Balance" value={fmtMoney(order.balance)} />}
+        </div>
+
+        <div className="rounded-lg border border-surface-200 bg-surface-50 p-4">
+          <p className="text-body-medium font-semibold text-surface-800">What to do next</p>
+          <div className="mt-3 space-y-2 text-body text-surface-700">
+            {nextSteps.map((item) => (
+              <div key={item} className="flex items-start gap-2">
+                <span className="mt-1 text-brand-700 shrink-0">{Icon.check}</span>
+                <span>{item}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-start gap-3 p-4 rounded-lg border border-surface-200 bg-surface-50">
+          <span className="text-brand-700 mt-0.5 shrink-0">{Icon.mapPin}</span>
+          <div>
+            <p className="text-body-medium font-semibold text-surface-800">Pickup location</p>
+            <p className="text-caption text-surface-600 mt-1">{PICKUP_DETAILS.lineOne}</p>
+            <p className="text-caption text-surface-500 mt-0.5">{PICKUP_DETAILS.lineTwo}</p>
+          </div>
+        </div>
+
+        <Button variant="primary" size="lg" onClick={onClose} className="w-full">Done</Button>
+      </div>
+    </Modal>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════
+   MAIN PORTAL COMPONENT
+   ═══════════════════════════════════════════════════════ */
 export default function Portal() {
   const { user } = useAuth();
   const [batches, setBatches] = useState([]);
   const [orders, setOrders] = useState([]);
   const [profile, setProfile] = useState(null);
   const [policy, setPolicy] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState(() => sessionStorage.getItem('portalBrowseMode') || 'buy-now');
-  const [showAuthPage, setShowAuthPage] = useState(false);
-  const [authIntent, setAuthIntent] = useState(() => sessionStorage.getItem('portalBrowseMode') || 'buy-now');
-  const [selectedBatchForBooking, setSelectedBatchForBooking] = useState(null);
-  const [selectedBatchForBuyNow, setSelectedBatchForBuyNow] = useState(null);
-  const [selectedOrder, setSelectedOrder] = useState(null);
-  const [paymentResult, setPaymentResult] = useState(null);
-  const [paymentVerification, setPaymentVerification] = useState({ loading: false, error: '' });
-  const handledReferenceRef = useRef(null);
+  const [loading, setLoading] = useState(true);
+  const [view, setView] = useState('shop'); // 'shop' | 'orders'
+  const [batchFilter, setBatchFilter] = useState('all'); // 'all' | 'ready' | 'upcoming'
 
-  function openAuth(mode) {
-    sessionStorage.setItem('portalBrowseMode', mode);
-    setActiveTab(mode);
-    setAuthIntent(mode);
-    setShowAuthPage(true);
+  // Auth modal
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authIntent, setAuthIntent] = useState(null);
+
+  // Checkout
+  const [checkoutBatch, setCheckoutBatch] = useState(null);
+
+  // Order detail
+  const [selectedOrder, setSelectedOrder] = useState(null);
+
+  // Payment verification (Paystack callback)
+  const [paymentResult, setPaymentResult] = useState(null);
+  const [paymentVerifying, setPaymentVerifying] = useState(false);
+  const [paymentError, setPaymentError] = useState('');
+  const handledRef = useRef(null);
+
+  // Account dropdown
+  const [accountOpen, setAccountOpen] = useState(false);
+
+  function requireAuth(intent) {
+    setAuthIntent(intent);
+    setAuthOpen(true);
   }
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [upcomingRes, availableNowRes, ordersRes, profileRes] = await Promise.all([
+      const [upRes, nowRes, ordRes, profRes] = await Promise.all([
         api.get('/portal/batches'),
         api.get('/portal/available-now'),
         user ? api.get('/portal/orders') : Promise.resolve({ orders: [] }),
         user ? api.get('/portal/profile') : Promise.resolve(null),
       ]);
-      setBatches([...(upcomingRes.batches || []), ...(availableNowRes.batches || [])]);
-      setOrders(ordersRes.orders || []);
-      setProfile(profileRes);
-      setPolicy(upcomingRes.policy || availableNowRes.policy || null);
+      setBatches([...(upRes.batches || []), ...(nowRes.batches || [])]);
+      setOrders(ordRes.orders || []);
+      setProfile(profRes);
+      setPolicy(upRes.policy || nowRes.policy || null);
     } catch (err) {
-      console.error('Failed to load portal data:', err);
+      console.error('Portal data load failed:', err);
     } finally {
       setLoading(false);
     }
   }, [user]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useEffect(() => { loadData(); }, [loadData]);
 
-  useEffect(() => {
-    sessionStorage.setItem('portalBrowseMode', activeTab === 'orders' ? authIntent : activeTab);
-  }, [activeTab, authIntent]);
-
+  // Paystack callback
   useEffect(() => {
     if (!user) return;
-
     const params = new URLSearchParams(window.location.search);
-    const reference = params.get('reference') || params.get('trxref');
-    if (!reference || handledReferenceRef.current === reference) return;
+    const ref = params.get('reference') || params.get('trxref');
+    if (!ref || handledRef.current === ref) return;
+    handledRef.current = ref;
+    setPaymentVerifying(true);
 
-    handledReferenceRef.current = reference;
-    setPaymentVerification({ loading: true, error: '' });
-
-    api.post('/portal/checkouts/verify-card', { reference })
-      .then((response) => {
-        setPaymentResult(response);
-        setPaymentVerification({ loading: false, error: '' });
-        setActiveTab(response.order?.kind === 'BOOKING' ? 'book-upcoming' : 'buy-now');
+    api.post('/portal/checkouts/verify-card', { reference: ref })
+      .then((res) => {
+        setPaymentResult(res);
+        setView('orders');
         loadData();
       })
-      .catch((err) => {
-        setPaymentVerification({
-          loading: false,
-          error: err.error || 'Could not confirm this card payment yet. Please refresh and try again.',
-        });
-      })
+      .catch((err) => setPaymentError(err.error || 'Could not confirm payment. Please refresh.'))
       .finally(() => {
+        setPaymentVerifying(false);
         window.history.replaceState({}, document.title, window.location.pathname);
       });
   }, [user, loadData]);
 
-  if (!user && showAuthPage) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-surface-50 via-surface-0 to-brand-50 flex items-center justify-center p-4">
-        <div className="max-w-md w-full space-y-8">
-          <div className="text-center">
-            <h1 className="text-display font-bold text-surface-900 mb-2">Fresh Eggs Market</h1>
-            <p className="text-body text-surface-600">
-              {authIntent === 'book-upcoming'
-                ? 'Sign in to book an upcoming batch at wholesale price.'
-                : 'Sign in to buy eggs that are ready now at retail price.'}
-            </p>
-          </div>
-          <AuthPanel
-            onAuth={(userData) => {
-              localStorage.setItem('user', JSON.stringify(userData));
-              window.location.reload();
-            }}
-          />
-          <div className="text-center">
-            <button
-              type="button"
-              onClick={() => setShowAuthPage(false)}
-              className="text-body-medium font-medium text-brand-700 hover:text-brand-800"
-            >
-              Back to home
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // Filter batches
+  const readyBatches = batches.filter(b => b.status === 'RECEIVED');
+  const upcomingBatches = batches.filter(b => b.status === 'OPEN');
+  const displayBatches = batchFilter === 'ready' ? readyBatches
+    : batchFilter === 'upcoming' ? upcomingBatches
+    : batches;
 
-  const isPublic = !user;
-  const browseMode = activeTab === 'orders' ? authIntent : activeTab;
+  const signedIn = Boolean(user);
+  const displayName = profileDisplayName(profile, user);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-surface-50 via-surface-0 to-brand-50">
-      <div className="border-b border-surface-200 bg-surface-0 sticky top-0 z-40 shadow-xs">
-        <div className="max-w-6xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h1 className="text-title font-bold text-surface-900">Fresh Eggs Market</h1>
-              <p className="text-caption text-surface-600">
-                {user
-                  ? `Welcome back, ${profileDisplayName(profile, user)}`
-                  : 'See what is available first. Sign in only when you are ready to buy or book.'}
-              </p>
+    <div className="min-h-screen bg-surface-50">
+      {/* ─── Header ─── */}
+      <header className="sticky top-0 z-40 bg-surface-0 border-b border-surface-200 shadow-xs">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
+          {/* Logo + name */}
+          <div className="flex items-center gap-3">
+            <img src="/logo.webp" alt="Fresh Eggs" className="w-8 h-8 object-contain" />
+            <div className="hidden sm:block">
+              <p className="text-body-medium font-semibold text-surface-900 leading-tight">Fresh Eggs Market</p>
+              <p className="text-caption text-surface-500">Wholesale & Retail Eggs</p>
             </div>
-            {user ? (
-              <Button
-                variant="ghost"
-                size="md"
-                onClick={() => {
-                  localStorage.removeItem('user');
-                  api.setTokens(null, null);
-                  window.location.reload();
-                }}
-              >
-                Sign out
-              </Button>
+          </div>
+
+          {/* Right side */}
+          <div className="flex items-center gap-2">
+            <a
+              href={WHATSAPP_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-caption-medium text-[#25D366] bg-[#25D366]/10 hover:bg-[#25D366]/20 transition-colors"
+            >
+              {Icon.whatsapp}
+              <span className="hidden sm:inline">Help</span>
+            </a>
+
+            {signedIn ? (
+              <div className="relative">
+                <button
+                  onClick={() => setAccountOpen(!accountOpen)}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-100 hover:bg-surface-200 transition-colors text-body-medium text-surface-700"
+                >
+                  {Icon.user}
+                  <span className="hidden sm:inline max-w-[120px] truncate">{displayName}</span>
+                  {Icon.chevronDown}
+                </button>
+                {accountOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setAccountOpen(false)} />
+                    <div className="absolute right-0 top-full mt-1 z-50 w-48 bg-surface-0 border border-surface-200 rounded-lg shadow-lg py-1 animate-fade-in">
+                      <div className="px-4 py-2 border-b border-surface-100">
+                        <p className="text-body-medium text-surface-800 truncate">{displayName}</p>
+                        <p className="text-caption text-surface-500 truncate">{user?.phone || user?.email}</p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setAccountOpen(false);
+                          localStorage.removeItem('user');
+                          api.setTokens(null, null);
+                          window.location.reload();
+                        }}
+                        className="flex items-center gap-2 w-full px-4 py-2 text-body text-surface-600 hover:bg-surface-50 hover:text-error-600 transition-colors"
+                      >
+                        {Icon.logout} Sign out
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             ) : (
-              <Button variant="primary" size="md" onClick={() => openAuth(browseMode)}>
-                {browseMode === 'book-upcoming' ? 'Sign in to book' : 'Sign in to buy'}
-              </Button>
+              <Button variant="primary" size="sm" onClick={() => requireAuth('buy-now')}>Sign in</Button>
             )}
           </div>
         </div>
-      </div>
+      </header>
 
-      <div className="max-w-6xl mx-auto px-4 py-8 sm:px-6 lg:px-8 space-y-6">
-        {paymentVerification.loading ? (
-          <div className="rounded-md border border-info-200 bg-info-50 p-3 text-body text-info-700">
-            Confirming your card payment...
+      {/* ─── Main content ─── */}
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+        {/* Payment verification banners */}
+        {paymentVerifying && (
+          <div className="p-3 rounded-lg bg-info-50 border border-info-100 text-body text-info-700 flex items-center gap-2">
+            <div className="animate-spin w-4 h-4 border-2 border-info-300 border-t-info-600 rounded-full" />
+            Verifying your card payment...
           </div>
-        ) : null}
+        )}
+        {paymentError && (
+          <div className="p-3 rounded-lg bg-error-50 border border-error-100 text-body text-error-700">{paymentError}</div>
+        )}
 
-        {paymentVerification.error ? (
-          <div className="rounded-md border border-error-200 bg-error-50 p-3 text-body text-error-700">
-            {paymentVerification.error}
+        {/* Navigation tabs (signed in) */}
+        {signedIn && (
+          <div className="flex gap-1 p-1 bg-surface-100 rounded-lg w-fit">
+            <button
+              onClick={() => setView('shop')}
+              className={`px-4 py-2 rounded-md text-body-medium font-medium transition-all duration-fast ${
+                view === 'shop' ? 'bg-surface-0 text-surface-900 shadow-xs' : 'text-surface-500 hover:text-surface-700'
+              }`}
+            >
+              Shop
+            </button>
+            <button
+              onClick={() => setView('orders')}
+              className={`px-4 py-2 rounded-md text-body-medium font-medium transition-all duration-fast flex items-center gap-1.5 ${
+                view === 'orders' ? 'bg-surface-0 text-surface-900 shadow-xs' : 'text-surface-500 hover:text-surface-700'
+              }`}
+            >
+              My Orders
+              {orders.filter(o => ['AWAITING_PAYMENT', 'AWAITING_TRANSFER'].includes(o.status)).length > 0 && (
+                <span className="w-2 h-2 rounded-full bg-warning-500" />
+              )}
+            </button>
           </div>
-        ) : null}
+        )}
 
-        {isPublic ? (
+        {/* ─── SHOP VIEW ─── */}
+        {(view === 'shop' || !signedIn) && (
           <>
-            <PortalLanding
-              activeTab={browseMode}
-              signedIn={false}
-              onPickMode={setActiveTab}
-              onSignIn={openAuth}
-            />
+            {!signedIn && (
+              <div className="space-y-4">
+                <div className="rounded-xl bg-gradient-to-br from-surface-900 to-surface-800 text-surface-0 p-6 sm:p-8">
+                  <div className="max-w-2xl">
+                    <div className="inline-flex items-center gap-2 rounded-full bg-surface-0/10 px-3 py-1 text-caption text-surface-200">
+                      <span className="text-brand-400">{Icon.egg}</span>
+                      Fresh eggs for homes, stores, and resellers
+                    </div>
+                    <h2 className="mt-4 text-display font-bold">Buy eggs ready now or book an upcoming batch in minutes.</h2>
+                    <p className="mt-3 text-body text-surface-300">
+                      Use buy now for eggs that are already available for pickup. Use book upcoming when you want wholesale pricing on the next arriving batch.
+                    </p>
+                    <div className="mt-5 flex flex-wrap gap-4 text-caption text-surface-300">
+                      <span className="flex items-center gap-1.5">{Icon.check} Retail for ready-now batches</span>
+                      <span className="flex items-center gap-1.5">{Icon.check} Wholesale for upcoming batches</span>
+                      <span className="flex items-center gap-1.5">{Icon.check} Pay by card or transfer</span>
+                    </div>
+                    <div className="mt-6 flex flex-wrap gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setBatchFilter('ready')}
+                        className="inline-flex items-center gap-2 rounded-md bg-brand-500 px-4 py-2.5 text-body-medium font-medium text-surface-900 hover:bg-brand-400"
+                      >
+                        Buy eggs now
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBatchFilter('upcoming')}
+                        className="inline-flex items-center gap-2 rounded-md border border-surface-0/20 px-4 py-2.5 text-body-medium font-medium text-surface-0 hover:bg-surface-0/5"
+                      >
+                        Book upcoming batch
+                      </button>
+                    </div>
+                  </div>
+                </div>
 
-            <section className="space-y-4">
-              <div className="flex items-start justify-between gap-4 flex-wrap">
-                <div>
-                  <h2 className="text-heading text-surface-900">
-                    {browseMode === 'book-upcoming' ? 'Upcoming batches open for booking' : 'Batches available to buy now'}
-                  </h2>
-                  <p className="mt-1 text-body text-surface-600">
-                    {browseMode === 'book-upcoming'
-                      ? 'Wholesale price applies here. Sign in when you are ready to pay and hold your crates.'
-                      : 'Retail price applies here. Sign in when you are ready to pay and approve pickup.'}
-                  </p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="rounded-xl border border-surface-200 bg-surface-0 p-5">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-11 w-11 items-center justify-center rounded-full bg-success-50 text-success-700">{Icon.package}</span>
+                      <div>
+                        <h3 className="text-heading text-surface-900">Buy eggs now</h3>
+                        <p className="text-caption text-surface-500">For batches already available for pickup</p>
+                      </div>
+                    </div>
+                    <p className="mt-4 text-body text-surface-700">See the current retail price, choose your crates, then sign in to buy now.</p>
+                    <p className="mt-3 text-caption-medium text-success-700">{readyBatches.length} batch{readyBatches.length === 1 ? '' : 'es'} ready now</p>
+                  </div>
+                  <div className="rounded-xl border border-surface-200 bg-surface-0 p-5">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-11 w-11 items-center justify-center rounded-full bg-brand-50 text-brand-700">{Icon.truck}</span>
+                      <div>
+                        <h3 className="text-heading text-surface-900">Book upcoming batch</h3>
+                        <p className="text-caption text-surface-500">For batches still on the way at wholesale price</p>
+                      </div>
+                    </div>
+                    <p className="mt-4 text-body text-surface-700">Choose how many crates you want, pay now, and we will hold your booking for you.</p>
+                    <p className="mt-3 text-caption-medium text-brand-700">{upcomingBatches.length} upcoming batch{upcomingBatches.length === 1 ? '' : 'es'}</p>
+                  </div>
                 </div>
               </div>
+            )}
 
-              <OpenBatchesView
-                batches={batches}
-                loading={loading}
-                browseMode={browseMode}
-                signedIn={false}
-                onRequireAuth={openAuth}
-                onBooking={(batch) => setSelectedBatchForBooking(batch)}
-                onBuyNow={(batch) => setSelectedBatchForBuyNow(batch)}
-              />
-            </section>
-          </>
-        ) : (
-          <>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => setActiveTab('buy-now')}
-                className={`px-4 py-2.5 rounded-md text-body-medium font-medium transition-all duration-fast ${
-                  activeTab === 'buy-now'
-                    ? 'bg-brand-500 text-surface-900 shadow-xs'
-                    : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
-                }`}
-              >
-                Buy now
-              </button>
-              <button
-                onClick={() => setActiveTab('book-upcoming')}
-                className={`px-4 py-2.5 rounded-md text-body-medium font-medium transition-all duration-fast ${
-                  activeTab === 'book-upcoming'
-                    ? 'bg-brand-500 text-surface-900 shadow-xs'
-                    : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
-                }`}
-              >
-                Book upcoming
-              </button>
-              <button
-                onClick={() => setActiveTab('orders')}
-                className={`px-4 py-2.5 rounded-md text-body-medium font-medium transition-all duration-fast ${
-                  activeTab === 'orders'
-                    ? 'bg-brand-500 text-surface-900 shadow-xs'
-                    : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
-                }`}
-              >
-                My Orders
-              </button>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-title font-semibold text-surface-900">{signedIn ? 'Choose your batch' : 'See what you can order today'}</h2>
+                <p className="text-caption text-surface-500 mt-0.5">
+                  {readyBatches.length} ready now · {upcomingBatches.length} upcoming
+                </p>
+              </div>
+              <div className="flex gap-1 p-1 bg-surface-100 rounded-lg">
+                {[
+                  { key: 'all', label: 'All' },
+                  { key: 'ready', label: `Ready (${readyBatches.length})` },
+                  { key: 'upcoming', label: `Upcoming (${upcomingBatches.length})` },
+                ].map(({ key, label }) => (
+                  <button
+                    key={key}
+                    onClick={() => setBatchFilter(key)}
+                    className={`px-3 py-1.5 rounded-md text-caption-medium transition-all duration-fast ${
+                      batchFilter === key
+                        ? 'bg-surface-0 text-surface-900 shadow-xs'
+                        : 'text-surface-500 hover:text-surface-700'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {activeTab === 'orders' ? (
-              <div>
-                <h2 className="text-heading text-surface-800 mb-4">Your orders</h2>
-                <MyActivity orders={orders} loading={loading} onOpenOrder={setSelectedOrder} />
+            {/* Batch grid */}
+            {loading ? (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="h-64 rounded-lg bg-surface-100 animate-skeleton" />
+                ))}
+              </div>
+            ) : displayBatches.length === 0 ? (
+              <div className="text-center py-16">
+                <div className="w-14 h-14 rounded-full bg-surface-100 flex items-center justify-center mx-auto mb-4 text-surface-400">
+                  {Icon.egg}
+                </div>
+                <h3 className="text-heading text-surface-800">No batches available</h3>
+                <p className="text-body text-surface-500 mt-1">Check back soon — new batches are added regularly.</p>
               </div>
             ) : (
-              <div className="space-y-4">
-                <div>
-                  <h2 className="text-heading text-surface-900">
-                    {activeTab === 'book-upcoming' ? 'Book upcoming batch' : 'Buy eggs now'}
-                  </h2>
-                  <p className="mt-1 text-body text-surface-600">
-                    {activeTab === 'book-upcoming'
-                      ? 'Choose an open batch, enter how many crates you want, and pay the booking amount now.'
-                      : 'Choose a ready batch, pay the retail price, and get approved for pickup after payment confirmation.'}
-                  </p>
-                </div>
-                <OpenBatchesView
-                  batches={batches}
-                  loading={loading}
-                  browseMode={activeTab}
-                  signedIn={true}
-                  onRequireAuth={openAuth}
-                  onBooking={(batch) => setSelectedBatchForBooking(batch)}
-                  onBuyNow={(batch) => setSelectedBatchForBuyNow(batch)}
-                />
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {/* Show ready batches first */}
+                {displayBatches
+                  .sort((a, b) => (a.status === 'RECEIVED' ? -1 : 1) - (b.status === 'RECEIVED' ? -1 : 1))
+                  .map(batch => (
+                    <BatchCard
+                      key={batch.id}
+                      batch={batch}
+                      signedIn={signedIn}
+                      onAction={(b) => setCheckoutBatch(b)}
+                      onRequireAuth={requireAuth}
+                    />
+                  ))
+                }
               </div>
             )}
           </>
         )}
-      </div>
 
-      {selectedBatchForBooking && (
-        <BookingCheckoutModal
-          batch={selectedBatchForBooking}
+        {/* ─── ORDERS VIEW ─── */}
+        {view === 'orders' && signedIn && (
+          <MyOrders orders={orders} loading={loading} onOpenOrder={setSelectedOrder} />
+        )}
+      </main>
+
+      {/* ─── Footer ─── */}
+      <footer className="border-t border-surface-200 bg-surface-0 mt-12">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <img src="/logo.webp" alt="Fresh Eggs" className="w-6 h-6 object-contain opacity-60" />
+              <p className="text-caption text-surface-500">Fresh Eggs Wholesale Market</p>
+            </div>
+            <div className="flex items-center gap-4 text-caption text-surface-500">
+              <span className="flex items-center gap-1">{Icon.mapPin} Lekki-Epe, Lagos</span>
+              <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[#25D366] hover:underline">
+                {Icon.whatsapp} WhatsApp
+              </a>
+            </div>
+          </div>
+        </div>
+      </footer>
+
+      {/* ─── WhatsApp FAB (mobile) ─── */}
+      <WhatsAppFAB />
+
+      {/* ─── Modals ─── */}
+      <AuthModal
+        open={authOpen}
+        onClose={() => setAuthOpen(false)}
+        onAuth={(userData) => {
+          setAuthOpen(false);
+          localStorage.setItem('user', JSON.stringify(userData));
+          window.location.reload();
+        }}
+        intent={authIntent}
+      />
+
+      {checkoutBatch && (
+        <CheckoutModal
+          batch={checkoutBatch}
           profile={profile}
           policy={policy}
-          onClose={() => setSelectedBatchForBooking(null)}
-          onFinished={() => loadData()}
-        />
-      )}
-
-      {selectedBatchForBuyNow && (
-        <BuyNowCheckoutModal
-          batch={selectedBatchForBuyNow}
-          profile={profile}
-          policy={policy}
-          onClose={() => setSelectedBatchForBuyNow(null)}
-          onFinished={() => loadData()}
+          onClose={() => setCheckoutBatch(null)}
+          onFinished={(nextView) => {
+            setCheckoutBatch(null);
+            if (nextView === 'orders') setView('orders');
+            loadData();
+          }}
         />
       )}
 
       {selectedOrder && (
-        <OrderDetailModal
-          order={selectedOrder}
-          onClose={() => setSelectedOrder(null)}
-        />
+        <OrderDetailModal order={selectedOrder} onClose={() => setSelectedOrder(null)} />
       )}
 
       {paymentResult && (
-        <PaymentSuccessModal
-          result={paymentResult}
-          onClose={() => setPaymentResult(null)}
-        />
+        <PaymentSuccessModal result={paymentResult} onClose={() => { setPaymentResult(null); setView('orders'); }} />
       )}
     </div>
   );
