@@ -9,6 +9,15 @@ const fmtMoney = (n) => '₦' + Number(n || 0).toLocaleString('en-NG', { minimum
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-NG', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : '—';
 const fmtDateTime = (d) => d ? new Date(d).toLocaleString('en-NG', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
 
+const isPaystackReadyEmail = (value) => {
+  const email = String(value || '').trim().toLowerCase();
+  if (!email) return false;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return false;
+  if (email.endsWith('.local')) return false;
+  if (email.endsWith('@localhost')) return false;
+  return true;
+};
+
 /* ─── Constants ─── */
 const TRANSFER_DETAILS = {
   bankName: 'Providus Bank',
@@ -366,13 +375,17 @@ function CheckoutModal({ batch, profile, policy, onClose, onFinished }) {
   const [quantity, setQuantity] = useState('');
   const [amountToPay, setAmountToPay] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('CARD');
-  const [checkoutEmail, setCheckoutEmail] = useState(profile?.user?.email || profile?.customer?.email || '');
+  const [checkoutEmail, setCheckoutEmail] = useState(() => {
+    const candidate = profile?.user?.email || profile?.customer?.email || '';
+    return isPaystackReadyEmail(candidate) ? candidate : '';
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(null);
 
   useEffect(() => {
-    setCheckoutEmail(profile?.user?.email || profile?.customer?.email || '');
+    const candidate = profile?.user?.email || profile?.customer?.email || '';
+    setCheckoutEmail(isPaystackReadyEmail(candidate) ? candidate : '');
   }, [profile?.user?.email, profile?.customer?.email]);
 
   const qtyVal = parseInt(quantity, 10) || 0;
@@ -399,6 +412,13 @@ function CheckoutModal({ batch, profile, policy, onClose, onFinished }) {
     if (payNow > orderValue) return 'Cannot exceed the order value.';
     return '';
   }, [isReady, amountToPay, payNow, minPayment, orderValue, minPaymentPercent]);
+
+  const cardEmailError = useMemo(() => {
+    if (paymentMethod !== 'CARD') return '';
+    if (!checkoutEmail.trim()) return 'Enter the email you want to use for card payment.';
+    if (!isPaystackReadyEmail(checkoutEmail)) return 'Enter a real email address. Temporary or internal emails cannot be used for card payment.';
+    return '';
+  }, [paymentMethod, checkoutEmail]);
 
   function goToPayment() {
     if (qtyError || qtyVal < 1) return;
@@ -679,6 +699,7 @@ function CheckoutModal({ batch, profile, policy, onClose, onFinished }) {
               onChange={(e) => setCheckoutEmail(e.target.value)}
               placeholder="you@example.com"
               hint="Paystack sends the payment receipt to this email."
+              error={cardEmailError || undefined}
             />
           )}
 
@@ -692,7 +713,7 @@ function CheckoutModal({ batch, profile, policy, onClose, onFinished }) {
             <Button variant="secondary" size="lg" onClick={() => setStep('quantity')} className="flex-1">Back</Button>
             <Button
               variant="primary" size="lg" loading={loading} className="flex-1"
-              disabled={(!isReady && (payNow <= 0 || Boolean(payError))) || (paymentMethod === 'CARD' && !checkoutEmail.trim())}
+              disabled={(!isReady && (payNow <= 0 || Boolean(payError))) || (paymentMethod === 'CARD' && Boolean(cardEmailError))}
               onClick={continueFromPayment}
             >
               {paymentMethod === 'CARD' ? 'Continue to card payment' : 'Continue'}

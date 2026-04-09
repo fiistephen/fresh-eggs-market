@@ -41,6 +41,14 @@ function isValidEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
 }
 
+function isPaystackCompatibleEmail(value) {
+  const email = normalizeEmail(value);
+  if (!email || !isValidEmail(email)) return false;
+  if (email.endsWith('.local')) return false;
+  if (email.endsWith('@localhost')) return false;
+  return true;
+}
+
 function normalizePhone(value) {
   return String(value || '').replace(/\s+/g, '').trim();
 }
@@ -93,8 +101,8 @@ function buildPortalCustomerEmail(user, customer, checkoutEmail = null) {
 async function persistPortalCheckoutEmail({ user, customer, checkoutEmail }) {
   const normalizedEmail = normalizeEmail(checkoutEmail);
   if (!normalizedEmail) return buildPortalCustomerEmail(user, customer, null);
-  if (!isValidEmail(normalizedEmail)) {
-    throw new Error('Enter a valid email address before continuing to card payment.');
+  if (!isPaystackCompatibleEmail(normalizedEmail)) {
+    throw new Error('Enter a real email address for card payment. Temporary or internal emails cannot be used.');
   }
 
   const existingUser = await prisma.user.findFirst({
@@ -962,8 +970,8 @@ export default async function portalRoutes(fastify) {
         } catch (error) {
           return reply.code(400).send({ error: error.message });
         }
-        if (!cardPaymentEmail || !isValidEmail(cardPaymentEmail)) {
-          return reply.code(400).send({ error: 'Enter a valid email address before continuing to card payment.' });
+        if (!cardPaymentEmail || !isPaystackCompatibleEmail(cardPaymentEmail)) {
+          return reply.code(400).send({ error: 'Enter a real email address for card payment. Temporary or internal emails cannot be used.' });
         }
       }
 
@@ -1111,6 +1119,10 @@ export default async function portalRoutes(fastify) {
           where: { id: checkout.id },
           data: { status: 'FAILED', notes: error.message },
         });
+        const message = String(error.message || '');
+        if (/Invalid Email Address Passed/i.test(message)) {
+          return reply.code(400).send({ error: 'Enter a real email address for card payment. The current email cannot be used by Paystack.' });
+        }
         return reply.code(502).send({ error: error.message });
       }
     },
