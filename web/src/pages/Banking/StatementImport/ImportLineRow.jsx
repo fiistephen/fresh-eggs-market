@@ -2,11 +2,44 @@ import { useState } from 'react';
 import { api } from '../../../lib/api';
 import { DIRECTION_COLORS, categoryOptionsForDirection, categoryLabel, fmtMoney, fmtDate } from '../shared/constants';
 
+function prettifyToken(value) {
+  const token = String(value || '').trim();
+  if (!token) return '';
+  if (!/[a-z]/i.test(token)) return token;
+  if (token.length <= 3) return token.toUpperCase();
+  return token.charAt(0).toUpperCase() + token.slice(1).toLowerCase();
+}
+
+function prettifyPhrase(value) {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .map(prettifyToken)
+    .join(' ');
+}
+
+function autoCleanDescription(description) {
+  const normalized = String(description || '').replace(/\s+/g, ' ').trim();
+  if (!normalized) return '';
+
+  const fromMatch = normalized.match(/FROM\s+(.+?)(?:\s*-\s*(?:IB|NIP|REF|REVERSAL|TRF|TRANSFER)\b|$)/i);
+  const source = (fromMatch?.[1] || normalized).trim();
+  const parts = source.split('/').map((part) => part.trim()).filter(Boolean);
+
+  if (parts.length >= 2) {
+    return [prettifyPhrase(parts[0]), prettifyPhrase(parts.slice(1).join(' / '))].filter(Boolean).join(' - ');
+  }
+
+  return prettifyPhrase(source);
+}
+
 export default function ImportLineRow({ line, categoryMap, selected, onToggleSelected, onSaved }) {
   const [draft, setDraft] = useState({
+    description: line.description || '',
     selectedCategory: line.selectedCategory || line.suggestedCategory || '',
     reviewStatus: line.reviewStatus,
-    notes: line.notes || '',
+    notes: line.notes || autoCleanDescription(line.description || ''),
   });
   const [saving, setSaving] = useState(false);
   const categories = categoryOptionsForDirection(line.direction, categoryMap, draft.selectedCategory);
@@ -31,8 +64,16 @@ export default function ImportLineRow({ line, categoryMap, selected, onToggleSel
       <td className="px-4 py-3 text-body text-surface-500">{line.lineNumber}</td>
       <td className="px-4 py-3 text-body text-surface-600">{fmtDate(line.transactionDate || line.actualTransactionDate || line.valueDate)}</td>
       <td className="px-4 py-3 text-body text-surface-700">
-        <div className="max-w-sm truncate font-medium">{line.description}</div>
-        {line.docNum && <div className="mt-1 text-caption text-surface-400">Ref {line.docNum}</div>}
+        <div className="min-w-[320px] space-y-2">
+          <textarea
+            value={draft.description}
+            onChange={(e) => setDraft((c) => ({ ...c, description: e.target.value }))}
+            rows={3}
+            disabled={isPosted}
+            className="w-full rounded-md border border-surface-200 px-2 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-surface-100"
+          />
+          {line.docNum && <div className="text-caption text-surface-400">Ref {line.docNum}</div>}
+        </div>
       </td>
       <td className="px-4 py-3 text-body">
         <span className={`font-medium ${DIRECTION_COLORS[line.direction]}`}>{line.direction || '—'}</span>
@@ -56,7 +97,25 @@ export default function ImportLineRow({ line, categoryMap, selected, onToggleSel
         </select>
       </td>
       <td className="px-4 py-3">
-        <textarea value={draft.notes} onChange={(e) => setDraft((c) => ({ ...c, notes: e.target.value }))} rows={2} disabled={isPosted} placeholder="Bank name – Depositor name" className="w-full rounded-md border border-surface-200 px-2 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-surface-100" />
+        <div className="min-w-[260px] space-y-2">
+          <textarea
+            value={draft.notes}
+            onChange={(e) => setDraft((c) => ({ ...c, notes: e.target.value }))}
+            rows={2}
+            disabled={isPosted}
+            placeholder="Bank name - Depositor name"
+            className="w-full rounded-md border border-surface-200 px-2 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-surface-100"
+          />
+          {!isPosted && (
+            <button
+              type="button"
+              onClick={() => setDraft((c) => ({ ...c, notes: autoCleanDescription(c.description) }))}
+              className="text-caption-medium font-medium text-brand-700 hover:text-brand-800"
+            >
+              Auto-fill clean description
+            </button>
+          )}
+        </div>
       </td>
       <td className="px-4 py-3">
         {isPosted ? (

@@ -320,13 +320,15 @@ export default function ImportsView({
                   <thead>
                     <tr className="border-b border-surface-100 bg-surface-50/50">
                       <th className="w-8 px-3 py-2.5"></th>
+                      <th className="px-3 py-2.5 text-left text-overline text-surface-500">Line</th>
                       <th className="px-3 py-2.5 text-left text-overline text-surface-500">Date</th>
                       <th className="px-3 py-2.5 text-left text-overline text-surface-500">Bank narration</th>
+                      <th className="px-3 py-2.5 text-left text-overline text-surface-500">Direction</th>
                       <th className="px-3 py-2.5 text-right text-overline text-surface-500">Amount</th>
                       <th className="px-3 py-2.5 text-left text-overline text-surface-500">Category</th>
                       <th className="px-3 py-2.5 text-left text-overline text-surface-500">Status</th>
                       <th className="px-3 py-2.5 text-left text-overline text-surface-500">Clean description</th>
-                      <th className="w-16 px-3 py-2.5"></th>
+                      <th className="w-20 px-3 py-2.5 text-left text-overline text-surface-500">Action</th>
                     </tr>
                   </thead>
                   <tbody>

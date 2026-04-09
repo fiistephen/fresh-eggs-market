@@ -65,6 +65,40 @@ function parsePeriod(line) {
   };
 }
 
+function prettifyToken(value) {
+  const token = String(value || '').trim();
+  if (!token) return '';
+  if (!/[a-z]/i.test(token)) return token;
+  if (token.length <= 3) return token.toUpperCase();
+  return token.charAt(0).toUpperCase() + token.slice(1).toLowerCase();
+}
+
+function prettifyPhrase(value) {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .map(prettifyToken)
+    .join(' ');
+}
+
+export function buildCleanDescription(description) {
+  const normalized = String(description || '').replace(/\s+/g, ' ').trim();
+  if (!normalized) return '';
+
+  const fromMatch = normalized.match(/FROM\s+(.+?)(?:\s*-\s*(?:IB|NIP|REF|REVERSAL|TRF|TRANSFER)\b|$)/i);
+  const source = (fromMatch?.[1] || normalized).trim();
+  const parts = source.split('/').map((part) => part.trim()).filter(Boolean);
+
+  if (parts.length >= 2) {
+    const bankName = prettifyPhrase(parts[0]);
+    const depositorName = prettifyPhrase(parts.slice(1).join(' / '));
+    return [bankName, depositorName].filter(Boolean).join(' - ');
+  }
+
+  return prettifyPhrase(source);
+}
+
 export function buildStatementFingerprint({ bankAccountId, transactionDate, valueDate, direction, debitAmount, creditAmount, description, docNum, runningBalance }) {
   const raw = [
     bankAccountId,
@@ -191,6 +225,7 @@ export function parseProvidusStatement(csvText, { bankAccountId } = {}) {
       suggestedCategory,
       selectedCategory: suggestedCategory,
       reviewStatus: 'PENDING_REVIEW',
+      notes: buildCleanDescription(description),
       fingerprint,
       rawPayload: {
         columns,

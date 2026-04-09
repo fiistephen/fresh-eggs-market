@@ -18,7 +18,7 @@ import {
   saveTransactionCategoryConfig,
 } from '../utils/appSettings.js';
 import { getCustomerTrackedOrderCount, getPerOrderCrateLimit } from '../utils/customerOrderPolicy.js';
-import { parseProvidusStatement } from '../utils/providusStatement.js';
+import { buildCleanDescription, parseProvidusStatement } from '../utils/providusStatement.js';
 
 function toNumber(value) {
   return value == null ? null : Number(value);
@@ -650,6 +650,7 @@ export default async function bankingRoutes(fastify) {
                 direction: line.direction,
                 suggestedCategory: line.suggestedCategory,
                 selectedCategory: line.selectedCategory,
+                notes: line.notes || null,
                 reviewStatus: isDuplicate ? 'DUPLICATE' : line.reviewStatus,
                 fingerprint: line.fingerprint,
                 rawPayload: line.rawPayload,
@@ -858,7 +859,7 @@ export default async function bankingRoutes(fastify) {
         return reply.code(400).send({ error: 'Posted lines cannot be edited' });
       }
 
-      const { selectedCategory, selectedCustomerId, notes, reviewStatus } = request.body;
+      const { selectedCategory, selectedCustomerId, notes, reviewStatus, description } = request.body;
       const updates = {};
       const categoryConfig = await getTransactionCategoryConfig();
 
@@ -873,6 +874,14 @@ export default async function bankingRoutes(fastify) {
         updates.selectedCategory = selectedCategory;
       }
 
+      if (description !== undefined) {
+        const normalizedDescription = String(description || '').trim();
+        if (!normalizedDescription) {
+          return reply.code(400).send({ error: 'Bank narration cannot be empty.' });
+        }
+        updates.description = normalizedDescription;
+      }
+
       if (selectedCustomerId !== undefined) {
         if (selectedCustomerId) {
           const customer = await prisma.customer.findUnique({ where: { id: selectedCustomerId } });
@@ -884,6 +893,7 @@ export default async function bankingRoutes(fastify) {
       }
 
       if (notes !== undefined) updates.notes = notes || null;
+      else if (updates.description) updates.notes = buildCleanDescription(updates.description) || null;
 
       if (reviewStatus !== undefined) {
         const validStatuses = ['PENDING_REVIEW', 'READY_TO_POST', 'SKIPPED', 'DUPLICATE'];
