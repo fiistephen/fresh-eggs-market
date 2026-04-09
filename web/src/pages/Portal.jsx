@@ -847,7 +847,7 @@ function MyActivity({ orders, loading, onOpenOrder }) {
   );
 }
 
-function OpenBatchesView({ batches, loading, profile, policy, onBooking, onBuyNow }) {
+function OpenBatchesView({ batches, loading, browseMode, signedIn, onRequireAuth, onBooking, onBuyNow }) {
   if (loading) {
     return (
       <div className="text-center py-12">
@@ -866,49 +866,74 @@ function OpenBatchesView({ batches, loading, profile, policy, onBooking, onBuyNo
     );
   }
 
-  // Separate into upcoming and buy-now
   const upcomingBatches = batches.filter((b) => b.status === 'OPEN');
   const buyNowBatches = batches.filter((b) => b.status === 'RECEIVED');
 
+  function handleAction(mode, batch) {
+    if (!signedIn) {
+      onRequireAuth?.(mode);
+      return;
+    }
+
+    if (mode === 'buy-now') onBuyNow(batch);
+    else onBooking(batch);
+  }
+
   return (
     <div className="space-y-8">
-      {upcomingBatches.length > 0 && (
+      {browseMode === 'book-upcoming' && (
         <div>
-          <h3 className="text-heading text-surface-800 mb-4">Book for later</h3>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {upcomingBatches.map((batch) => (
-              <BatchCard
-                key={batch.id}
-                batch={batch}
-                actionLabel="Book now"
-                helperText="Expected soon"
-                priceLabel="Wholesale"
-                onAction={() => onBooking(batch)}
-                disabled={false}
-                batchMode="book-upcoming"
-              />
-            ))}
-          </div>
+          <h3 className="text-heading text-surface-800 mb-4">Book upcoming batch</h3>
+          {upcomingBatches.length > 0 ? (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {upcomingBatches.map((batch) => (
+                <BatchCard
+                  key={batch.id}
+                  batch={batch}
+                  actionLabel={signedIn ? 'Book now' : 'Sign in to book'}
+                  helperText="Expected soon"
+                  priceLabel="Wholesale"
+                  onAction={() => handleAction('book-upcoming', batch)}
+                  disabled={false}
+                  batchMode="book-upcoming"
+                />
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              icon={<IconBox className="w-12 h-12" />}
+              title="No open batches for booking"
+              description="There are no upcoming batches open for booking right now. Please check back later."
+            />
+          )}
         </div>
       )}
 
-      {buyNowBatches.length > 0 && (
+      {browseMode === 'buy-now' && (
         <div>
-          <h3 className="text-heading text-surface-800 mb-4">Buy available now</h3>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {buyNowBatches.map((batch) => (
-              <BatchCard
-                key={batch.id}
-                batch={batch}
-                actionLabel="Buy now"
-                helperText="Ready to pickup"
-                priceLabel="Retail"
-                onAction={() => onBuyNow(batch)}
-                disabled={batch.availableForSale <= 0}
-                batchMode="buy-now"
-              />
-            ))}
-          </div>
+          <h3 className="text-heading text-surface-800 mb-4">Buy eggs now</h3>
+          {buyNowBatches.length > 0 ? (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {buyNowBatches.map((batch) => (
+                <BatchCard
+                  key={batch.id}
+                  batch={batch}
+                  actionLabel={signedIn ? 'Buy now' : 'Sign in to buy'}
+                  helperText="Ready to pickup"
+                  priceLabel="Retail"
+                  onAction={() => handleAction('buy-now', batch)}
+                  disabled={batch.availableForSale <= 0}
+                  batchMode="buy-now"
+                />
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              icon={<IconBox className="w-12 h-12" />}
+              title="No eggs ready right now"
+              description="There are no currently available batches to buy right now. You can check the upcoming batches instead."
+            />
+          )}
         </div>
       )}
     </div>
@@ -922,10 +947,20 @@ export default function Portal() {
   const [profile, setProfile] = useState(null);
   const [policy, setPolicy] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [viewMode, setViewMode] = useState(user ? 'activity' : null);
+  const [viewMode, setViewMode] = useState('browse');
+  const [browseMode, setBrowseMode] = useState(() => sessionStorage.getItem('portalBrowseMode') || 'buy-now');
+  const [showAuthPage, setShowAuthPage] = useState(false);
+  const [authIntent, setAuthIntent] = useState(() => sessionStorage.getItem('portalBrowseMode') || 'buy-now');
   const [selectedBatchForBooking, setSelectedBatchForBooking] = useState(null);
   const [selectedBatchForBuyNow, setSelectedBatchForBuyNow] = useState(null);
   const [selectedOrder, setSelectedOrder] = useState(null);
+
+  function openAuth(mode) {
+    sessionStorage.setItem('portalBrowseMode', mode);
+    setBrowseMode(mode);
+    setAuthIntent(mode);
+    setShowAuthPage(true);
+  }
 
   async function loadData() {
     setLoading(true);
@@ -951,15 +986,30 @@ export default function Portal() {
     loadData();
   }, [user]);
 
-  if (!user) {
+  useEffect(() => {
+    sessionStorage.setItem('portalBrowseMode', browseMode);
+  }, [browseMode]);
+
+  if (!user && showAuthPage) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-surface-50 via-surface-0 to-brand-50 flex items-center justify-center p-4">
         <div className="max-w-md w-full space-y-8">
           <div className="text-center">
             <h1 className="text-display font-bold text-surface-900 mb-2">Fresh Eggs Market</h1>
-            <p className="text-body text-surface-600">Premium farm-fresh eggs delivered to your door</p>
+            <p className="text-body text-surface-600">
+              {authIntent === 'book-upcoming' ? 'Sign in to book an upcoming batch at wholesale price.' : 'Sign in to buy eggs that are ready now at retail price.'}
+            </p>
           </div>
           <AuthPanel onAuth={(userData) => { localStorage.setItem('user', JSON.stringify(userData)); window.location.reload(); }} />
+          <div className="text-center">
+            <button
+              type="button"
+              onClick={() => setShowAuthPage(false)}
+              className="text-body-medium font-medium text-brand-700 hover:text-brand-800"
+            >
+              Back to browsing
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -973,19 +1023,31 @@ export default function Portal() {
           <div className="flex items-center justify-between gap-4">
             <div>
               <h1 className="text-title font-bold text-surface-900">Fresh Eggs Market</h1>
-              <p className="text-caption text-surface-600">{profileDisplayName(profile, user)}</p>
+              <p className="text-caption text-surface-600">
+                {user ? profileDisplayName(profile, user) : 'Browse first. Sign in only when you are ready to buy or book.'}
+              </p>
             </div>
-            <Button
-              variant="ghost"
-              size="md"
-              onClick={() => {
-                localStorage.removeItem('user');
-                api.setTokens(null, null);
-                window.location.reload();
-              }}
-            >
-              Sign out
-            </Button>
+            {user ? (
+              <Button
+                variant="ghost"
+                size="md"
+                onClick={() => {
+                  localStorage.removeItem('user');
+                  api.setTokens(null, null);
+                  window.location.reload();
+                }}
+              >
+                Sign out
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                size="md"
+                onClick={() => openAuth(browseMode)}
+              >
+                {browseMode === 'book-upcoming' ? 'Sign in to book' : 'Sign in to buy'}
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -993,45 +1055,83 @@ export default function Portal() {
       {/* Main content */}
       <div className="max-w-6xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
         {/* Tabs for activity vs batches */}
-        {user && (
-          <div className="mb-6 flex gap-2">
-            <button
-              onClick={() => setViewMode('activity')}
-              className={`px-4 py-2.5 rounded-md text-body-medium font-medium transition-all duration-fast ${
-                viewMode === 'activity'
-                  ? 'bg-brand-500 text-surface-900 shadow-xs'
-                  : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
-              }`}
-            >
-              My Orders
-            </button>
-            <button
-              onClick={() => setViewMode('browse')}
-              className={`px-4 py-2.5 rounded-md text-body-medium font-medium transition-all duration-fast ${
-                viewMode === 'browse'
-                  ? 'bg-brand-500 text-surface-900 shadow-xs'
-                  : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
-              }`}
-            >
-              Browse
-            </button>
-          </div>
-        )}
+        <div className="mb-6 flex flex-wrap gap-2">
+          <button
+            onClick={() => {
+              setBrowseMode('buy-now');
+              setViewMode('browse');
+            }}
+            className={`px-4 py-2.5 rounded-md text-body-medium font-medium transition-all duration-fast ${
+              browseMode === 'buy-now' && viewMode === 'browse'
+                ? 'bg-brand-500 text-surface-900 shadow-xs'
+                : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
+            }`}
+          >
+            Buy now
+          </button>
+          <button
+            onClick={() => {
+              setBrowseMode('book-upcoming');
+              setViewMode('browse');
+            }}
+            className={`px-4 py-2.5 rounded-md text-body-medium font-medium transition-all duration-fast ${
+              browseMode === 'book-upcoming' && viewMode === 'browse'
+                ? 'bg-brand-500 text-surface-900 shadow-xs'
+                : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
+            }`}
+          >
+            Book upcoming
+          </button>
+          {user ? (
+            <>
+              <button
+                onClick={() => setViewMode('activity')}
+                className={`px-4 py-2.5 rounded-md text-body-medium font-medium transition-all duration-fast ${
+                  viewMode === 'activity'
+                    ? 'bg-brand-500 text-surface-900 shadow-xs'
+                    : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
+                }`}
+              >
+                My Orders
+              </button>
+              <button
+                onClick={() => setViewMode('browse')}
+                className={`px-4 py-2.5 rounded-md text-body-medium font-medium transition-all duration-fast ${
+                  viewMode === 'browse'
+                    ? 'bg-brand-500 text-surface-900 shadow-xs'
+                    : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
+                }`}
+              >
+                Browse
+              </button>
+            </>
+          ) : null}
+        </div>
 
         {/* Content */}
-        {viewMode === 'activity' ? (
+        {user && viewMode === 'activity' ? (
           <div>
             <h2 className="text-heading text-surface-800 mb-4">Your orders</h2>
             <MyActivity orders={orders} loading={loading} onOpenOrder={setSelectedOrder} />
           </div>
         ) : (
           <div>
-            <h2 className="text-heading text-surface-800 mb-4">Available batches</h2>
+            <h2 className="text-heading text-surface-800 mb-4">
+              {browseMode === 'book-upcoming' ? 'Upcoming batches open for booking' : 'Batches available to buy now'}
+            </h2>
+            {!user ? (
+              <div className="mb-4 rounded-md border border-info-200 bg-info-50 p-3 text-body text-info-700">
+                {browseMode === 'book-upcoming'
+                  ? 'Browse upcoming batches at wholesale price. Sign in when you are ready to book.'
+                  : 'Browse what is available now at retail price. Sign in when you are ready to buy.'}
+              </div>
+            ) : null}
             <OpenBatchesView
               batches={batches}
               loading={loading}
-              profile={profile}
-              policy={policy}
+              browseMode={browseMode}
+              signedIn={Boolean(user)}
+              onRequireAuth={openAuth}
               onBooking={(batch) => setSelectedBatchForBooking(batch)}
               onBuyNow={(batch) => setSelectedBatchForBuyNow(batch)}
             />

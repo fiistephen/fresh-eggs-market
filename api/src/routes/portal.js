@@ -71,6 +71,7 @@ function mapPortalBatch(batch, eggTypes, extra = {}) {
   return {
     id: batch.id,
     name: batch.name,
+    status: batch.status,
     eggTypeKey: batch.eggTypeKey || 'REGULAR',
     eggTypeLabel: getCustomerEggTypeLabel(eggTypes, batch.eggTypeKey || 'REGULAR'),
     expectedDate: batch.expectedDate,
