@@ -99,7 +99,7 @@ function AuthPanel({ onAuth }) {
             onClick={() => { setMode('login'); setError(''); }}
             className={`flex-1 py-2.5 px-4 rounded-md text-body-medium font-medium transition-all duration-fast ${
               mode === 'login'
-                ? 'bg-brand-500 text-surface-0'
+                ? 'bg-brand-500 text-surface-900 shadow-xs'
                 : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
             }`}
           >
@@ -110,7 +110,7 @@ function AuthPanel({ onAuth }) {
             onClick={() => { setMode('register'); setError(''); }}
             className={`flex-1 py-2.5 px-4 rounded-md text-body-medium font-medium transition-all duration-fast ${
               mode === 'register'
-                ? 'bg-brand-500 text-surface-0'
+                ? 'bg-brand-500 text-surface-900 shadow-xs'
                 : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
             }`}
           >
@@ -906,7 +906,7 @@ export default function Portal() {
               onClick={() => setViewMode('activity')}
               className={`px-4 py-2.5 rounded-md text-body-medium font-medium transition-all duration-fast ${
                 viewMode === 'activity'
-                  ? 'bg-brand-500 text-surface-0'
+                  ? 'bg-brand-500 text-surface-900 shadow-xs'
                   : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
               }`}
             >
@@ -916,7 +916,7 @@ export default function Portal() {
               onClick={() => setViewMode('browse')}
               className={`px-4 py-2.5 rounded-md text-body-medium font-medium transition-all duration-fast ${
                 viewMode === 'browse'
-                  ? 'bg-brand-500 text-surface-0'
+                  ? 'bg-brand-500 text-surface-900 shadow-xs'
                   : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
               }`}
             >

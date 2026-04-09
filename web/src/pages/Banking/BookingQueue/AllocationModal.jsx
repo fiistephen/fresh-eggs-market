@@ -120,8 +120,8 @@ export default function AllocationModal({ transaction, openBatches, policy, onCl
         {!selectedCustomer ? (
           <div className="rounded-lg border border-surface-200 p-5 space-y-4">
             <div className="flex gap-2">
-              <button type="button" onClick={() => setCustomerMode('existing')} className={`rounded-md px-3 py-2 text-body-medium font-medium transition-colors duration-fast ${customerMode === 'existing' ? 'bg-brand-500 text-surface-0' : 'bg-surface-100 text-surface-600 hover:bg-surface-200'}`}>Link existing customer</button>
-              <button type="button" onClick={() => setCustomerMode('new')} className={`rounded-md px-3 py-2 text-body-medium font-medium transition-colors duration-fast ${customerMode === 'new' ? 'bg-brand-500 text-surface-0' : 'bg-surface-100 text-surface-600 hover:bg-surface-200'}`}>Create new customer</button>
+              <button type="button" onClick={() => setCustomerMode('existing')} className={`rounded-md px-3 py-2 text-body-medium font-medium transition-colors duration-fast ${customerMode === 'existing' ? 'bg-brand-500 text-surface-900 shadow-xs' : 'bg-surface-100 text-surface-600 hover:bg-surface-200'}`}>Link existing customer</button>
+              <button type="button" onClick={() => setCustomerMode('new')} className={`rounded-md px-3 py-2 text-body-medium font-medium transition-colors duration-fast ${customerMode === 'new' ? 'bg-brand-500 text-surface-900 shadow-xs' : 'bg-surface-100 text-surface-600 hover:bg-surface-200'}`}>Create new customer</button>
             </div>
 
             {customerMode === 'existing' ? (

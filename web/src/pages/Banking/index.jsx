@@ -338,13 +338,13 @@ export default function Banking() {
               <div className="flex">
                 <button
                   onClick={() => setShowRecordModal(true)}
-                  className="rounded-l-lg bg-brand-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-brand-700 transition-colors duration-fast"
+                  className="rounded-l-lg bg-brand-500 px-3.5 py-2 text-sm font-medium text-surface-900 hover:bg-brand-400 transition-colors duration-fast shadow-xs"
                 >
                   + Record entry
                 </button>
                 <button
                   onClick={() => setShowEntryMenu((v) => !v)}
-                  className="rounded-r-lg border-l border-brand-500 bg-brand-600 px-2 py-2 text-white hover:bg-brand-700 transition-colors duration-fast"
+                  className="rounded-r-lg border-l border-brand-600 bg-brand-500 px-2 py-2 text-surface-900 hover:bg-brand-400 transition-colors duration-fast shadow-xs"
                 >
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
                 </button>
