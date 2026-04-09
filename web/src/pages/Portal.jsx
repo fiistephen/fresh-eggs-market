@@ -15,6 +15,11 @@ const TRANSFER_DETAILS = {
   accountName: 'Fresh Egg Wholesales Market',
 };
 
+const PICKUP_DETAILS = {
+  lineOne: 'Spring Valley Estate, Alasia Bus Stop, Lekki-Epe ExpressWay, Lagos, Nigeria',
+  lineTwo: 'Immediately after Sunbeth Energies Filling Station, Before Dominion City Church, Before Lagos Business School, Lekki-Epe ExpressWay',
+};
+
 function profileDisplayName(profile, user) {
   if (profile?.customer?.name) return profile.customer.name;
   const fullName = [profile?.user?.firstName, profile?.user?.lastName].filter(Boolean).join(' ').trim();
@@ -70,6 +75,29 @@ const IconBank = () => (
 const IconBox = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+  </svg>
+);
+
+const IconCalendar = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="4" width="18" height="18" rx="2" />
+    <line x1="16" y1="2" x2="16" y2="6" />
+    <line x1="8" y1="2" x2="8" y2="6" />
+    <line x1="3" y1="10" x2="21" y2="10" />
+  </svg>
+);
+
+const IconMapPin = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+    <circle cx="12" cy="10" r="3" />
+  </svg>
+);
+
+const IconClock = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10" />
+    <polyline points="12 6 12 12 16 14" />
   </svg>
 );
 
@@ -206,6 +234,189 @@ function Metric({ label, value }) {
   );
 }
 
+function PickupAddressCard({ title = 'Pickup address' }) {
+  return (
+    <Card variant="outlined" className="border border-surface-200 p-4 text-body">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 text-brand-700">
+          <IconMapPin />
+        </div>
+        <div className="space-y-2">
+          <p className="text-body-medium font-semibold text-surface-900">{title}</p>
+          <p className="text-body text-surface-700">{PICKUP_DETAILS.lineOne}</p>
+          <p className="text-caption text-surface-500">{PICKUP_DETAILS.lineTwo}</p>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function PortalActionCard({ mode, title, subtitle, priceText, note, signedIn, active, onOpen, onSignIn }) {
+  const isBuyNow = mode === 'buy-now';
+  return (
+    <Card
+      variant="outlined"
+      className={`border transition-all duration-fast ${
+        active ? 'border-brand-300 bg-brand-50/60 shadow-sm' : 'border-surface-200 bg-surface-0'
+      }`}
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className={`flex h-11 w-11 items-center justify-center rounded-full ${
+          isBuyNow ? 'bg-success-50 text-success-700' : 'bg-brand-100 text-brand-800'
+        }`}>
+          {isBuyNow ? <IconBox /> : <IconCalendar />}
+        </div>
+        <Badge status={isBuyNow ? 'success' : 'warning'}>{isBuyNow ? 'Ready now' : 'Plan ahead'}</Badge>
+      </div>
+      <h3 className="mt-4 text-title font-semibold text-surface-900">{title}</h3>
+      <p className="mt-2 text-body text-surface-600">{subtitle}</p>
+      <div className="mt-4 rounded-md bg-surface-50 p-3">
+        <p className="text-caption font-medium text-surface-500">Price</p>
+        <p className="mt-1 text-body-medium font-semibold text-surface-900">{priceText}</p>
+        <p className="mt-1 text-caption text-surface-500">{note}</p>
+      </div>
+      <div className="mt-5 flex gap-3">
+        <Button variant="secondary" size="md" className="flex-1" onClick={onOpen}>
+          {isBuyNow ? 'See what is ready now' : 'See upcoming batches'}
+        </Button>
+        <Button variant="primary" size="md" className="flex-1" onClick={onSignIn}>
+          {signedIn ? (isBuyNow ? 'Buy now' : 'Book now') : (isBuyNow ? 'Sign in to buy' : 'Sign in to book')}
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+function PortalLanding({ activeTab, signedIn, onPickMode, onSignIn }) {
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+        <Card variant="default" className="border border-surface-200 bg-gradient-to-br from-surface-0 via-brand-50 to-surface-50">
+          <Badge status="warning">Fresh eggs, simple ordering</Badge>
+          <h2 className="mt-4 text-display font-bold text-surface-900 max-w-2xl">
+            Buy what is ready now, or lock in your upcoming batch before it arrives.
+          </h2>
+          <p className="mt-4 max-w-2xl text-body text-surface-600">
+            Choose the path that fits your need today. Buy-now orders use retail price and are approved for pickup after successful card payment. Upcoming batch bookings use wholesale price and hold your crates once payment starts.
+          </p>
+
+          <div className="mt-6 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-md border border-surface-200 bg-surface-0 p-4">
+              <div className="mb-2 text-brand-700"><IconBox /></div>
+              <p className="text-body-medium font-semibold text-surface-900">Buy now</p>
+              <p className="mt-1 text-caption text-surface-500">See only batches that are already received and ready to pickup.</p>
+            </div>
+            <div className="rounded-md border border-surface-200 bg-surface-0 p-4">
+              <div className="mb-2 text-brand-700"><IconCalendar /></div>
+              <p className="text-body-medium font-semibold text-surface-900">Book upcoming</p>
+              <p className="mt-1 text-caption text-surface-500">Reserve crates early at wholesale price before the batch lands.</p>
+            </div>
+            <div className="rounded-md border border-surface-200 bg-surface-0 p-4">
+              <div className="mb-2 text-brand-700"><IconClock /></div>
+              <p className="text-body-medium font-semibold text-surface-900">Quick next steps</p>
+              <p className="mt-1 text-caption text-surface-500">Pay by card or transfer. Card gives immediate payment result.</p>
+            </div>
+          </div>
+        </Card>
+
+        <div className="grid gap-4">
+          <PortalActionCard
+            mode="buy-now"
+            title="Buy eggs now"
+            subtitle="For eggs that are already available and can be picked up as soon as payment is approved."
+            priceText="Retail price"
+            note="Best for same-day or urgent pickup."
+            signedIn={signedIn}
+            active={activeTab === 'buy-now'}
+            onOpen={() => onPickMode('buy-now')}
+            onSignIn={() => onSignIn('buy-now')}
+          />
+          <PortalActionCard
+            mode="book-upcoming"
+            title="Book upcoming batch"
+            subtitle="For eggs that are still on the way. Reserve your crates early and pay the booking amount now."
+            priceText="Wholesale price"
+            note="Best for planned restock and larger orders."
+            signedIn={signedIn}
+            active={activeTab === 'book-upcoming'}
+            onOpen={() => onPickMode('book-upcoming')}
+            onSignIn={() => onSignIn('book-upcoming')}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PaymentSuccessModal({ result, onClose }) {
+  if (!result?.order) return null;
+  const { order, message } = result;
+  const isBuyNow = order.kind === 'BUY_NOW';
+  const title = isBuyNow ? 'Payment confirmed' : 'Booking confirmed';
+  const referenceLabel = isBuyNow ? 'Order number' : 'Booking number';
+
+  return (
+    <Modal title={title} open={true} onClose={onClose}>
+      <div className="space-y-4">
+        <div className="rounded-md border border-success-200 bg-success-50 p-4">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 text-success-700"><IconCheck /></div>
+            <div>
+              <p className="text-body-medium font-semibold text-success-800">{message}</p>
+              <p className="mt-1 text-caption text-success-700">
+                Keep the {referenceLabel.toLowerCase()} below. You may need it when you come for pickup or when you contact the team.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <Card variant="outlined" className="border-2 border-brand-300 bg-brand-50 p-4">
+          <p className="text-caption font-medium uppercase tracking-wide text-brand-800">{referenceLabel}</p>
+          <p className="mt-2 text-display font-bold text-surface-900">{order.reference || '—'}</p>
+        </Card>
+
+        <Card variant="outlined" className="border border-surface-200 p-4 text-body">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Metric label="Batch" value={order.batch?.name || '—'} />
+            <Metric label="Egg type" value={order.eggTypeLabel || order.batch?.eggTypeLabel || '—'} />
+            <Metric label="Crates" value={`${fmt(order.quantity)} crates`} />
+            <Metric label="Amount paid" value={fmtMoney(order.amountPaid)} />
+            <Metric label="Payment remaining" value={fmtMoney(order.balance)} />
+            <Metric label="Expected batch date" value={fmtDate(order.expectedDate)} />
+            <Metric label="Pickup window start" value={fmtDateTime(order.pickupWindowStart)} />
+            <Metric label="Pickup window end" value={fmtDateTime(order.pickupWindowEnd)} />
+          </div>
+        </Card>
+
+        <Card variant="outlined" className="border border-info-200 bg-info-50 p-4">
+          <p className="text-body-medium font-semibold text-info-900">What to do next</p>
+          <div className="mt-3 space-y-2 text-body text-info-800">
+            {isBuyNow ? (
+              <>
+                <p>1. Your eggs are approved for pickup from today until the next 3 days.</p>
+                <p>2. Bring your order number when coming for pickup.</p>
+                <p>3. If someone else is picking up for you, share the order number with them.</p>
+              </>
+            ) : (
+              <>
+                <p>1. Your booking has been saved and your crates are held for you.</p>
+                <p>2. Keep your booking number safe for future reference.</p>
+                <p>3. When the batch arrives, you can use this booking number for pickup and support.</p>
+              </>
+            )}
+          </div>
+        </Card>
+
+        <PickupAddressCard title="Pickup address" />
+
+        <Button variant="primary" size="lg" onClick={onClose} className="w-full">
+          Done
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
 function BatchCard({ batch, actionLabel, helperText, priceLabel, onAction, disabled, batchMode }) {
   const primaryPrice = batchMode === 'buy-now' ? Number(batch.retailPrice) : Number(batch.wholesalePrice);
   const primaryPriceLabel = batchMode === 'buy-now' ? 'Retail' : 'Wholesale';
@@ -334,18 +545,47 @@ function BookingCheckoutModal({ batch, profile, policy, onClose, onFinished }) {
 
   const minPaymentPercent = Number(policy?.bookingMinimumPaymentPercent || 80);
   const orderLimitProfile = profile?.orderLimitProfile || null;
-  const maxQty = Math.min(
-    batch.remainingAvailable,
-    Number(orderLimitProfile?.currentPerOrderLimit || policy?.maxBookingCratesPerOrder || 100),
-  );
+  const availableToBook = Number(batch.remainingAvailable || 0);
+  const currentPerOrderLimit = Number(orderLimitProfile?.currentPerOrderLimit || policy?.maxBookingCratesPerOrder || 100);
+  const maxQty = Math.min(availableToBook, currentPerOrderLimit);
   const quantityValue = parseInt(quantity, 10) || 0;
   const orderValue = quantityValue * Number(batch.wholesalePrice);
   const minPayment = orderValue * (minPaymentPercent / 100);
   const payNow = Number(amountToPay || 0);
   const balanceLeft = Math.max(0, orderValue - payNow);
+  const quantityError = useMemo(() => {
+    if (!quantity) return '';
+    if (!Number.isInteger(quantityValue) || quantityValue < 1) {
+      return 'Enter at least 1 crate.';
+    }
+    if (quantityValue > availableToBook) {
+      return `Only ${fmt(availableToBook)} crates are still available to book.`;
+    }
+    if (quantityValue > currentPerOrderLimit) {
+      return orderLimitProfile?.isUsingEarlyOrderLimit
+        ? `Your first ${Number(orderLimitProfile.earlyOrderLimitCount || 0)} orders can be up to ${fmt(currentPerOrderLimit)} crates each.`
+        : `You can book up to ${fmt(currentPerOrderLimit)} crates in one order.`;
+    }
+    return '';
+  }, [quantity, quantityValue, availableToBook, currentPerOrderLimit, orderLimitProfile]);
+
+  const paymentError = useMemo(() => {
+    if (!amountToPay || quantityError) return '';
+    if (payNow < minPayment) {
+      return `You need to pay at least ${fmtMoney(minPayment)} now to continue.`;
+    }
+    if (payNow > orderValue) {
+      return 'Amount to pay now cannot be more than the full booking value.';
+    }
+    return '';
+  }, [amountToPay, payNow, minPayment, orderValue, quantityError]);
 
   async function handleSubmit(event) {
     event.preventDefault();
+    if (quantityError || paymentError) {
+      setError(quantityError || paymentError);
+      return;
+    }
     setLoading(true);
     setError('');
     try {
@@ -435,6 +675,16 @@ function BookingCheckoutModal({ batch, profile, policy, onClose, onFinished }) {
           hint={`You can book up to ${maxQty} crates in this step.`}
         />
 
+        {quantityError ? (
+          <div className="rounded-md border border-warning-200 bg-warning-50 p-3 text-body text-warning-800">
+            {quantityError}
+          </div>
+        ) : quantityValue > 0 ? (
+          <div className="rounded-md border border-success-200 bg-success-50 p-3 text-body text-success-800">
+            {fmt(quantityValue)} crates are available for this booking.
+          </div>
+        ) : null}
+
         {quantityValue > 0 && (
           <Card variant="tinted" tint="bg-success-50" className="p-4 text-body">
             <div className="space-y-2">
@@ -455,6 +705,12 @@ function BookingCheckoutModal({ batch, profile, policy, onClose, onFinished }) {
           onChange={(e) => setAmountToPay(e.target.value)}
           hint={`Minimum is ${minPaymentPercent}% of the booking value.`}
         />
+
+        {paymentError ? (
+          <div className="rounded-md border border-warning-200 bg-warning-50 p-3 text-body text-warning-800">
+            {paymentError}
+          </div>
+        ) : null}
 
         {payNow > 0 && (
           <Card variant="outlined" className="border border-surface-200 p-4 text-body">
@@ -494,7 +750,7 @@ function BookingCheckoutModal({ batch, profile, policy, onClose, onFinished }) {
             variant="primary"
             size="lg"
             loading={loading}
-            disabled={quantityValue < 1 || payNow <= 0}
+            disabled={quantityValue < 1 || payNow <= 0 || Boolean(quantityError) || Boolean(paymentError)}
             className="flex-1"
           >
             {paymentMethod === 'CARD' ? 'Continue to card payment' : 'Hold crates and pay by transfer'}
@@ -516,14 +772,32 @@ function BuyNowCheckoutModal({ batch, profile, policy, onClose, onFinished }) {
   const quantityValue = parseInt(quantity, 10) || 0;
   const unitPrice = Number(batch.retailPrice);
   const orderLimitProfile = profile?.orderLimitProfile || null;
-  const maxQty = Math.min(
-    batch.availableForSale,
-    Number(orderLimitProfile?.currentPerOrderLimit || policy?.maxBookingCratesPerOrder || 100),
-  );
+  const availableToBuy = Number(batch.availableForSale || 0);
+  const currentPerOrderLimit = Number(orderLimitProfile?.currentPerOrderLimit || policy?.maxBookingCratesPerOrder || 100);
+  const maxQty = Math.min(availableToBuy, currentPerOrderLimit);
   const orderValue = quantityValue * unitPrice;
+  const quantityError = useMemo(() => {
+    if (!quantity) return '';
+    if (!Number.isInteger(quantityValue) || quantityValue < 1) {
+      return 'Enter at least 1 crate.';
+    }
+    if (quantityValue > availableToBuy) {
+      return `Only ${fmt(availableToBuy)} crates are still available to buy.`;
+    }
+    if (quantityValue > currentPerOrderLimit) {
+      return orderLimitProfile?.isUsingEarlyOrderLimit
+        ? `Your first ${Number(orderLimitProfile.earlyOrderLimitCount || 0)} orders can be up to ${fmt(currentPerOrderLimit)} crates each.`
+        : `You can buy up to ${fmt(currentPerOrderLimit)} crates in one order.`;
+    }
+    return '';
+  }, [quantity, quantityValue, availableToBuy, currentPerOrderLimit, orderLimitProfile]);
 
   async function handleSubmit(event) {
     event.preventDefault();
+    if (quantityError) {
+      setError(quantityError);
+      return;
+    }
     setLoading(true);
     setError('');
     try {
@@ -614,6 +888,16 @@ function BuyNowCheckoutModal({ batch, profile, policy, onClose, onFinished }) {
           hint={`You can buy up to ${fmt(maxQty)} crates right now.`}
         />
 
+        {quantityError ? (
+          <div className="rounded-md border border-warning-200 bg-warning-50 p-3 text-body text-warning-800">
+            {quantityError}
+          </div>
+        ) : quantityValue > 0 ? (
+          <div className="rounded-md border border-success-200 bg-success-50 p-3 text-body text-success-800">
+            {fmt(quantityValue)} crates are available to buy right now.
+          </div>
+        ) : null}
+
         <Card variant="tinted" tint="bg-success-50" className="p-4 text-body">
           <div className="space-y-2">
             <div className="flex items-center justify-between"><span className="text-surface-600">Price per crate</span><span className="font-semibold text-surface-900">{fmtMoney(unitPrice)}</span></div>
@@ -651,7 +935,7 @@ function BuyNowCheckoutModal({ batch, profile, policy, onClose, onFinished }) {
             variant="primary"
             size="lg"
             loading={loading}
-            disabled={quantityValue < 1}
+            disabled={quantityValue < 1 || Boolean(quantityError)}
             className="flex-1"
           >
             {paymentMethod === 'CARD' ? 'Continue to card payment' : 'Hold crates and pay by transfer'}
@@ -947,22 +1231,24 @@ export default function Portal() {
   const [profile, setProfile] = useState(null);
   const [policy, setPolicy] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [viewMode, setViewMode] = useState('browse');
-  const [browseMode, setBrowseMode] = useState(() => sessionStorage.getItem('portalBrowseMode') || 'buy-now');
+  const [activeTab, setActiveTab] = useState(() => sessionStorage.getItem('portalBrowseMode') || 'buy-now');
   const [showAuthPage, setShowAuthPage] = useState(false);
   const [authIntent, setAuthIntent] = useState(() => sessionStorage.getItem('portalBrowseMode') || 'buy-now');
   const [selectedBatchForBooking, setSelectedBatchForBooking] = useState(null);
   const [selectedBatchForBuyNow, setSelectedBatchForBuyNow] = useState(null);
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [paymentResult, setPaymentResult] = useState(null);
+  const [paymentVerification, setPaymentVerification] = useState({ loading: false, error: '' });
+  const handledReferenceRef = useRef(null);
 
   function openAuth(mode) {
     sessionStorage.setItem('portalBrowseMode', mode);
-    setBrowseMode(mode);
+    setActiveTab(mode);
     setAuthIntent(mode);
     setShowAuthPage(true);
   }
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const [upcomingRes, availableNowRes, ordersRes, profileRes] = await Promise.all([
@@ -980,15 +1266,43 @@ export default function Portal() {
     } finally {
       setLoading(false);
     }
-  }
-
-  useEffect(() => {
-    loadData();
   }, [user]);
 
   useEffect(() => {
-    sessionStorage.setItem('portalBrowseMode', browseMode);
-  }, [browseMode]);
+    loadData();
+  }, [loadData]);
+
+  useEffect(() => {
+    sessionStorage.setItem('portalBrowseMode', activeTab === 'orders' ? authIntent : activeTab);
+  }, [activeTab, authIntent]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const reference = params.get('reference') || params.get('trxref');
+    if (!reference || handledReferenceRef.current === reference) return;
+
+    handledReferenceRef.current = reference;
+    setPaymentVerification({ loading: true, error: '' });
+
+    api.post('/portal/checkouts/verify-card', { reference })
+      .then((response) => {
+        setPaymentResult(response);
+        setPaymentVerification({ loading: false, error: '' });
+        setActiveTab(response.order?.kind === 'BOOKING' ? 'book-upcoming' : 'buy-now');
+        loadData();
+      })
+      .catch((err) => {
+        setPaymentVerification({
+          loading: false,
+          error: err.error || 'Could not confirm this card payment yet. Please refresh and try again.',
+        });
+      })
+      .finally(() => {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      });
+  }, [user, loadData]);
 
   if (!user && showAuthPage) {
     return (
@@ -997,17 +1311,24 @@ export default function Portal() {
           <div className="text-center">
             <h1 className="text-display font-bold text-surface-900 mb-2">Fresh Eggs Market</h1>
             <p className="text-body text-surface-600">
-              {authIntent === 'book-upcoming' ? 'Sign in to book an upcoming batch at wholesale price.' : 'Sign in to buy eggs that are ready now at retail price.'}
+              {authIntent === 'book-upcoming'
+                ? 'Sign in to book an upcoming batch at wholesale price.'
+                : 'Sign in to buy eggs that are ready now at retail price.'}
             </p>
           </div>
-          <AuthPanel onAuth={(userData) => { localStorage.setItem('user', JSON.stringify(userData)); window.location.reload(); }} />
+          <AuthPanel
+            onAuth={(userData) => {
+              localStorage.setItem('user', JSON.stringify(userData));
+              window.location.reload();
+            }}
+          />
           <div className="text-center">
             <button
               type="button"
               onClick={() => setShowAuthPage(false)}
               className="text-body-medium font-medium text-brand-700 hover:text-brand-800"
             >
-              Back to browsing
+              Back to home
             </button>
           </div>
         </div>
@@ -1015,16 +1336,20 @@ export default function Portal() {
     );
   }
 
+  const isPublic = !user;
+  const browseMode = activeTab === 'orders' ? authIntent : activeTab;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-surface-50 via-surface-0 to-brand-50">
-      {/* Header */}
       <div className="border-b border-surface-200 bg-surface-0 sticky top-0 z-40 shadow-xs">
         <div className="max-w-6xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between gap-4">
             <div>
               <h1 className="text-title font-bold text-surface-900">Fresh Eggs Market</h1>
               <p className="text-caption text-surface-600">
-                {user ? profileDisplayName(profile, user) : 'Browse first. Sign in only when you are ready to buy or book.'}
+                {user
+                  ? `Welcome back, ${profileDisplayName(profile, user)}`
+                  : 'See what is available first. Sign in only when you are ready to buy or book.'}
               </p>
             </div>
             {user ? (
@@ -1040,11 +1365,7 @@ export default function Portal() {
                 Sign out
               </Button>
             ) : (
-              <Button
-                variant="primary"
-                size="md"
-                onClick={() => openAuth(browseMode)}
-              >
+              <Button variant="primary" size="md" onClick={() => openAuth(browseMode)}>
                 {browseMode === 'book-upcoming' ? 'Sign in to book' : 'Sign in to buy'}
               </Button>
             )}
@@ -1052,94 +1373,120 @@ export default function Portal() {
         </div>
       </div>
 
-      {/* Main content */}
-      <div className="max-w-6xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
-        {/* Tabs for activity vs batches */}
-        <div className="mb-6 flex flex-wrap gap-2">
-          <button
-            onClick={() => {
-              setBrowseMode('buy-now');
-              setViewMode('browse');
-            }}
-            className={`px-4 py-2.5 rounded-md text-body-medium font-medium transition-all duration-fast ${
-              browseMode === 'buy-now' && viewMode === 'browse'
-                ? 'bg-brand-500 text-surface-900 shadow-xs'
-                : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
-            }`}
-          >
-            Buy now
-          </button>
-          <button
-            onClick={() => {
-              setBrowseMode('book-upcoming');
-              setViewMode('browse');
-            }}
-            className={`px-4 py-2.5 rounded-md text-body-medium font-medium transition-all duration-fast ${
-              browseMode === 'book-upcoming' && viewMode === 'browse'
-                ? 'bg-brand-500 text-surface-900 shadow-xs'
-                : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
-            }`}
-          >
-            Book upcoming
-          </button>
-          {user ? (
-            <>
+      <div className="max-w-6xl mx-auto px-4 py-8 sm:px-6 lg:px-8 space-y-6">
+        {paymentVerification.loading ? (
+          <div className="rounded-md border border-info-200 bg-info-50 p-3 text-body text-info-700">
+            Confirming your card payment...
+          </div>
+        ) : null}
+
+        {paymentVerification.error ? (
+          <div className="rounded-md border border-error-200 bg-error-50 p-3 text-body text-error-700">
+            {paymentVerification.error}
+          </div>
+        ) : null}
+
+        {isPublic ? (
+          <>
+            <PortalLanding
+              activeTab={browseMode}
+              signedIn={false}
+              onPickMode={setActiveTab}
+              onSignIn={openAuth}
+            />
+
+            <section className="space-y-4">
+              <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div>
+                  <h2 className="text-heading text-surface-900">
+                    {browseMode === 'book-upcoming' ? 'Upcoming batches open for booking' : 'Batches available to buy now'}
+                  </h2>
+                  <p className="mt-1 text-body text-surface-600">
+                    {browseMode === 'book-upcoming'
+                      ? 'Wholesale price applies here. Sign in when you are ready to pay and hold your crates.'
+                      : 'Retail price applies here. Sign in when you are ready to pay and approve pickup.'}
+                  </p>
+                </div>
+              </div>
+
+              <OpenBatchesView
+                batches={batches}
+                loading={loading}
+                browseMode={browseMode}
+                signedIn={false}
+                onRequireAuth={openAuth}
+                onBooking={(batch) => setSelectedBatchForBooking(batch)}
+                onBuyNow={(batch) => setSelectedBatchForBuyNow(batch)}
+              />
+            </section>
+          </>
+        ) : (
+          <>
+            <div className="flex flex-wrap gap-2">
               <button
-                onClick={() => setViewMode('activity')}
+                onClick={() => setActiveTab('buy-now')}
                 className={`px-4 py-2.5 rounded-md text-body-medium font-medium transition-all duration-fast ${
-                  viewMode === 'activity'
+                  activeTab === 'buy-now'
+                    ? 'bg-brand-500 text-surface-900 shadow-xs'
+                    : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
+                }`}
+              >
+                Buy now
+              </button>
+              <button
+                onClick={() => setActiveTab('book-upcoming')}
+                className={`px-4 py-2.5 rounded-md text-body-medium font-medium transition-all duration-fast ${
+                  activeTab === 'book-upcoming'
+                    ? 'bg-brand-500 text-surface-900 shadow-xs'
+                    : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
+                }`}
+              >
+                Book upcoming
+              </button>
+              <button
+                onClick={() => setActiveTab('orders')}
+                className={`px-4 py-2.5 rounded-md text-body-medium font-medium transition-all duration-fast ${
+                  activeTab === 'orders'
                     ? 'bg-brand-500 text-surface-900 shadow-xs'
                     : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
                 }`}
               >
                 My Orders
               </button>
-              <button
-                onClick={() => setViewMode('browse')}
-                className={`px-4 py-2.5 rounded-md text-body-medium font-medium transition-all duration-fast ${
-                  viewMode === 'browse'
-                    ? 'bg-brand-500 text-surface-900 shadow-xs'
-                    : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
-                }`}
-              >
-                Browse
-              </button>
-            </>
-          ) : null}
-        </div>
+            </div>
 
-        {/* Content */}
-        {user && viewMode === 'activity' ? (
-          <div>
-            <h2 className="text-heading text-surface-800 mb-4">Your orders</h2>
-            <MyActivity orders={orders} loading={loading} onOpenOrder={setSelectedOrder} />
-          </div>
-        ) : (
-          <div>
-            <h2 className="text-heading text-surface-800 mb-4">
-              {browseMode === 'book-upcoming' ? 'Upcoming batches open for booking' : 'Batches available to buy now'}
-            </h2>
-            {!user ? (
-              <div className="mb-4 rounded-md border border-info-200 bg-info-50 p-3 text-body text-info-700">
-                {browseMode === 'book-upcoming'
-                  ? 'Browse upcoming batches at wholesale price. Sign in when you are ready to book.'
-                  : 'Browse what is available now at retail price. Sign in when you are ready to buy.'}
+            {activeTab === 'orders' ? (
+              <div>
+                <h2 className="text-heading text-surface-800 mb-4">Your orders</h2>
+                <MyActivity orders={orders} loading={loading} onOpenOrder={setSelectedOrder} />
               </div>
-            ) : null}
-            <OpenBatchesView
-              batches={batches}
-              loading={loading}
-              browseMode={browseMode}
-              signedIn={Boolean(user)}
-              onRequireAuth={openAuth}
-              onBooking={(batch) => setSelectedBatchForBooking(batch)}
-              onBuyNow={(batch) => setSelectedBatchForBuyNow(batch)}
-            />
-          </div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <h2 className="text-heading text-surface-900">
+                    {activeTab === 'book-upcoming' ? 'Book upcoming batch' : 'Buy eggs now'}
+                  </h2>
+                  <p className="mt-1 text-body text-surface-600">
+                    {activeTab === 'book-upcoming'
+                      ? 'Choose an open batch, enter how many crates you want, and pay the booking amount now.'
+                      : 'Choose a ready batch, pay the retail price, and get approved for pickup after payment confirmation.'}
+                  </p>
+                </div>
+                <OpenBatchesView
+                  batches={batches}
+                  loading={loading}
+                  browseMode={activeTab}
+                  signedIn={true}
+                  onRequireAuth={openAuth}
+                  onBooking={(batch) => setSelectedBatchForBooking(batch)}
+                  onBuyNow={(batch) => setSelectedBatchForBuyNow(batch)}
+                />
+              </div>
+            )}
+          </>
         )}
       </div>
 
-      {/* Modals */}
       {selectedBatchForBooking && (
         <BookingCheckoutModal
           batch={selectedBatchForBooking}
@@ -1164,6 +1511,13 @@ export default function Portal() {
         <OrderDetailModal
           order={selectedOrder}
           onClose={() => setSelectedOrder(null)}
+        />
+      )}
+
+      {paymentResult && (
+        <PaymentSuccessModal
+          result={paymentResult}
+          onClose={() => setPaymentResult(null)}
         />
       )}
     </div>
