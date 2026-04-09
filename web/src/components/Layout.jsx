@@ -105,9 +105,15 @@ export default function Layout() {
     item => !item.roles || item.roles.includes(user?.role)
   );
 
+  const displayName = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim()
+    || user?.name
+    || user?.email
+    || user?.phone
+    || 'Account';
+
   // Get initials for avatar
   const initials = user
-    ? `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}`.toUpperCase()
+    ? `${user.firstName?.[0] || user.name?.[0] || ''}${user.lastName?.[0] || ''}`.toUpperCase() || '?'
     : '?';
 
   return (
@@ -122,8 +128,9 @@ export default function Layout() {
 
       {/* ─── Sidebar ─── */}
       <aside className={`
-        fixed lg:static inset-y-0 left-0 z-50
-        w-60 bg-surface-900 flex flex-col
+        fixed inset-y-0 left-0 z-50
+        w-60 shrink-0 bg-surface-900 flex flex-col
+        lg:sticky lg:top-0 lg:h-screen lg:self-start
         transform transition-transform duration-slow ease-apple
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
@@ -176,7 +183,7 @@ export default function Layout() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-body-medium text-white truncate">
-                {user?.firstName} {user?.lastName}
+                {displayName}
               </p>
               <p className="text-caption text-surface-500 capitalize">
                 {user?.role?.replace('_', ' ').toLowerCase()}
