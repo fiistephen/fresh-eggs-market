@@ -35,6 +35,7 @@ function autoCleanDescription(description) {
 }
 
 export default function ImportLineRow({ line, categoryMap, selected, onToggleSelected, onSaved }) {
+  const hasUsefulDocRef = line.docNum != null && String(line.docNum).trim() !== '' && String(line.docNum).trim() !== '0';
   const [draft, setDraft] = useState({
     description: line.description || '',
     selectedCategory: line.selectedCategory || line.suggestedCategory || '',
@@ -73,7 +74,7 @@ export default function ImportLineRow({ line, categoryMap, selected, onToggleSel
             disabled={isPosted}
             className="w-full rounded-md border border-surface-200 px-2 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-surface-100"
           />
-          {line.docNum && <div className="text-caption text-surface-400">Ref {line.docNum}</div>}
+          {hasUsefulDocRef && <div className="text-caption text-surface-400">Ref {line.docNum}</div>}
         </div>
       </td>
       <td className="px-4 py-3 text-body">
