@@ -204,6 +204,220 @@ function createBankTransaction({
   });
 }
 
+async function getCashSaleAllocationMap(transactionIds = []) {
+  if (transactionIds.length === 0) return new Map();
+
+  const allocations = await prisma.cashDepositBatchTransaction.groupBy({
+    by: ['bankTransactionId'],
+    where: { bankTransactionId: { in: transactionIds } },
+    _sum: { amountIncluded: true },
+  });
+
+  return new Map(
+    allocations.map((entry) => [entry.bankTransactionId, Number(entry._sum.amountIncluded || 0)]),
+  );
+}
+
+async function getAvailableCashSaleTransactions({ upToDate } = {}) {
+  const where = {
+    direction: 'INFLOW',
+    category: 'CASH_SALE',
+    bankAccount: { accountType: 'CASH_ON_HAND' },
+  };
+
+  if (upToDate) {
+    where.transactionDate = { lte: upToDate };
+  }
+
+  const transactions = await prisma.bankTransaction.findMany({
+    where,
+    include: {
+      customer: { select: { id: true, name: true, phone: true } },
+      sale: { select: { id: true, receiptNumber: true, saleDate: true } },
+      bankAccount: { select: { id: true, name: true, accountType: true, lastFour: true, isVirtual: true, supportsStatementImport: true } },
+    },
+    orderBy: [{ transactionDate: 'asc' }, { createdAt: 'asc' }],
+  });
+
+  const allocationMap = await getCashSaleAllocationMap(transactions.map((transaction) => transaction.id));
+
+  return transactions
+    .map((transaction) => {
+      const allocatedAmount = allocationMap.get(transaction.id) || 0;
+      const availableAmount = Math.max(0, Number(transaction.amount) - allocatedAmount);
+      return {
+        ...enrichTransaction(transaction),
+        allocatedAmount,
+        availableAmount,
+      };
+    })
+    .filter((transaction) => transaction.availableAmount > 0.009);
+}
+
+function hoursBetween(fromDate, toDate = new Date()) {
+  return (new Date(toDate).getTime() - new Date(fromDate).getTime()) / (1000 * 60 * 60);
+}
+
+async function getCashDepositWorkspace(policyInput) {
+  const policy = policyInput || await getOperationsPolicy();
+  const undepositedThresholdHours = Number(policy.undepositedCashAlertHours || 24);
+  const pendingThresholdHours = Number(policy.pendingCashDepositConfirmationHours || 24);
+
+  const [availableCashTransactions, pendingBatches, confirmedRecently] = await Promise.all([
+    getAvailableCashSaleTransactions(),
+    prisma.cashDepositBatch.findMany({
+      where: { status: { in: ['PENDING_CONFIRMATION', 'OVERDUE'] } },
+      include: {
+        createdBy: { select: { firstName: true, lastName: true } },
+        fromBankAccount: { select: { id: true, name: true, accountType: true, lastFour: true, isVirtual: true, supportsStatementImport: true } },
+        toBankAccount: { select: { id: true, name: true, accountType: true, lastFour: true, isVirtual: true, supportsStatementImport: true } },
+        outflowTransaction: {
+          include: {
+            enteredBy: { select: { firstName: true, lastName: true } },
+          },
+        },
+        transactions: {
+          include: {
+            bankTransaction: {
+              include: {
+                customer: { select: { id: true, name: true, phone: true } },
+                sale: { select: { id: true, receiptNumber: true, saleDate: true } },
+              },
+            },
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+      orderBy: [{ depositDate: 'desc' }, { createdAt: 'desc' }],
+    }),
+    prisma.cashDepositBatch.findMany({
+      where: { status: 'CONFIRMED' },
+      include: {
+        createdBy: { select: { firstName: true, lastName: true } },
+        confirmedBy: { select: { firstName: true, lastName: true } },
+        fromBankAccount: { select: { id: true, name: true, accountType: true, lastFour: true, isVirtual: true, supportsStatementImport: true } },
+        toBankAccount: { select: { id: true, name: true, accountType: true, lastFour: true, isVirtual: true, supportsStatementImport: true } },
+        confirmationStatementLine: {
+          select: {
+            id: true,
+            lineNumber: true,
+            description: true,
+            transactionDate: true,
+            actualTransactionDate: true,
+            valueDate: true,
+            notes: true,
+          },
+        },
+      },
+      orderBy: [{ confirmedAt: 'desc' }, { createdAt: 'desc' }],
+      take: 10,
+    }),
+  ]);
+
+  const undepositedTransactions = availableCashTransactions.filter((transaction) => hoursBetween(transaction.transactionDate) >= undepositedThresholdHours);
+  const undepositedTotal = undepositedTransactions.reduce((sum, transaction) => sum + Number(transaction.availableAmount), 0);
+  const pendingNormalized = pendingBatches.map((batch) => {
+    const ageHours = hoursBetween(batch.depositDate);
+    return {
+      ...batch,
+      amount: Number(batch.amount),
+      ageHours,
+      isOverdue: ageHours >= pendingThresholdHours,
+      status: batch.status === 'PENDING_CONFIRMATION' && ageHours >= pendingThresholdHours ? 'OVERDUE' : batch.status,
+      transactions: batch.transactions.map((entry) => ({
+        ...entry,
+        amountIncluded: Number(entry.amountIncluded),
+        bankTransaction: entry.bankTransaction ? {
+          ...enrichTransaction(entry.bankTransaction),
+        } : null,
+      })),
+    };
+  });
+
+  return {
+    undepositedCash: {
+      count: undepositedTransactions.length,
+      total: undepositedTotal,
+      thresholdHours: undepositedThresholdHours,
+      transactions: undepositedTransactions,
+    },
+    pendingDeposits: {
+      count: pendingNormalized.length,
+      total: pendingNormalized.reduce((sum, batch) => sum + Number(batch.amount || 0), 0),
+      thresholdHours: pendingThresholdHours,
+      batches: pendingNormalized,
+    },
+    confirmedRecently: confirmedRecently.map((batch) => ({
+      ...batch,
+      amount: Number(batch.amount),
+    })),
+  };
+}
+
+async function getCashDepositMatchCandidates({ amount, transactionDate, bankAccountId, policyInput }) {
+  const policy = policyInput || await getOperationsPolicy(transactionDate || new Date());
+  const matchWindowDays = Number(policy.cashDepositMatchWindowDays || 2);
+  const targetDate = transactionDate ? new Date(transactionDate) : new Date();
+  const minDate = new Date(targetDate);
+  minDate.setDate(minDate.getDate() - matchWindowDays);
+  const maxDate = new Date(targetDate);
+  maxDate.setDate(maxDate.getDate() + matchWindowDays);
+
+  const candidates = await prisma.cashDepositBatch.findMany({
+    where: {
+      toBankAccountId: bankAccountId,
+      status: { in: ['PENDING_CONFIRMATION', 'OVERDUE'] },
+      depositDate: { gte: minDate, lte: maxDate },
+    },
+    include: {
+      createdBy: { select: { firstName: true, lastName: true } },
+      transactions: {
+        include: {
+          bankTransaction: {
+            include: {
+              customer: { select: { id: true, name: true, phone: true } },
+              sale: { select: { id: true, receiptNumber: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  return candidates
+    .map((batch) => {
+      const batchAmount = Number(batch.amount);
+      const amountDifference = Math.abs(batchAmount - Number(amount || 0));
+      const dateDifferenceDays = Math.abs(
+        Math.round((new Date(batch.depositDate).setHours(0, 0, 0, 0) - new Date(targetDate).setHours(0, 0, 0, 0)) / (1000 * 60 * 60 * 24)),
+      );
+
+      let confidence = 'possible';
+      if (amountDifference <= 0.009 && dateDifferenceDays === 0) confidence = 'exact';
+      else if (amountDifference <= 0.009 && dateDifferenceDays <= 1) confidence = 'strong';
+      else if (amountDifference <= 0.009 && dateDifferenceDays <= matchWindowDays) confidence = 'likely';
+
+      return {
+        ...batch,
+        amount: batchAmount,
+        amountDifference,
+        dateDifferenceDays,
+        confidence,
+        transactions: batch.transactions.map((entry) => ({
+          ...entry,
+          amountIncluded: Number(entry.amountIncluded),
+          bankTransaction: entry.bankTransaction ? enrichTransaction(entry.bankTransaction) : null,
+        })),
+      };
+    })
+    .sort((a, b) => {
+      const confidenceOrder = { exact: 0, strong: 1, likely: 2, possible: 3 };
+      return confidenceOrder[a.confidence] - confidenceOrder[b.confidence]
+        || a.amountDifference - b.amountDifference
+        || a.dateDifferenceDays - b.dateDifferenceDays;
+    });
+}
+
 export default async function bankingRoutes(fastify) {
   fastify.get('/banking/meta', {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
@@ -493,6 +707,107 @@ export default async function bankingRoutes(fastify) {
         return reply.code(404).send({ error: 'One or both bank accounts were not found' });
       }
 
+      const isCashDepositWorkflow = fromAccount.accountType === 'CASH_ON_HAND' && toAccount.accountType === 'CUSTOMER_DEPOSIT';
+
+      if (isCashDepositWorkflow) {
+        const effectiveDate = endOfDay(transactionDate);
+        const availableCashTransactions = await getAvailableCashSaleTransactions({ upToDate: effectiveDate });
+        const availableTotal = availableCashTransactions.reduce((sum, transaction) => sum + Number(transaction.availableAmount), 0);
+        const requestedAmount = Number(amount);
+
+        if (requestedAmount > availableTotal + 0.009) {
+          return reply.code(400).send({
+            error: `Only ${availableTotal.toLocaleString('en-NG', { style: 'currency', currency: 'NGN', minimumFractionDigits: 0 })} is available to deposit from Cash Account for that date.`,
+          });
+        }
+
+        let remainingAmount = requestedAmount;
+        const allocations = [];
+        for (const transaction of availableCashTransactions) {
+          if (remainingAmount <= 0.009) break;
+          const amountIncluded = Math.min(remainingAmount, Number(transaction.availableAmount));
+          if (amountIncluded <= 0) continue;
+          allocations.push({ bankTransactionId: transaction.id, amountIncluded });
+          remainingAmount -= amountIncluded;
+        }
+
+        if (remainingAmount > 0.009) {
+          return reply.code(400).send({ error: 'Could not allocate enough cash-sale transactions to cover this deposit.' });
+        }
+
+        const transferDescription = description?.trim() || `Cash deposit awaiting bank confirmation: ${fromAccount.name} -> ${toAccount.name}`;
+        const outflow = await prisma.$transaction(async (tx) => {
+          const outflowTransaction = await tx.bankTransaction.create({
+            data: {
+              bankAccountId: fromAccount.id,
+              direction: 'OUTFLOW',
+              category: 'INTERNAL_TRANSFER_OUT',
+              amount: requestedAmount,
+              description: transferDescription,
+              reference: crypto.randomUUID(),
+              transactionDate: new Date(transactionDate),
+              enteredById: request.user.sub,
+              sourceType: 'CASH_DEPOSIT',
+              postedAt: new Date(),
+            },
+            include: {
+              bankAccount: { select: { id: true, name: true, accountType: true, isVirtual: true, supportsStatementImport: true } },
+              customer: { select: { id: true, name: true, phone: true } },
+              enteredBy: { select: { firstName: true, lastName: true } },
+            },
+          });
+
+          const batch = await tx.cashDepositBatch.create({
+            data: {
+              fromBankAccountId: fromAccount.id,
+              toBankAccountId: toAccount.id,
+              outflowTransactionId: outflowTransaction.id,
+              amount: requestedAmount,
+              depositDate: new Date(transactionDate),
+              createdById: request.user.sub,
+              notes: transferDescription,
+              transactions: {
+                create: allocations.map((entry) => ({
+                  bankTransactionId: entry.bankTransactionId,
+                  amountIncluded: entry.amountIncluded,
+                })),
+              },
+            },
+            include: {
+              createdBy: { select: { firstName: true, lastName: true } },
+              fromBankAccount: { select: { id: true, name: true, accountType: true, lastFour: true, isVirtual: true, supportsStatementImport: true } },
+              toBankAccount: { select: { id: true, name: true, accountType: true, lastFour: true, isVirtual: true, supportsStatementImport: true } },
+              transactions: {
+                include: {
+                  bankTransaction: {
+                    include: {
+                      customer: { select: { id: true, name: true, phone: true } },
+                      sale: { select: { id: true, receiptNumber: true, saleDate: true } },
+                    },
+                  },
+                },
+              },
+            },
+          });
+
+          return { outflowTransaction, batch };
+        });
+
+        return reply.code(201).send({
+          transferGroupId: outflow.batch.id,
+          outflow: enrichTransaction(outflow.outflowTransaction),
+          cashDepositBatch: {
+            ...outflow.batch,
+            amount: Number(outflow.batch.amount),
+            transactions: outflow.batch.transactions.map((entry) => ({
+              ...entry,
+              amountIncluded: Number(entry.amountIncluded),
+              bankTransaction: entry.bankTransaction ? enrichTransaction(entry.bankTransaction) : null,
+            })),
+          },
+        });
+      }
+
       const transferGroupId = crypto.randomUUID();
       const transferDescription = description?.trim() || `Internal transfer: ${fromAccount.name} -> ${toAccount.name}`;
 
@@ -527,6 +842,47 @@ export default async function bankingRoutes(fastify) {
         transferGroupId,
         outflow: enrichTransaction(outflow),
         inflow: enrichTransaction(inflow),
+      });
+    },
+  });
+
+  fastify.get('/banking/cash-deposits', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
+    handler: async () => {
+      const policy = await getOperationsPolicy();
+      const workspace = await getCashDepositWorkspace(policy);
+      return {
+        policy,
+        ...workspace,
+      };
+    },
+  });
+
+  fastify.get('/banking/cash-deposits/match-candidates', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
+    handler: async (request, reply) => {
+      const { amount, transactionDate, bankAccountId } = request.query;
+      const numericAmount = Number(amount);
+      if (!bankAccountId) {
+        return reply.code(400).send({ error: 'bankAccountId is required.' });
+      }
+      if (!numericAmount || numericAmount <= 0) {
+        return reply.code(400).send({ error: 'amount must be greater than zero.' });
+      }
+
+      const policy = await getOperationsPolicy(transactionDate || new Date());
+      const candidates = await getCashDepositMatchCandidates({
+        amount: numericAmount,
+        transactionDate,
+        bankAccountId,
+        policyInput: policy,
+      });
+
+      return reply.send({
+        candidates,
+        policy: {
+          cashDepositMatchWindowDays: Number(policy.cashDepositMatchWindowDays || 2),
+        },
       });
     },
   });
@@ -840,6 +1196,14 @@ export default async function bankingRoutes(fastify) {
         include: {
           selectedCustomer: { select: { id: true, name: true, phone: true } },
           postedTransaction: { select: { id: true, amount: true, category: true, transactionDate: true } },
+          matchedCashDepositBatch: {
+            select: {
+              id: true,
+              amount: true,
+              depositDate: true,
+              status: true,
+            },
+          },
         },
         orderBy: { lineNumber: 'asc' },
       });
@@ -859,7 +1223,7 @@ export default async function bankingRoutes(fastify) {
         return reply.code(400).send({ error: 'Posted lines cannot be edited' });
       }
 
-      const { selectedCategory, selectedCustomerId, notes, reviewStatus, description } = request.body;
+      const { selectedCategory, selectedCustomerId, matchedCashDepositBatchId, notes, reviewStatus, description } = request.body;
       const updates = {};
       const categoryConfig = await getTransactionCategoryConfig();
 
@@ -872,6 +1236,9 @@ export default async function bankingRoutes(fastify) {
           return reply.code(400).send({ error: `Category ${selectedCategory} does not match line direction ${existing.direction}` });
         }
         updates.selectedCategory = selectedCategory;
+        if (selectedCategory !== 'CASH_DEPOSIT_CONFIRMATION' && matchedCashDepositBatchId === undefined) {
+          updates.matchedCashDepositBatchId = null;
+        }
       }
 
       if (description !== undefined) {
@@ -889,6 +1256,29 @@ export default async function bankingRoutes(fastify) {
           updates.selectedCustomerId = selectedCustomerId;
         } else {
           updates.selectedCustomerId = null;
+        }
+      }
+
+      if (matchedCashDepositBatchId !== undefined) {
+        if (matchedCashDepositBatchId) {
+          const matchedBatch = await prisma.cashDepositBatch.findUnique({
+            where: { id: matchedCashDepositBatchId },
+          });
+          if (!matchedBatch) {
+            return reply.code(404).send({ error: 'Pending cash deposit batch not found.' });
+          }
+          if (!['PENDING_CONFIRMATION', 'OVERDUE'].includes(matchedBatch.status)) {
+            return reply.code(400).send({ error: 'That cash deposit batch can no longer be matched.' });
+          }
+          if (selectedCategory === 'CASH_DEPOSIT_CONFIRMATION' || existing.selectedCategory === 'CASH_DEPOSIT_CONFIRMATION') {
+            const lineAmount = existing.direction === 'OUTFLOW' ? Number(existing.debitAmount || 0) : Number(existing.creditAmount || 0);
+            if (Math.abs(Number(matchedBatch.amount) - lineAmount) > 0.009) {
+              return reply.code(400).send({ error: 'The selected cash deposit batch amount does not match this statement line.' });
+            }
+          }
+          updates.matchedCashDepositBatchId = matchedCashDepositBatchId;
+        } else {
+          updates.matchedCashDepositBatchId = null;
         }
       }
 
@@ -910,6 +1300,14 @@ export default async function bankingRoutes(fastify) {
         data: updates,
         include: {
           selectedCustomer: { select: { id: true, name: true, phone: true } },
+          matchedCashDepositBatch: {
+            select: {
+              id: true,
+              amount: true,
+              depositDate: true,
+              status: true,
+            },
+          },
         },
       });
 
@@ -1015,6 +1413,9 @@ export default async function bankingRoutes(fastify) {
           lines: {
             where: { reviewStatus: 'READY_TO_POST', postedTransactionId: null },
             orderBy: { lineNumber: 'asc' },
+            include: {
+              matchedCashDepositBatch: true,
+            },
           },
         },
       });
@@ -1052,12 +1453,35 @@ export default async function bankingRoutes(fastify) {
           continue;
         }
 
+        if (line.selectedCategory === 'CASH_DEPOSIT_CONFIRMATION') {
+          if (!line.matchedCashDepositBatchId || !line.matchedCashDepositBatch) {
+            skipped.push({ lineId: line.id, reason: 'Cash deposit confirmation line still needs a matched pending deposit.' });
+            continue;
+          }
+          if (!['PENDING_CONFIRMATION', 'OVERDUE'].includes(line.matchedCashDepositBatch.status)) {
+            skipped.push({ lineId: line.id, reason: 'Matched cash deposit batch is no longer awaiting confirmation.' });
+            continue;
+          }
+          if (Math.abs(Number(line.matchedCashDepositBatch.amount) - amount) > 0.009) {
+            skipped.push({ lineId: line.id, reason: 'Matched cash deposit batch amount does not equal the statement inflow.' });
+            continue;
+          }
+          if (line.matchedCashDepositBatch.toBankAccountId !== importRecord.bankAccountId) {
+            skipped.push({ lineId: line.id, reason: 'Matched cash deposit batch belongs to a different bank account.' });
+            continue;
+          }
+        }
+
         const transaction = await createBankTransaction({
-          bankAccountId: importRecord.bankAccountId,
+          bankAccountId: line.selectedCategory === 'CASH_DEPOSIT_CONFIRMATION'
+            ? line.matchedCashDepositBatch.toBankAccountId
+            : importRecord.bankAccountId,
           direction: line.direction,
           category: line.selectedCategory || line.suggestedCategory || (line.direction === 'INFLOW' ? 'UNALLOCATED_INCOME' : 'UNALLOCATED_EXPENSE'),
           amount,
-          description: line.description,
+          description: line.selectedCategory === 'CASH_DEPOSIT_CONFIRMATION'
+            ? (line.notes || line.description)
+            : line.description,
           reference: line.docNum,
           transactionDate: line.transactionDate || new Date(),
           customerId: line.selectedCustomerId,
@@ -1073,6 +1497,18 @@ export default async function bankingRoutes(fastify) {
             reviewStatus: 'POSTED',
           },
         });
+
+        if (line.selectedCategory === 'CASH_DEPOSIT_CONFIRMATION') {
+          await prisma.cashDepositBatch.update({
+            where: { id: line.matchedCashDepositBatchId },
+            data: {
+              status: 'CONFIRMED',
+              confirmedById: request.user.sub,
+              confirmedAt: new Date(),
+              confirmationStatementLineId: line.id,
+            },
+          });
+        }
 
         posted.push(transaction);
       }

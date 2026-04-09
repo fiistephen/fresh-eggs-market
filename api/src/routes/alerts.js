@@ -16,62 +16,86 @@ export default async function alertRoutes(fastify) {
       today.setHours(0, 0, 0, 0);
       const tomorrow = new Date(today);
       tomorrow.setDate(tomorrow.getDate() + 1);
-
-      // ── 1. Cash sales not banked by end of day ──
-      // Support both the old "cash deposit" workflow and the new Cash on Hand -> bank transfer workflow.
-      // Check yesterday and today
       const yesterday = new Date(today);
       yesterday.setDate(yesterday.getDate() - 1);
 
-      for (const checkDate of [yesterday, today]) {
-        const nextDay = new Date(checkDate);
-        nextDay.setDate(nextDay.getDate() + 1);
-        const dateLabel = checkDate.toISOString().slice(0, 10);
+      // ── 1. Cash not yet deposited / pending cash deposit not confirmed ──
+      const undepositedThresholdHours = Number(policy.undepositedCashAlertHours || 24);
+      const pendingThresholdHours = Number(policy.pendingCashDepositConfirmationHours || 24);
 
-        const cashSales = await prisma.sale.findMany({
-          where: {
-            paymentMethod: 'CASH',
-            saleDate: { gte: checkDate, lt: nextDay },
+      const cashSaleTransactions = await prisma.bankTransaction.findMany({
+        where: {
+          direction: 'INFLOW',
+          category: 'CASH_SALE',
+          bankAccount: { accountType: 'CASH_ON_HAND' },
+        },
+        orderBy: [{ transactionDate: 'asc' }, { createdAt: 'asc' }],
+      });
+
+      const cashSaleAllocations = cashSaleTransactions.length > 0
+        ? await prisma.cashDepositBatchTransaction.groupBy({
+            by: ['bankTransactionId'],
+            where: { bankTransactionId: { in: cashSaleTransactions.map((transaction) => transaction.id) } },
+            _sum: { amountIncluded: true },
+          })
+        : [];
+
+      const cashSaleAllocationMap = new Map(
+        cashSaleAllocations.map((entry) => [entry.bankTransactionId, Number(entry._sum.amountIncluded || 0)]),
+      );
+
+      const undepositedTransactions = cashSaleTransactions
+        .map((transaction) => {
+          const availableAmount = Math.max(0, Number(transaction.amount) - (cashSaleAllocationMap.get(transaction.id) || 0));
+          return { transaction, availableAmount };
+        })
+        .filter((entry) => entry.availableAmount > 0.009)
+        .filter((entry) => ((Date.now() - new Date(entry.transaction.transactionDate).getTime()) / (1000 * 60 * 60)) >= undepositedThresholdHours);
+
+      if (undepositedTransactions.length > 0) {
+        const totalUndeposited = undepositedTransactions.reduce((sum, entry) => sum + entry.availableAmount, 0);
+        const oldestDate = undepositedTransactions[0].transaction.transactionDate;
+        alerts.push({
+          id: 'cash-not-yet-deposited',
+          type: 'CASH_NOT_YET_DEPOSITED',
+          severity: 'high',
+          title: 'Cash not yet deposited',
+          message: `₦${totalUndeposited.toLocaleString()} is still sitting in Cash Account and has not been moved for bank confirmation.`,
+          date: oldestDate,
+          data: {
+            totalUndeposited,
+            transactionCount: undepositedTransactions.length,
+            oldestDate,
           },
-          include: { customer: { select: { name: true } } },
         });
+      }
 
-        if (cashSales.length > 0) {
-          const totalCash = cashSales.reduce((s, sale) => s + Number(sale.totalAmount), 0);
+      const pendingDepositBatches = await prisma.cashDepositBatch.findMany({
+        where: { status: { in: ['PENDING_CONFIRMATION', 'OVERDUE'] } },
+        include: {
+          createdBy: { select: { firstName: true, lastName: true } },
+        },
+      });
 
-          const bankedEntries = await prisma.bankTransaction.findMany({
-            where: {
-              transactionDate: { gte: checkDate, lt: nextDay },
-              OR: [
-                {
-                  direction: 'INFLOW',
-                  category: { in: ['CUSTOMER_DEPOSIT', 'CUSTOMER_BOOKING'] },
-                  description: { contains: 'cash', mode: 'insensitive' },
-                },
-                {
-                  direction: 'OUTFLOW',
-                  category: 'INTERNAL_TRANSFER_OUT',
-                  bankAccount: { accountType: 'CASH_ON_HAND' },
-                },
-              ],
-            },
-          });
+      for (const batch of pendingDepositBatches) {
+        const ageHours = (Date.now() - new Date(batch.depositDate).getTime()) / (1000 * 60 * 60);
+        if (ageHours < pendingThresholdHours) continue;
 
-          const bankedTotal = bankedEntries.reduce((s, t) => s + Number(t.amount), 0);
-
-          // Only alert if cash hasn't been banked (or significantly less)
-          if (bankedTotal < totalCash * 0.9) {
-            alerts.push({
-              id: `cash-not-banked-${dateLabel}`,
-              type: 'CASH_NOT_BANKED',
-              severity: checkDate < today ? 'high' : 'medium',
-              title: 'Cash sales not banked',
-              message: `₦${totalCash.toLocaleString()} in cash sales on ${dateLabel} — only ₦${bankedTotal.toLocaleString()} appears banked.`,
-              date: dateLabel,
-              data: { totalCash, bankedTotal, salesCount: cashSales.length },
-            });
-          }
-        }
+        alerts.push({
+          id: `pending-cash-deposit-${batch.id}`,
+          type: 'PENDING_CASH_DEPOSIT_NOT_CONFIRMED',
+          severity: 'high',
+          title: 'Pending cash deposit not confirmed',
+          message: `₦${Number(batch.amount).toLocaleString()} was moved from Cash Account on ${new Date(batch.depositDate).toISOString().slice(0, 10)} but the bank statement has not confirmed it yet.`,
+          date: batch.depositDate,
+          data: {
+            cashDepositBatchId: batch.id,
+            amount: Number(batch.amount),
+            depositDate: batch.depositDate,
+            ageHours,
+            createdBy: batch.createdBy ? `${batch.createdBy.firstName} ${batch.createdBy.lastName}`.trim() : null,
+          },
+        });
       }
 
       // ── 2. Large POS/card payments (should have been transfers) ──

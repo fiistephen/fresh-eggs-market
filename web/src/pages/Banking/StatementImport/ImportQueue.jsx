@@ -316,7 +316,7 @@ export default function ImportsView({
               <div className="px-6 py-16"><EmptyState title="No matching lines" body="Clear the search or change the status filter." /></div>
             ) : (
               <div className="overflow-x-auto custom-scrollbar">
-                <table className="w-full min-w-[900px]">
+                <table className="w-full min-w-[1180px]">
                   <thead>
                     <tr className="border-b border-surface-100 bg-surface-50/50">
                       <th className="w-8 px-3 py-2.5"></th>
@@ -328,12 +328,21 @@ export default function ImportsView({
                       <th className="px-3 py-2.5 text-left text-overline text-surface-500">Category</th>
                       <th className="px-3 py-2.5 text-left text-overline text-surface-500">Status</th>
                       <th className="px-3 py-2.5 text-left text-overline text-surface-500">Clean description</th>
+                      <th className="px-3 py-2.5 text-left text-overline text-surface-500">Deposit match</th>
                       <th className="w-20 px-3 py-2.5 text-left text-overline text-surface-500">Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredImportLines.map((line) => (
-                      <ImportLineRow key={line.id} line={line} categoryMap={categoryMap} selected={selectedLineIds.includes(line.id)} onToggleSelected={(id, checked) => setSelectedLineIds((c) => checked ? [...new Set([...c, id])] : c.filter((x) => x !== id))} onSaved={onLineUpdated} />
+                      <ImportLineRow
+                        key={line.id}
+                        line={line}
+                        bankAccountId={selectedImport?.bankAccount?.id || ''}
+                        categoryMap={categoryMap}
+                        selected={selectedLineIds.includes(line.id)}
+                        onToggleSelected={(id, checked) => setSelectedLineIds((c) => checked ? [...new Set([...c, id])] : c.filter((x) => x !== id))}
+                        onSaved={onLineUpdated}
+                      />
                     ))}
                   </tbody>
                 </table>

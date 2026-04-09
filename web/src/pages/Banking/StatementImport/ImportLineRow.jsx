@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../../../lib/api';
 import { DIRECTION_COLORS, categoryOptionsForDirection, categoryLabel, fmtMoney, fmtDate } from '../shared/constants';
 
@@ -34,23 +34,84 @@ function autoCleanDescription(description) {
   return prettifyPhrase(source);
 }
 
-export default function ImportLineRow({ line, categoryMap, selected, onToggleSelected, onSaved }) {
-  const hasUsefulDocRef = line.docNum != null && String(line.docNum).trim() !== '' && String(line.docNum).trim() !== '0';
+function candidateSummary(candidate) {
+  if (!candidate) return '';
+  const parts = [];
+  if (candidate.confidence === 'exact') parts.push('Exact match');
+  else if (candidate.confidence === 'strong') parts.push('Same amount, close date');
+  else if (candidate.confidence === 'likely') parts.push('Same amount');
+  else if (candidate.confidence) parts.push('Possible match');
+  if (candidate.depositDate) parts.push(fmtDate(candidate.depositDate));
+  return parts.join(' · ');
+}
+
+export default function ImportLineRow({ line, bankAccountId, categoryMap, selected, onToggleSelected, onSaved }) {
   const [draft, setDraft] = useState({
     description: line.description || '',
     selectedCategory: line.selectedCategory || line.suggestedCategory || '',
     reviewStatus: line.reviewStatus,
     notes: line.notes || autoCleanDescription(line.description || ''),
+    matchedCashDepositBatchId: line.matchedCashDepositBatch?.id || '',
   });
   const [saving, setSaving] = useState(false);
+  const [matchCandidates, setMatchCandidates] = useState([]);
+  const [matchingLoading, setMatchingLoading] = useState(false);
+  const [matchingError, setMatchingError] = useState('');
   const categories = categoryOptionsForDirection(line.direction, categoryMap, draft.selectedCategory);
   const amount = line.direction === 'OUTFLOW' ? line.debitAmount : line.creditAmount;
   const isPosted = line.reviewStatus === 'POSTED';
+  const needsCashDepositMatch = draft.selectedCategory === 'CASH_DEPOSIT_CONFIRMATION';
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadCandidates() {
+      if (!needsCashDepositMatch || !bankAccountId || !amount || isPosted) {
+        setMatchCandidates([]);
+        setMatchingError('');
+        return;
+      }
+
+      setMatchingLoading(true);
+      setMatchingError('');
+      try {
+        const params = new URLSearchParams({
+          bankAccountId,
+          amount: String(amount),
+          transactionDate: String(line.transactionDate || line.actualTransactionDate || line.valueDate || ''),
+        });
+        const response = await api.get(`/banking/cash-deposits/match-candidates?${params.toString()}`);
+        if (!active) return;
+        const candidates = response.candidates || [];
+        setMatchCandidates(candidates);
+        setDraft((current) => {
+          if (current.matchedCashDepositBatchId || !candidates.length) return current;
+          const exactCandidate = candidates.find((entry) => entry.confidence === 'exact');
+          return exactCandidate
+            ? { ...current, matchedCashDepositBatchId: exactCandidate.id }
+            : current;
+        });
+      } catch (err) {
+        if (!active) return;
+        setMatchingError(err.error || 'Could not load pending cash deposits');
+      } finally {
+        if (active) setMatchingLoading(false);
+      }
+    }
+
+    loadCandidates();
+    return () => {
+      active = false;
+    };
+  }, [amount, bankAccountId, isPosted, line.actualTransactionDate, line.transactionDate, line.valueDate, needsCashDepositMatch]);
 
   async function saveLine() {
     setSaving(true);
     try {
-      await api.patch(`/banking/imports/${line.importId}/lines/${line.id}`, draft);
+      await api.patch(`/banking/imports/${line.importId}/lines/${line.id}`, {
+        ...draft,
+        matchedCashDepositBatchId: draft.matchedCashDepositBatchId || null,
+      });
       onSaved();
     } finally {
       setSaving(false);
@@ -74,7 +135,6 @@ export default function ImportLineRow({ line, categoryMap, selected, onToggleSel
             disabled={isPosted}
             className="w-full rounded-md border border-surface-200 px-2 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-surface-100"
           />
-          {hasUsefulDocRef && <div className="text-caption text-surface-400">Ref {line.docNum}</div>}
         </div>
       </td>
       <td className="px-4 py-3 text-body">
@@ -84,7 +144,16 @@ export default function ImportLineRow({ line, categoryMap, selected, onToggleSel
         {fmtMoney(amount)}
       </td>
       <td className="px-4 py-3">
-        <select value={draft.selectedCategory} onChange={(e) => setDraft((c) => ({ ...c, selectedCategory: e.target.value }))} disabled={isPosted} className="w-full rounded-md border border-surface-200 px-2 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-surface-100">
+        <select
+          value={draft.selectedCategory}
+          onChange={(e) => setDraft((c) => ({
+            ...c,
+            selectedCategory: e.target.value,
+            matchedCashDepositBatchId: e.target.value === 'CASH_DEPOSIT_CONFIRMATION' ? c.matchedCashDepositBatchId : '',
+          }))}
+          disabled={isPosted}
+          className="w-full rounded-md border border-surface-200 px-2 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-surface-100"
+        >
           <option value="">Choose category</option>
           {categories.map((cat) => <option key={cat} value={cat}>{categoryLabel(cat, categoryMap)}</option>)}
         </select>
@@ -109,6 +178,43 @@ export default function ImportLineRow({ line, categoryMap, selected, onToggleSel
             placeholder="Bank name - Depositor name"
             className="w-full rounded-md border border-surface-200 px-2 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-surface-100"
           />
+        </div>
+      </td>
+      <td className="px-4 py-3">
+        <div className="min-w-[260px] space-y-2">
+          {needsCashDepositMatch ? (
+            <>
+              <select
+                value={draft.matchedCashDepositBatchId}
+                onChange={(e) => setDraft((c) => ({ ...c, matchedCashDepositBatchId: e.target.value }))}
+                disabled={isPosted || matchingLoading}
+                className="w-full rounded-md border border-surface-200 px-2 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-surface-100"
+              >
+                <option value="">Choose pending deposit</option>
+                {matchCandidates.map((candidate) => (
+                  <option key={candidate.id} value={candidate.id}>
+                    {fmtMoney(candidate.amount)} · {candidateSummary(candidate)}
+                  </option>
+                ))}
+              </select>
+              {draft.matchedCashDepositBatchId ? (
+                <p className="text-caption text-surface-500">
+                  {candidateSummary(matchCandidates.find((candidate) => candidate.id === draft.matchedCashDepositBatchId) || line.matchedCashDepositBatch || {})}
+                </p>
+              ) : null}
+              {!matchingLoading && !matchingError && matchCandidates.length === 0 ? (
+                <p className="text-caption text-surface-400">No pending cash deposit found for this amount and date.</p>
+              ) : null}
+              {matchingLoading ? <p className="text-caption text-surface-400">Finding possible matches…</p> : null}
+              {matchingError ? <p className="text-caption text-error-600">{matchingError}</p> : null}
+            </>
+          ) : line.matchedCashDepositBatch ? (
+            <div className="rounded-md border border-surface-200 bg-surface-50 px-3 py-2 text-caption text-surface-600">
+              {fmtMoney(line.matchedCashDepositBatch.amount)} · {fmtDate(line.matchedCashDepositBatch.depositDate)}
+            </div>
+          ) : (
+            <span className="text-caption text-surface-400">—</span>
+          )}
         </div>
       </td>
       <td className="px-4 py-3">

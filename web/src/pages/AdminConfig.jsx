@@ -84,6 +84,9 @@ export default function AdminConfig() {
     firstCustomerOrderLimitCount: '',
     maxBookingCratesPerOrder: '',
     largePosPaymentThreshold: '',
+    undepositedCashAlertHours: '',
+    pendingCashDepositConfirmationHours: '',
+    cashDepositMatchWindowDays: '',
   });
   const [policyHistory, setPolicyHistory] = useState([]);
   const [policySaving, setPolicySaving] = useState(false);
@@ -124,6 +127,9 @@ export default function AdminConfig() {
         firstCustomerOrderLimitCount: String(response.policy?.firstCustomerOrderLimitCount ?? ''),
         maxBookingCratesPerOrder: String(response.policy?.maxBookingCratesPerOrder ?? ''),
         largePosPaymentThreshold: String(response.policy?.largePosPaymentThreshold ?? ''),
+        undepositedCashAlertHours: String(response.policy?.undepositedCashAlertHours ?? ''),
+        pendingCashDepositConfirmationHours: String(response.policy?.pendingCashDepositConfirmationHours ?? ''),
+        cashDepositMatchWindowDays: String(response.policy?.cashDepositMatchWindowDays ?? ''),
       });
       setPolicyHistory(response.policyHistory || []);
       setTransactionCategories(response.transactionCategories || []);
@@ -227,6 +233,9 @@ export default function AdminConfig() {
         firstCustomerOrderLimitCount: Number(policy.firstCustomerOrderLimitCount),
         maxBookingCratesPerOrder: Number(policy.maxBookingCratesPerOrder),
         largePosPaymentThreshold: Number(policy.largePosPaymentThreshold),
+        undepositedCashAlertHours: Number(policy.undepositedCashAlertHours),
+        pendingCashDepositConfirmationHours: Number(policy.pendingCashDepositConfirmationHours),
+        cashDepositMatchWindowDays: Number(policy.cashDepositMatchWindowDays),
       });
       setPolicy({
         targetProfitPerCrate: String(response.policy.targetProfitPerCrate),
@@ -238,6 +247,9 @@ export default function AdminConfig() {
         firstCustomerOrderLimitCount: String(response.policy.firstCustomerOrderLimitCount),
         maxBookingCratesPerOrder: String(response.policy.maxBookingCratesPerOrder),
         largePosPaymentThreshold: String(response.policy.largePosPaymentThreshold),
+        undepositedCashAlertHours: String(response.policy.undepositedCashAlertHours),
+        pendingCashDepositConfirmationHours: String(response.policy.pendingCashDepositConfirmationHours),
+        cashDepositMatchWindowDays: String(response.policy.cashDepositMatchWindowDays),
       });
       setPolicyHistory(response.policyHistory || []);
       setSuccess('Policy settings updated.');
@@ -549,6 +561,45 @@ export default function AdminConfig() {
             <span className="block text-xs text-surface-500 mt-1">Card payments at or above this amount appear in alerts for review.</span>
           </label>
 
+          <label className="block">
+            <span className="block text-sm font-medium text-surface-700 mb-1">Cash not deposited alert (hours)</span>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value={policy.undepositedCashAlertHours}
+              onChange={(e) => setPolicy((current) => ({ ...current, undepositedCashAlertHours: e.target.value }))}
+              className="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm"
+            />
+            <span className="block text-xs text-surface-500 mt-1">Show an alert if cash sales remain in Cash Account longer than this.</span>
+          </label>
+
+          <label className="block">
+            <span className="block text-sm font-medium text-surface-700 mb-1">Cash deposit confirmation alert (hours)</span>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value={policy.pendingCashDepositConfirmationHours}
+              onChange={(e) => setPolicy((current) => ({ ...current, pendingCashDepositConfirmationHours: e.target.value }))}
+              className="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm"
+            />
+            <span className="block text-xs text-surface-500 mt-1">Flag a recorded cash deposit if a bank statement has not confirmed it within this time.</span>
+          </label>
+
+          <label className="block">
+            <span className="block text-sm font-medium text-surface-700 mb-1">Cash deposit match window (days)</span>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value={policy.cashDepositMatchWindowDays}
+              onChange={(e) => setPolicy((current) => ({ ...current, cashDepositMatchWindowDays: e.target.value }))}
+              className="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm"
+            />
+            <span className="block text-xs text-surface-500 mt-1">When matching a bank statement inflow, only suggest pending cash deposits within this many days.</span>
+          </label>
+
           <div className="md:col-span-2 xl:col-span-4 flex justify-end">
             <button
               type="submit"
@@ -566,7 +617,7 @@ export default function AdminConfig() {
             <p className="mt-1 text-xs text-surface-500">This shows when a policy version started. Older work continues to use the policy that was active when that work began.</p>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1040px]">
+            <table className="w-full min-w-[1360px]">
               <thead className="bg-surface-0">
                 <tr className="border-b border-surface-100">
                   <th className="px-4 py-3 text-left text-overline-wide text-surface-500">Effective from</th>
@@ -579,6 +630,9 @@ export default function AdminConfig() {
                   <th className="px-4 py-3 text-left text-overline-wide text-surface-500">Early orders</th>
                   <th className="px-4 py-3 text-left text-overline-wide text-surface-500">Order cap</th>
                   <th className="px-4 py-3 text-left text-overline-wide text-surface-500">Large POS</th>
+                  <th className="px-4 py-3 text-left text-overline-wide text-surface-500">Cash alert</th>
+                  <th className="px-4 py-3 text-left text-overline-wide text-surface-500">Confirm alert</th>
+                  <th className="px-4 py-3 text-left text-overline-wide text-surface-500">Match window</th>
                 </tr>
               </thead>
               <tbody>
@@ -599,11 +653,14 @@ export default function AdminConfig() {
                     <td className="px-4 py-3 text-sm text-surface-800">{Number(entry.firstCustomerOrderLimitCount || 0).toLocaleString()} orders</td>
                     <td className="px-4 py-3 text-sm text-surface-800">{Number(entry.maxBookingCratesPerOrder || 0).toLocaleString()} crates</td>
                     <td className="px-4 py-3 text-sm text-surface-800">₦{Number(entry.largePosPaymentThreshold || 0).toLocaleString()}</td>
+                    <td className="px-4 py-3 text-sm text-surface-800">{Number(entry.undepositedCashAlertHours || 0).toLocaleString()} hrs</td>
+                    <td className="px-4 py-3 text-sm text-surface-800">{Number(entry.pendingCashDepositConfirmationHours || 0).toLocaleString()} hrs</td>
+                    <td className="px-4 py-3 text-sm text-surface-800">{Number(entry.cashDepositMatchWindowDays || 0).toLocaleString()} days</td>
                   </tr>
                 ))}
                 {policyHistory.length === 0 ? (
                   <tr>
-                    <td className="px-4 py-4 text-sm text-surface-500" colSpan={10}>No policy history yet.</td>
+                    <td className="px-4 py-4 text-sm text-surface-500" colSpan={13}>No policy history yet.</td>
                   </tr>
                 ) : null}
               </tbody>

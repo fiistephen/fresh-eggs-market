@@ -69,6 +69,9 @@ export default async function adminRoutes(fastify) {
         firstCustomerOrderLimitCount,
         maxBookingCratesPerOrder,
         largePosPaymentThreshold,
+        undepositedCashAlertHours,
+        pendingCashDepositConfirmationHours,
+        cashDepositMatchWindowDays,
       } = request.body;
 
       if (targetProfitPerCrate == null || Number(targetProfitPerCrate) <= 0) {
@@ -111,6 +114,18 @@ export default async function adminRoutes(fastify) {
         return reply.code(400).send({ error: 'Large POS alert threshold must be zero or higher.' });
       }
 
+      if (undepositedCashAlertHours == null || Number(undepositedCashAlertHours) <= 0) {
+        return reply.code(400).send({ error: 'Undeposited cash alert window must be greater than zero.' });
+      }
+
+      if (pendingCashDepositConfirmationHours == null || Number(pendingCashDepositConfirmationHours) <= 0) {
+        return reply.code(400).send({ error: 'Pending cash deposit confirmation window must be greater than zero.' });
+      }
+
+      if (cashDepositMatchWindowDays == null || Number(cashDepositMatchWindowDays) <= 0) {
+        return reply.code(400).send({ error: 'Cash deposit match window must be greater than zero.' });
+      }
+
       const { policy, history } = await saveOperationsPolicy({
         targetProfitPerCrate: Number(targetProfitPerCrate),
         crackAllowancePercent: Number(crackAllowancePercent),
@@ -121,6 +136,9 @@ export default async function adminRoutes(fastify) {
         firstCustomerOrderLimitCount: Number(firstCustomerOrderLimitCount),
         maxBookingCratesPerOrder: Number(maxBookingCratesPerOrder),
         largePosPaymentThreshold: Number(largePosPaymentThreshold),
+        undepositedCashAlertHours: Number(undepositedCashAlertHours),
+        pendingCashDepositConfirmationHours: Number(pendingCashDepositConfirmationHours),
+        cashDepositMatchWindowDays: Number(cashDepositMatchWindowDays),
       }, request.user.sub);
 
       return {

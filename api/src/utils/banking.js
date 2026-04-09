@@ -9,6 +9,7 @@ export const VALID_CATEGORIES = [
   'POS_SETTLEMENT',
   'UNALLOCATED_INCOME',
   'CASH_SALE',
+  'CASH_DEPOSIT_CONFIRMATION',
   'INTERNAL_TRANSFER_IN',
   'REFUND',
   'BANK_CHARGES',
@@ -33,6 +34,7 @@ export const INFLOW_CATEGORIES = [
   'POS_SETTLEMENT',
   'UNALLOCATED_INCOME',
   'CASH_SALE',
+  'CASH_DEPOSIT_CONFIRMATION',
   'INTERNAL_TRANSFER_IN',
 ];
 
@@ -90,6 +92,11 @@ export const TRANSACTION_CATEGORY_METADATA = {
   CASH_SALE: {
     label: 'Cash sale',
     description: 'Cash received from a direct sale before it is moved into the bank.',
+    direction: 'INFLOW',
+  },
+  CASH_DEPOSIT_CONFIRMATION: {
+    label: 'Cash deposit confirmation',
+    description: 'Bank statement inflow confirming cash that was already moved from Cash Account to the bank.',
     direction: 'INFLOW',
   },
   INTERNAL_TRANSFER_IN: {

@@ -29,6 +29,9 @@ export const DEFAULT_OPERATIONS_POLICY = {
   firstCustomerOrderLimitCount: DEFAULT_FIRST_CUSTOMER_ORDER_LIMIT_COUNT,
   maxBookingCratesPerOrder: DEFAULT_MAX_BOOKING_CRATES_PER_ORDER,
   largePosPaymentThreshold: DEFAULT_LARGE_POS_PAYMENT_THRESHOLD,
+  undepositedCashAlertHours: 24,
+  pendingCashDepositConfirmationHours: 24,
+  cashDepositMatchWindowDays: 2,
 };
 const DEFAULT_POLICY_EFFECTIVE_FROM = '1970-01-01T00:00:00.000Z';
 
@@ -74,6 +77,9 @@ function normalizePolicy(value, fallback = DEFAULT_OPERATIONS_POLICY) {
   const firstCustomerOrderLimitCount = Number(raw.firstCustomerOrderLimitCount);
   const maxBookingCratesPerOrder = Number(raw.maxBookingCratesPerOrder);
   const largePosPaymentThreshold = Number(raw.largePosPaymentThreshold);
+  const undepositedCashAlertHours = Number(raw.undepositedCashAlertHours);
+  const pendingCashDepositConfirmationHours = Number(raw.pendingCashDepositConfirmationHours);
+  const cashDepositMatchWindowDays = Number(raw.cashDepositMatchWindowDays);
 
   return {
     targetProfitPerCrate: Number.isFinite(targetProfitPerCrate) && targetProfitPerCrate > 0
@@ -99,6 +105,15 @@ function normalizePolicy(value, fallback = DEFAULT_OPERATIONS_POLICY) {
     largePosPaymentThreshold: Number.isFinite(largePosPaymentThreshold) && largePosPaymentThreshold >= 0
       ? largePosPaymentThreshold
       : fallback.largePosPaymentThreshold,
+    undepositedCashAlertHours: Number.isFinite(undepositedCashAlertHours) && undepositedCashAlertHours > 0
+      ? Math.round(undepositedCashAlertHours)
+      : fallback.undepositedCashAlertHours,
+    pendingCashDepositConfirmationHours: Number.isFinite(pendingCashDepositConfirmationHours) && pendingCashDepositConfirmationHours > 0
+      ? Math.round(pendingCashDepositConfirmationHours)
+      : fallback.pendingCashDepositConfirmationHours,
+    cashDepositMatchWindowDays: Number.isFinite(cashDepositMatchWindowDays) && cashDepositMatchWindowDays > 0
+      ? Math.round(cashDepositMatchWindowDays)
+      : fallback.cashDepositMatchWindowDays,
   };
 }
 
@@ -133,6 +148,9 @@ function normalizePolicyHistory(value) {
         firstCustomerOrderLimitCount: normalizedEntry.firstCustomerOrderLimitCount,
         maxBookingCratesPerOrder: normalizedEntry.maxBookingCratesPerOrder,
         largePosPaymentThreshold: normalizedEntry.largePosPaymentThreshold,
+        undepositedCashAlertHours: normalizedEntry.undepositedCashAlertHours,
+        pendingCashDepositConfirmationHours: normalizedEntry.pendingCashDepositConfirmationHours,
+        cashDepositMatchWindowDays: normalizedEntry.cashDepositMatchWindowDays,
       };
       versions.push(normalizedEntry);
     }

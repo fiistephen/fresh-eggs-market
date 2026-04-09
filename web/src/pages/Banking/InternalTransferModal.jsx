@@ -15,6 +15,7 @@ export default function InternalTransferModal({ accounts, onClose, onRecorded })
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const isCashDepositFlow = form.fromAccountId === cashAccount?.id && form.toAccountId === customerDepositAccount?.id;
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -36,7 +37,15 @@ export default function InternalTransferModal({ accounts, onClose, onRecorded })
         {error && <div className="rounded-lg border border-error-100 bg-error-50 px-3 py-2 text-body text-error-700">{error}</div>}
 
         <div className="rounded-lg border border-warning-100 bg-warning-50 px-4 py-3 text-body text-warning-700">
-          Use this when money moves from one account to another. Example: after you deposit cash in the bank, move it from <span className="font-semibold">Cash Account</span> to <span className="font-semibold">Customer Deposit Account</span>.
+          {isCashDepositFlow ? (
+            <>
+              Use this to record cash taken to the bank. The move will stay <span className="font-semibold">pending</span> until a matching inflow is confirmed from a bank statement.
+            </>
+          ) : (
+            <>
+              Use this when money moves from one account to another inside the business.
+            </>
+          )}
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -65,7 +74,7 @@ export default function InternalTransferModal({ accounts, onClose, onRecorded })
           <input type="text" value={form.description} onChange={(e) => setForm((c) => ({ ...c, description: e.target.value }))} placeholder="e.g. Cash deposit at Providus" className="w-full rounded-md border border-surface-200 px-3 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500" />
         </Field>
 
-        <ModalActions onClose={onClose} submitting={submitting} submitLabel={submitting ? 'Saving…' : 'Move money'} />
+        <ModalActions onClose={onClose} submitting={submitting} submitLabel={submitting ? 'Saving…' : isCashDepositFlow ? 'Record pending deposit' : 'Move money'} />
       </form>
     </ModalShell>
   );

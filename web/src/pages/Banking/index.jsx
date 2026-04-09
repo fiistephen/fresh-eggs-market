@@ -10,6 +10,7 @@ import TransactionsView from './TransactionsView';
 import ImportsView from './StatementImport/ImportQueue';
 import QueueList from './BookingQueue/QueueList';
 import PortalTransferQueue from './PortalTransferQueue';
+import CashDepositsView from './CashDepositsView';
 import AccountBalances from './Reports/AccountBalances';
 import UnbookedDeposits from './Reports/UnbookedDeposits';
 import CustomerLiability from './Reports/CustomerLiability';
@@ -29,6 +30,7 @@ const TABS = [
   { key: 'imports', label: 'Statements' },
   { key: 'customer-bookings', label: 'Bookings', badge: true },
   { key: 'portal-transfers', label: 'Transfers' },
+  { key: 'cash-deposits', label: 'Cash deposits', badge: true },
   { key: 'reports', label: 'Reports' },
 ];
 
@@ -69,6 +71,11 @@ export default function Banking() {
   const [customerBookingQueue, setCustomerBookingQueue] = useState([]);
   const [customerBookingBatches, setCustomerBookingBatches] = useState([]);
   const [portalTransferQueue, setPortalTransferQueue] = useState([]);
+  const [cashDeposits, setCashDeposits] = useState({
+    undepositedCash: { count: 0, total: 0, thresholdHours: 24, transactions: [] },
+    pendingDeposits: { count: 0, total: 0, thresholdHours: 24, batches: [] },
+    confirmedRecently: [],
+  });
   const [bankingPolicy, setBankingPolicy] = useState({ bookingMinimumPaymentPercent: 80 });
   const [activeReport, setActiveReport] = useState('balances');
 
@@ -80,6 +87,7 @@ export default function Banking() {
   const [reconciliationsLoading, setReconciliationsLoading] = useState(false);
   const [customerBookingLoading, setCustomerBookingLoading] = useState(false);
   const [portalTransferLoading, setPortalTransferLoading] = useState(false);
+  const [cashDepositsLoading, setCashDepositsLoading] = useState(false);
   const [error, setError] = useState('');
 
   /* ── Transaction filters ─────────────────────────────── */
@@ -170,6 +178,7 @@ export default function Banking() {
         loadImports(),
         loadCustomerBookings(),
         loadPortalTransferQueue(),
+        loadCashDeposits(),
         canViewReports ? loadReconciliations() : Promise.resolve(),
         loadTransactions(true),
       ]);
@@ -283,6 +292,23 @@ export default function Banking() {
     }
   }
 
+  async function loadCashDeposits() {
+    setCashDepositsLoading(true);
+    try {
+      const data = await api.get('/banking/cash-deposits');
+      setCashDeposits({
+        undepositedCash: data.undepositedCash || { count: 0, total: 0, thresholdHours: 24, transactions: [] },
+        pendingDeposits: data.pendingDeposits || { count: 0, total: 0, thresholdHours: 24, batches: [] },
+        confirmedRecently: data.confirmedRecently || [],
+      });
+      setBankingPolicy((prev) => ({ ...prev, ...(data.policy || {}) }));
+    } catch {
+      setError('Failed to load cash deposits');
+    } finally {
+      setCashDepositsLoading(false);
+    }
+  }
+
   /* ── Mutation helpers ────────────────────────────────── */
 
   async function handleImportPosted() {
@@ -291,7 +317,7 @@ export default function Banking() {
     setError('');
     try {
       await api.post(`/banking/imports/${selectedImportId}/post`, {});
-      await Promise.all([loadAccounts(), loadImports(), loadImportDetail(selectedImportId), loadTransactions()]);
+      await Promise.all([loadAccounts(), loadImports(), loadImportDetail(selectedImportId), loadTransactions(), loadCashDeposits()]);
       if (canViewReports) await loadReconciliations();
     } catch (err) {
       setError(err.error || 'Failed to post import');
@@ -317,6 +343,7 @@ export default function Banking() {
   const totalPages = Math.max(1, Math.ceil(transactionsTotal / PAGE_SIZE));
   const importTotalPages = Math.max(1, Math.ceil(importsTotal / IMPORTS_PAGE_SIZE));
   const isReportView = activeView === 'reports';
+  const cashDepositBadgeCount = Number(cashDeposits.undepositedCash?.count || 0) + Number(cashDeposits.pendingDeposits?.count || 0);
 
   /* ── Render ──────────────────────────────────────────── */
 
@@ -359,7 +386,11 @@ export default function Banking() {
       <div className="flex items-center gap-1 overflow-x-auto border-b border-surface-200">
         {TABS.filter((tab) => canViewReports || tab.key !== 'reports').map((tab) => {
           const isActive = activeView === tab.key;
-          const badgeCount = tab.badge ? customerBookingQueue.length : 0;
+          const badgeCount = tab.key === 'customer-bookings'
+            ? customerBookingQueue.length
+            : tab.key === 'cash-deposits'
+              ? cashDepositBadgeCount
+              : 0;
           return (
             <button
               key={tab.key}
@@ -422,6 +453,7 @@ export default function Banking() {
           categoryMap={categoryMap}
           customerBookingQueue={customerBookingQueue}
           portalTransferQueue={portalTransferQueue}
+          cashDeposits={cashDeposits}
           canViewReports={canViewReports}
           onNavigate={setActiveView}
           onOpenReport={openReport}
@@ -468,6 +500,7 @@ export default function Banking() {
           onLineUpdated={() => {
             if (selectedImportId) loadImportDetail(selectedImportId);
             loadImports();
+            loadCashDeposits();
           }}
           onImportQueueUpdated={() => loadImports()}
         />
@@ -495,7 +528,18 @@ export default function Banking() {
             loadAccounts();
             loadTransactions();
             loadCustomerBookings();
+            loadCashDeposits();
           }}
+        />
+      )}
+
+      {activeView === 'cash-deposits' && (
+        <CashDepositsView
+          loading={cashDepositsLoading}
+          data={cashDeposits}
+          onMoveMoney={() => setShowTransferModal(true)}
+          onOpenStatements={() => setActiveView('imports')}
+          onRefresh={loadCashDeposits}
         />
       )}
 

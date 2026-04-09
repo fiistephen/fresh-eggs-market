@@ -17,6 +17,7 @@ export const SOURCE_LABELS = {
   MANUAL: 'Manual',
   STATEMENT_IMPORT: 'Statement import',
   INTERNAL_TRANSFER: 'Internal transfer',
+  CASH_DEPOSIT: 'Cash deposit',
   SYSTEM: 'System',
 };
 
@@ -37,6 +38,7 @@ export const CATEGORY_LABELS = {
   POS_SETTLEMENT: 'POS settlement',
   UNALLOCATED_INCOME: 'Unallocated income',
   CASH_SALE: 'Cash sale',
+  CASH_DEPOSIT_CONFIRMATION: 'Cash deposit confirmation',
   INTERNAL_TRANSFER_IN: 'Internal transfer in',
   REFUND: 'Refund',
   BANK_CHARGES: 'Bank charges',
@@ -62,6 +64,7 @@ export const INFLOW_CATEGORIES = [
   'POS_SETTLEMENT',
   'UNALLOCATED_INCOME',
   'CASH_SALE',
+  'CASH_DEPOSIT_CONFIRMATION',
   'INTERNAL_TRANSFER_IN',
 ];
 

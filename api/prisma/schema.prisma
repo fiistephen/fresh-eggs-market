@@ -41,6 +41,8 @@ model User {
   reconciliations  BankReconciliation[]  @relation("ReconciledBy")
   bookingAllocations BookingPaymentAllocation[] @relation("AllocationCreatedBy")
   appSettingsUpdated AppSetting[] @relation("AppSettingUpdatedBy")
+  cashDepositBatchesCreated CashDepositBatch[] @relation("CashDepositBatchCreatedBy")
+  cashDepositBatchesConfirmed CashDepositBatch[] @relation("CashDepositBatchConfirmedBy")
 
   @@map("users")
 }
@@ -390,6 +392,8 @@ model BankAccount {
   transactions BankTransaction[]
   statementImports BankStatementImport[]
   reconciliations BankReconciliation[]
+  cashDepositBatchesFrom CashDepositBatch[] @relation("CashDepositBatchFromAccount")
+  cashDepositBatchesTo CashDepositBatch[]   @relation("CashDepositBatchToAccount")
 
   @@map("bank_accounts")
 }
@@ -403,6 +407,7 @@ enum TransactionSourceType {
   MANUAL
   STATEMENT_IMPORT
   INTERNAL_TRANSFER
+  CASH_DEPOSIT
   SYSTEM
 }
 
@@ -430,6 +435,14 @@ enum ReconciliationStatus {
   BALANCED
   VARIANCE
   OPEN
+}
+
+enum CashDepositBatchStatus {
+  PENDING_CONFIRMATION
+  CONFIRMED
+  OVERDUE
+  REJECTED
+  CANCELLED
 }
 
 model BankTransaction {
@@ -461,6 +474,8 @@ model BankTransaction {
   enteredBy   User        @relation("TransactionEnteredBy", fields: [enteredById], references: [id])
   statementLine BankStatementLine?
   allocations BookingPaymentAllocation[]
+  cashDepositBatchLinks CashDepositBatchTransaction[]
+  cashDepositOutflow CashDepositBatch? @relation("CashDepositBatchOutflow")
 
   @@map("bank_transactions")
 }
@@ -507,6 +522,7 @@ model BankStatementLine {
   suggestedCategory  String?                   @map("suggested_category")
   selectedCategory   String?                   @map("selected_category")
   selectedCustomerId String?                   @map("selected_customer_id")
+  matchedCashDepositBatchId String?            @map("matched_cash_deposit_batch_id")
   notes              String?
   fingerprint        String                    @unique
   postedTransactionId String?                  @unique @map("posted_transaction_id")
@@ -517,6 +533,8 @@ model BankStatementLine {
   import            BankStatementImport @relation(fields: [importId], references: [id], onDelete: Cascade)
   selectedCustomer  Customer?           @relation(fields: [selectedCustomerId], references: [id])
   postedTransaction BankTransaction?    @relation(fields: [postedTransactionId], references: [id])
+  matchedCashDepositBatch CashDepositBatch? @relation("CashDepositBatchMatchedStatementLine", fields: [matchedCashDepositBatchId], references: [id])
+  confirmedCashDepositBatch CashDepositBatch? @relation("CashDepositBatchConfirmedStatementLine")
 
   @@unique([importId, lineNumber])
   @@map("bank_statement_lines")
@@ -557,6 +575,48 @@ model BookingPaymentAllocation {
 
   @@unique([bookingId, bankTransactionId])
   @@map("booking_payment_allocations")
+}
+
+model CashDepositBatch {
+  id                          String                 @id @default(cuid())
+  fromBankAccountId           String                 @map("from_bank_account_id")
+  toBankAccountId             String                 @map("to_bank_account_id")
+  outflowTransactionId        String                 @unique @map("outflow_transaction_id")
+  amount                      Decimal                @db.Decimal(12, 2)
+  depositDate                 DateTime               @map("deposit_date")
+  status                      CashDepositBatchStatus @default(PENDING_CONFIRMATION)
+  createdById                 String                 @map("created_by_id")
+  confirmedById               String?                @map("confirmed_by_id")
+  confirmedAt                 DateTime?              @map("confirmed_at")
+  confirmationStatementLineId String?                @unique @map("confirmation_statement_line_id")
+  notes                       String?
+  createdAt                   DateTime               @default(now()) @map("created_at")
+  updatedAt                   DateTime               @updatedAt @map("updated_at")
+
+  fromBankAccount             BankAccount            @relation("CashDepositBatchFromAccount", fields: [fromBankAccountId], references: [id])
+  toBankAccount               BankAccount            @relation("CashDepositBatchToAccount", fields: [toBankAccountId], references: [id])
+  outflowTransaction          BankTransaction        @relation("CashDepositBatchOutflow", fields: [outflowTransactionId], references: [id])
+  createdBy                   User                   @relation("CashDepositBatchCreatedBy", fields: [createdById], references: [id])
+  confirmedBy                 User?                  @relation("CashDepositBatchConfirmedBy", fields: [confirmedById], references: [id])
+  confirmationStatementLine   BankStatementLine?     @relation("CashDepositBatchConfirmedStatementLine", fields: [confirmationStatementLineId], references: [id])
+  transactions                CashDepositBatchTransaction[]
+  matchedStatementLines       BankStatementLine[]    @relation("CashDepositBatchMatchedStatementLine")
+
+  @@map("cash_deposit_batches")
+}
+
+model CashDepositBatchTransaction {
+  id                 String           @id @default(cuid())
+  cashDepositBatchId String           @map("cash_deposit_batch_id")
+  bankTransactionId  String           @map("bank_transaction_id")
+  amountIncluded     Decimal          @map("amount_included") @db.Decimal(12, 2)
+  createdAt          DateTime         @default(now()) @map("created_at")
+
+  cashDepositBatch   CashDepositBatch @relation(fields: [cashDepositBatchId], references: [id], onDelete: Cascade)
+  bankTransaction    BankTransaction  @relation(fields: [bankTransactionId], references: [id], onDelete: Cascade)
+
+  @@unique([cashDepositBatchId, bankTransactionId])
+  @@map("cash_deposit_batch_transactions")
 }
 
 // ─── INVENTORY ─────────────────────────────────────────────────

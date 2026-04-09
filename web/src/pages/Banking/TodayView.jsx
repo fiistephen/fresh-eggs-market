@@ -1,6 +1,6 @@
 import { ACCOUNT_STYLES, DIRECTION_COLORS, SOURCE_LABELS, fmtMoney, fmtDate, displayAccountName, accountLabel, categoryLabel } from './shared/constants';
 
-export default function TodayView({ loading, accounts, imports, transactions, categoryMap, customerBookingQueue, portalTransferQueue, canViewReports, onNavigate, onOpenReport }) {
+export default function TodayView({ loading, accounts, imports, transactions, categoryMap, customerBookingQueue, portalTransferQueue, cashDeposits, canViewReports, onNavigate, onOpenReport }) {
   if (loading) {
     return <div className="rounded-lg border border-surface-200 bg-surface-0 px-6 py-20 text-center text-sm text-surface-500">Loading…</div>;
   }
@@ -28,6 +28,32 @@ export default function TodayView({ loading, accounts, imports, transactions, ca
       title: `${portalTransferQueue.length} portal transfer${portalTransferQueue.length === 1 ? '' : 's'} to review`,
       subtitle: 'Approve or reject',
       action: () => onNavigate('portal-transfers'),
+    });
+  }
+
+  const undepositedCashCount = Number(cashDeposits?.undepositedCash?.count || 0);
+  const undepositedCashTotal = Number(cashDeposits?.undepositedCash?.total || 0);
+  if (undepositedCashCount > 0) {
+    attentionItems.push({
+      key: 'undeposited-cash',
+      color: 'warning',
+      count: undepositedCashCount,
+      title: `${undepositedCashCount} cash sale${undepositedCashCount === 1 ? '' : 's'} not yet deposited`,
+      subtitle: `${fmtMoney(undepositedCashTotal)} still in Cash Account`,
+      action: () => onNavigate('cash-deposits'),
+    });
+  }
+
+  const pendingCashDepositCount = Number(cashDeposits?.pendingDeposits?.count || 0);
+  const pendingCashDepositTotal = Number(cashDeposits?.pendingDeposits?.total || 0);
+  if (pendingCashDepositCount > 0) {
+    attentionItems.push({
+      key: 'pending-cash-confirmation',
+      color: 'brand',
+      count: pendingCashDepositCount,
+      title: `${pendingCashDepositCount} cash deposit${pendingCashDepositCount === 1 ? '' : 's'} waiting for bank confirmation`,
+      subtitle: `${fmtMoney(pendingCashDepositTotal)} still needs a matching bank line`,
+      action: () => onNavigate('cash-deposits'),
     });
   }
 
