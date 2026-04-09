@@ -41,7 +41,7 @@ export const REPORT_CARDS = [
   },
   {
     key: 'sales-by-employee',
-    title: 'Sales By Employee',
+    title: 'Sales By Staff',
     description: 'See who handled sales and how much value each staff member recorded.',
     icon: '👤',
     accent: 'from-sky-50 to-white border-sky-200',

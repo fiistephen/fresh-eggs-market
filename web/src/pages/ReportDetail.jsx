@@ -451,7 +451,7 @@ function SalesByPaymentTypeReport({ data }) {
 function SalesByEmployeeReport({ data }) {
   return (
     <div className="space-y-6">
-      <Panel title="Employee comparison" body="This visual helps you compare sales value across staff members.">
+      <Panel title="Staff comparison" body="This visual helps you compare sales value across staff members.">
         <BarComparisonChart
           data={data.byEmployee}
           labelKey="employeeName"
@@ -460,7 +460,7 @@ function SalesByEmployeeReport({ data }) {
         />
       </Panel>
 
-      <Panel title="Sales by employee" body="This shows the sales value each staff member recorded in the selected period.">
+      <Panel title="Sales by staff" body="This shows the sales value each staff member recorded in the selected period.">
         <DataTable
           columns={['Name', 'Gross sales', 'Receipts', 'Average sale', 'Crates sold', 'Gross profit']}
           rows={data.byEmployee.map((row) => [
@@ -471,7 +471,7 @@ function SalesByEmployeeReport({ data }) {
             row.totalQuantity.toLocaleString(),
             formatCurrency(row.grossProfit),
           ])}
-          emptyText="No employee sales found for this period."
+          emptyText="No staff sales found for this period."
         />
       </Panel>
     </div>
@@ -728,7 +728,7 @@ function ReceiptDetailCard({ receipt }) {
               <p>Gross profit: ${formatCurrency(receipt.grossProfit)}</p>
             </div>
             <div class="card">
-              <h2>Employee</h2>
+              <h2>Staff</h2>
               <p>${receipt.recordedBy?.name || '—'}</p>
               <p>${SOURCE_LABELS[receipt.sourceType] || receipt.sourceType}</p>
             </div>
@@ -825,7 +825,7 @@ function ReceiptDetailCard({ receipt }) {
             <div class="rule"></div>
             <div><strong>Receipt No:</strong> ${receipt.receiptNumber}</div>
             <div><strong>Date:</strong> ${formatDateTime(receipt.saleDate)}</div>
-            <div><strong>Employee:</strong> ${receipt.recordedBy?.name || '—'}</div>
+            <div><strong>Staff:</strong> ${receipt.recordedBy?.name || '—'}</div>
             <div><strong>Customer:</strong> ${receipt.customer?.name || 'Walk-in customer'}</div>
             ${receipt.customer?.phone ? `<div><strong>Phone:</strong> ${receipt.customer.phone}</div>` : ''}
             <div><strong>Payment:</strong> ${PAYMENT_LABELS[receipt.paymentMethod] || receipt.paymentMethod}</div>
@@ -916,7 +916,7 @@ function ReceiptDetailCard({ receipt }) {
               <span className="font-medium text-surface-900">{formatDateTime(receipt.saleDate)}</span>
             </div>
             <div className="flex items-start justify-between gap-4">
-              <span className="text-surface-500">Employee</span>
+              <span className="text-surface-500">Staff</span>
               <span className="text-right font-medium text-surface-900">{receipt.recordedBy?.name || '—'}</span>
             </div>
             <div className="flex items-start justify-between gap-4">
@@ -1000,7 +1000,7 @@ function ReceiptDetailCard({ receipt }) {
           <p className="text-caption uppercase tracking-wide text-surface-600">Receipt summary</p>
           <p className="mt-2 text-base font-semibold text-surface-900">{formatCurrency(receipt.totalAmount)}</p>
           <p className="mt-1 text-body text-surface-500">{receipt.totalQuantity} crates sold</p>
-          <p className="mt-1 text-body text-surface-500">Employee {receipt.recordedBy?.name || '—'}</p>
+          <p className="mt-1 text-body text-surface-500">Staff {receipt.recordedBy?.name || '—'}</p>
         </div>
       </div>
 

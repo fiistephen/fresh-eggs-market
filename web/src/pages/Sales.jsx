@@ -1364,7 +1364,7 @@ function SaleDetailModal({ sale, onClose }) {
             <div class="rule"></div>
 
             <div class="meta-stack">
-              <div class="meta-stack-label">Employee: ${sale.recordedBy ? `${sale.recordedBy.firstName} ${sale.recordedBy.lastName}` : '—'}</div>
+              <div class="meta-stack-label">Staff: ${sale.recordedBy ? `${sale.recordedBy.firstName} ${sale.recordedBy.lastName}` : '—'}</div>
               <div class="meta-stack-value">POS: Shop Floor POS</div>
             </div>
 
