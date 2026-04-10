@@ -16,6 +16,8 @@ export default function TransactionsView({
   onPageChange,
   onPageSizeChange,
   onFilterChange,
+  canRequestDelete = false,
+  onRequestDelete,
 }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -178,6 +180,7 @@ export default function TransactionsView({
                   <th className="px-4 py-2.5 text-left text-xs font-medium uppercase text-surface-500">Customer</th>
                   {detailsOpen && <th className="px-4 py-2.5 text-left text-xs font-medium uppercase text-surface-500">Recorded by</th>}
                   <th className="px-4 py-2.5 text-right text-xs font-medium uppercase text-surface-500">Amount</th>
+                  {canRequestDelete && <th className="px-4 py-2.5 text-right text-xs font-medium uppercase text-surface-500">Action</th>}
                 </tr>
               </thead>
               <tbody>
@@ -195,6 +198,21 @@ export default function TransactionsView({
                     <td className={`px-4 py-2.5 text-right text-sm font-semibold ${DIRECTION_COLORS[t.direction]}`}>
                       {t.direction === 'INFLOW' ? '+' : '−'}{fmtMoney(t.amount)}
                     </td>
+                    {canRequestDelete && (
+                      <td className="px-4 py-2.5 text-right">
+                        {t.sourceType === 'MANUAL' ? (
+                          <button
+                            type="button"
+                            onClick={() => onRequestDelete?.(t)}
+                            className="text-xs font-medium text-error-600 transition-colors duration-fast hover:text-error-800"
+                          >
+                            Request delete
+                          </button>
+                        ) : (
+                          <span className="text-xs text-surface-400">Protected</span>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

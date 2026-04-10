@@ -20,6 +20,20 @@ enum Role {
   CUSTOMER
 }
 
+enum ApprovalRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ApprovalRequestType {
+  BANK_TRANSACTION_DELETE
+}
+
+enum ApprovalEntityType {
+  BANK_TRANSACTION
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String?  @unique
@@ -45,6 +59,8 @@ model User {
   cashDepositBatchesConfirmed CashDepositBatch[] @relation("CashDepositBatchConfirmedBy")
   portalCheckoutsAdminConfirmed PortalCheckout[] @relation("PortalCheckoutAdminConfirmedBy")
   portalCheckoutDecisions PortalCheckoutDecision[]
+  approvalRequestsRequested ApprovalRequest[] @relation("ApprovalRequestedBy")
+  approvalRequestsResolved ApprovalRequest[] @relation("ApprovalResolvedBy")
 
   @@map("users")
 }
@@ -59,6 +75,29 @@ model RefreshToken {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("refresh_tokens")
+}
+
+model ApprovalRequest {
+  id            String                @id @default(cuid())
+  type          ApprovalRequestType
+  entityType    ApprovalEntityType    @map("entity_type")
+  entityId      String                @map("entity_id")
+  status        ApprovalRequestStatus @default(PENDING)
+  requestedById String                @map("requested_by_id")
+  approvedById  String?               @map("approved_by_id")
+  reason        String?
+  beforeData    Json?                 @map("before_data")
+  afterData     Json?                 @map("after_data")
+  resolvedAt    DateTime?             @map("resolved_at")
+  createdAt     DateTime              @default(now()) @map("created_at")
+  updatedAt     DateTime              @updatedAt @map("updated_at")
+
+  requestedBy   User                  @relation("ApprovalRequestedBy", fields: [requestedById], references: [id])
+  approvedBy    User?                 @relation("ApprovalResolvedBy", fields: [approvedById], references: [id])
+
+  @@index([status, createdAt])
+  @@index([entityType, entityId, status])
+  @@map("approval_requests")
 }
 
 // ─── CUSTOMERS ─────────────────────────────────────────────────

@@ -11,6 +11,7 @@ import ImportsView from './StatementImport/ImportQueue';
 import QueueList from './BookingQueue/QueueList';
 import PortalTransferQueue from './PortalTransferQueue';
 import CashDepositsView from './CashDepositsView';
+import ApprovalRequestsView from './ApprovalRequestsView';
 import AccountBalances from './Reports/AccountBalances';
 import UnbookedDeposits from './Reports/UnbookedDeposits';
 import CustomerLiability from './Reports/CustomerLiability';
@@ -21,6 +22,7 @@ import EntryModal from './EntryModal';
 import InternalTransferModal from './InternalTransferModal';
 import StatementImportModal from './StatementImportModal';
 import ReconciliationModal from './ReconciliationModal';
+import RequestDeleteApprovalModal from './RequestDeleteApprovalModal';
 
 /* ── Tab config ────────────────────────────────────────── */
 
@@ -31,6 +33,7 @@ const TABS = [
   { key: 'customer-bookings', label: 'Bookings', badge: true },
   { key: 'portal-transfers', label: 'Transfers' },
   { key: 'cash-deposits', label: 'Cash deposits', badge: true },
+  { key: 'approvals', label: 'Approvals', badge: true },
   { key: 'reports', label: 'Reports' },
 ];
 
@@ -79,6 +82,7 @@ export default function Banking() {
     pendingDeposits: { count: 0, total: 0, thresholdHours: 24, batches: [] },
     confirmedRecently: [],
   });
+  const [approvalRequests, setApprovalRequests] = useState([]);
   const [bankingPolicy, setBankingPolicy] = useState({ bookingMinimumPaymentPercent: 80 });
   const [activeReport, setActiveReport] = useState('balances');
 
@@ -91,6 +95,7 @@ export default function Banking() {
   const [customerBookingLoading, setCustomerBookingLoading] = useState(false);
   const [portalTransferLoading, setPortalTransferLoading] = useState(false);
   const [cashDepositsLoading, setCashDepositsLoading] = useState(false);
+  const [approvalRequestsLoading, setApprovalRequestsLoading] = useState(false);
   const [error, setError] = useState('');
 
   /* ── Transaction filters ─────────────────────────────── */
@@ -109,6 +114,8 @@ export default function Banking() {
   const [showImportModal, setShowImportModal] = useState(false);
   const [showReconcileModal, setShowReconcileModal] = useState(false);
   const [postingImport, setPostingImport] = useState(false);
+  const [requestDeleteTransaction, setRequestDeleteTransaction] = useState(null);
+  const [workingApprovalId, setWorkingApprovalId] = useState('');
 
   /* ── Action menu state ───────────────────────────────── */
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -182,6 +189,7 @@ export default function Banking() {
         loadCustomerBookings(),
         loadPortalTransferQueue(),
         loadCashDeposits(),
+        loadApprovalRequests(),
         canViewReports ? loadReconciliations() : Promise.resolve(),
         loadTransactions(true),
       ]);
@@ -313,6 +321,47 @@ export default function Banking() {
     }
   }
 
+  async function loadApprovalRequests() {
+    setApprovalRequestsLoading(true);
+    try {
+      const data = await api.get('/banking/approval-requests');
+      setApprovalRequests(data.approvalRequests || []);
+    } catch {
+      setError('Failed to load approval requests');
+    } finally {
+      setApprovalRequestsLoading(false);
+    }
+  }
+
+  async function approveApprovalRequest(request) {
+    const confirmed = window.confirm('Approve this delete request? The transaction will be removed from Banking.');
+    if (!confirmed) return;
+    setWorkingApprovalId(request.id);
+    try {
+      await api.post(`/banking/approval-requests/${request.id}/approve`, {});
+      await Promise.all([loadApprovalRequests(), loadTransactions(), loadAccounts(), loadCustomerBookings(), loadCashDeposits()]);
+    } catch (err) {
+      setError(err.error || 'Failed to approve this request');
+    } finally {
+      setWorkingApprovalId('');
+    }
+  }
+
+  async function rejectApprovalRequest(request) {
+    const reason = window.prompt('Why are you rejecting this delete request?') || '';
+    setWorkingApprovalId(request.id);
+    try {
+      await api.post(`/banking/approval-requests/${request.id}/reject`, {
+        reason: reason.trim() || undefined,
+      });
+      await loadApprovalRequests();
+    } catch (err) {
+      setError(err.error || 'Failed to reject this request');
+    } finally {
+      setWorkingApprovalId('');
+    }
+  }
+
   /* ── Mutation helpers ────────────────────────────────── */
 
   async function handleImportPosted() {
@@ -348,6 +397,7 @@ export default function Banking() {
   const importTotalPages = Math.max(1, Math.ceil(importsTotal / IMPORTS_PAGE_SIZE));
   const isReportView = activeView === 'reports';
   const cashDepositBadgeCount = Number(cashDeposits.undepositedCash?.count || 0) + Number(cashDeposits.pendingDeposits?.count || 0);
+  const approvalBadgeCount = approvalRequests.filter((request) => request.status === 'PENDING').length;
 
   /* ── Render ──────────────────────────────────────────── */
 
@@ -394,6 +444,8 @@ export default function Banking() {
             ? customerBookingQueue.length
             : tab.key === 'cash-deposits'
               ? cashDepositBadgeCount
+              : tab.key === 'approvals'
+                ? approvalBadgeCount
               : 0;
           return (
             <button
@@ -482,6 +534,8 @@ export default function Banking() {
             setTransactionsPage(1);
           }}
           onFilterChange={handleFilterChange}
+          canRequestDelete={canRecord}
+          onRequestDelete={setRequestDeleteTransaction}
         />
       )}
 
@@ -553,6 +607,19 @@ export default function Banking() {
         />
       )}
 
+      {activeView === 'approvals' && (
+        <ApprovalRequestsView
+          requests={approvalRequests}
+          loading={approvalRequestsLoading}
+          categoryMap={categoryMap}
+          currentUserRole={user?.role}
+          workingId={workingApprovalId}
+          onApprove={approveApprovalRequest}
+          onReject={rejectApprovalRequest}
+          onRefresh={loadApprovalRequests}
+        />
+      )}
+
       {activeView === 'reports' && activeReport === 'balances' && (
         <AccountBalances
           accounts={accounts}
@@ -619,6 +686,18 @@ export default function Banking() {
           onSaved={() => {
             setShowReconcileModal(false);
             refreshAfterMutation();
+          }}
+        />
+      )}
+
+      {requestDeleteTransaction && (
+        <RequestDeleteApprovalModal
+          transaction={requestDeleteTransaction}
+          categoryMap={categoryMap}
+          onClose={() => setRequestDeleteTransaction(null)}
+          onRequested={() => {
+            setRequestDeleteTransaction(null);
+            loadApprovalRequests();
           }}
         />
       )}

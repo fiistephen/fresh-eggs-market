@@ -131,6 +131,70 @@ function validateDirectionAndCategory(direction, category, categoryConfig = []) 
   return null;
 }
 
+function serializeApprovalTransaction(transaction) {
+  if (!transaction) return null;
+  return {
+    id: transaction.id,
+    bankAccountId: transaction.bankAccountId,
+    bankAccountName: transaction.bankAccount?.name || null,
+    direction: transaction.direction,
+    category: transaction.category,
+    amount: Number(transaction.amount),
+    description: transaction.description || null,
+    reference: transaction.reference || null,
+    transactionDate: transaction.transactionDate,
+    sourceType: transaction.sourceType,
+    customerId: transaction.customerId || null,
+    customerName: transaction.customer?.name || null,
+    enteredById: transaction.enteredById,
+    enteredByName: transaction.enteredBy
+      ? `${transaction.enteredBy.firstName || ''} ${transaction.enteredBy.lastName || ''}`.trim() || null
+      : null,
+    internalTransferGroupId: transaction.internalTransferGroupId || null,
+    createdAt: transaction.createdAt,
+  };
+}
+
+function canRequestBankTransactionDelete(transaction, user) {
+  if (!transaction) return { allowed: false, error: 'Transaction not found.' };
+  if (transaction.sourceType !== 'MANUAL') {
+    return { allowed: false, error: 'Only manual Banking entries can be sent for delete approval.' };
+  }
+  if (user.role === 'RECORD_KEEPER' && transaction.enteredById !== user.sub) {
+    return { allowed: false, error: 'You can only request deletion for entries you recorded yourself.' };
+  }
+  if (transaction.saleId || transaction.bookingId || transaction.statementLine || transaction.internalTransferGroupId) {
+    return { allowed: false, error: 'This transaction is already tied to another workflow and cannot be deleted here.' };
+  }
+  if ((transaction.allocations?.length || 0) > 0) {
+    return { allowed: false, error: 'This transaction is already linked to bookings and cannot be deleted here.' };
+  }
+  if ((transaction.cashDepositBatchLinks?.length || 0) > 0 || transaction.cashDepositOutflow) {
+    return { allowed: false, error: 'This transaction is already linked to a cash deposit flow and cannot be deleted here.' };
+  }
+  return { allowed: true };
+}
+
+async function getDeleteApprovalRequestOrReply(request, reply) {
+  const approvalRequest = await prisma.approvalRequest.findUnique({
+    where: { id: request.params.id },
+    include: {
+      requestedBy: { select: { id: true, firstName: true, lastName: true, role: true } },
+      approvedBy: { select: { id: true, firstName: true, lastName: true, role: true } },
+    },
+  });
+
+  if (!approvalRequest) {
+    reply.code(404).send({ error: 'Approval request not found.' });
+    return null;
+  }
+  if (approvalRequest.type !== 'BANK_TRANSACTION_DELETE' || approvalRequest.entityType !== 'BANK_TRANSACTION') {
+    reply.code(400).send({ error: 'This approval request is not a bank transaction delete request.' });
+    return null;
+  }
+  return approvalRequest;
+}
+
 async function recalculateImportStatus(importId) {
   const lines = await prisma.bankStatementLine.findMany({
     where: { importId },
@@ -675,6 +739,206 @@ export default async function bankingRoutes(fastify) {
       });
       if (!txn) return reply.code(404).send({ error: 'Transaction not found' });
       return reply.send({ transaction: enrichTransaction(txn) });
+    },
+  });
+
+  fastify.get('/banking/approval-requests', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
+    handler: async (request, reply) => {
+      const { status, type } = request.query;
+      const where = {};
+      if (status) where.status = status;
+      if (type) where.type = type;
+      if (request.user.role !== 'ADMIN') {
+        where.requestedById = request.user.sub;
+      }
+
+      const approvalRequests = await prisma.approvalRequest.findMany({
+        where,
+        include: {
+          requestedBy: { select: { id: true, firstName: true, lastName: true, role: true } },
+          approvedBy: { select: { id: true, firstName: true, lastName: true, role: true } },
+        },
+        orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
+      });
+
+      const entityIds = approvalRequests
+        .filter((entry) => entry.entityType === 'BANK_TRANSACTION')
+        .map((entry) => entry.entityId);
+
+      const transactions = entityIds.length > 0
+        ? await prisma.bankTransaction.findMany({
+            where: { id: { in: entityIds } },
+            include: {
+              bankAccount: { select: { id: true, name: true, accountType: true, lastFour: true } },
+              customer: { select: { id: true, name: true, phone: true } },
+              enteredBy: { select: { firstName: true, lastName: true } },
+            },
+          })
+        : [];
+
+      const transactionMap = new Map(transactions.map((transaction) => [transaction.id, transaction]));
+
+      return reply.send({
+        approvalRequests: approvalRequests.map((entry) => ({
+          ...entry,
+          entity: transactionMap.get(entry.entityId)
+            ? serializeApprovalTransaction(transactionMap.get(entry.entityId))
+            : null,
+        })),
+      });
+    },
+  });
+
+  fastify.post('/banking/transactions/:id/request-delete', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
+    handler: async (request, reply) => {
+      const transaction = await prisma.bankTransaction.findUnique({
+        where: { id: request.params.id },
+        include: {
+          bankAccount: { select: { id: true, name: true, accountType: true, lastFour: true } },
+          customer: { select: { id: true, name: true, phone: true } },
+          enteredBy: { select: { firstName: true, lastName: true } },
+          statementLine: { select: { id: true } },
+          allocations: { select: { id: true } },
+          cashDepositBatchLinks: { select: { id: true } },
+          cashDepositOutflow: { select: { id: true } },
+        },
+      });
+
+      if (!transaction) return reply.code(404).send({ error: 'Transaction not found.' });
+
+      const permission = canRequestBankTransactionDelete(transaction, request.user);
+      if (!permission.allowed) {
+        return reply.code(400).send({ error: permission.error });
+      }
+
+      const existingPending = await prisma.approvalRequest.findFirst({
+        where: {
+          type: 'BANK_TRANSACTION_DELETE',
+          entityType: 'BANK_TRANSACTION',
+          entityId: transaction.id,
+          status: 'PENDING',
+        },
+      });
+
+      if (existingPending) {
+        return reply.code(409).send({ error: 'A delete approval request is already waiting for this transaction.' });
+      }
+
+      const approvalRequest = await prisma.approvalRequest.create({
+        data: {
+          type: 'BANK_TRANSACTION_DELETE',
+          entityType: 'BANK_TRANSACTION',
+          entityId: transaction.id,
+          requestedById: request.user.sub,
+          reason: String(request.body?.reason || '').trim() || null,
+          beforeData: serializeApprovalTransaction(transaction),
+        },
+        include: {
+          requestedBy: { select: { id: true, firstName: true, lastName: true, role: true } },
+          approvedBy: { select: { id: true, firstName: true, lastName: true, role: true } },
+        },
+      });
+
+      return reply.code(201).send({ approvalRequest });
+    },
+  });
+
+  fastify.post('/banking/approval-requests/:id/approve', {
+    preHandler: [authenticate, authorize('ADMIN')],
+    handler: async (request, reply) => {
+      const approvalRequest = await getDeleteApprovalRequestOrReply(request, reply);
+      if (!approvalRequest) return;
+      if (approvalRequest.status !== 'PENDING') {
+        return reply.code(400).send({ error: 'This approval request has already been resolved.' });
+      }
+
+      const transaction = await prisma.bankTransaction.findUnique({
+        where: { id: approvalRequest.entityId },
+        include: {
+          bankAccount: { select: { id: true, name: true, accountType: true, lastFour: true } },
+          customer: { select: { id: true, name: true, phone: true } },
+          enteredBy: { select: { firstName: true, lastName: true } },
+          statementLine: { select: { id: true } },
+          allocations: { select: { id: true } },
+          cashDepositBatchLinks: { select: { id: true } },
+          cashDepositOutflow: { select: { id: true } },
+        },
+      });
+
+      if (!transaction) {
+        await prisma.approvalRequest.update({
+          where: { id: approvalRequest.id },
+          data: {
+            status: 'REJECTED',
+            approvedById: request.user.sub,
+            resolvedAt: new Date(),
+            afterData: {
+              resolution: 'AUTO_REJECTED',
+              note: 'The transaction no longer exists.',
+            },
+          },
+        });
+        return reply.code(400).send({ error: 'The transaction no longer exists, so this request was closed automatically.' });
+      }
+
+      const permission = canRequestBankTransactionDelete(transaction, {
+        sub: approvalRequest.requestedById,
+        role: approvalRequest.requestedBy.role,
+      });
+      if (!permission.allowed) {
+        return reply.code(400).send({ error: permission.error });
+      }
+
+      await prisma.$transaction([
+        prisma.bankTransaction.delete({ where: { id: transaction.id } }),
+        prisma.approvalRequest.update({
+          where: { id: approvalRequest.id },
+          data: {
+            status: 'APPROVED',
+            approvedById: request.user.sub,
+            resolvedAt: new Date(),
+            afterData: {
+              resolution: 'DELETED',
+              deletedAt: new Date().toISOString(),
+            },
+          },
+        }),
+      ]);
+
+      return reply.send({ approved: true });
+    },
+  });
+
+  fastify.post('/banking/approval-requests/:id/reject', {
+    preHandler: [authenticate, authorize('ADMIN')],
+    handler: async (request, reply) => {
+      const approvalRequest = await getDeleteApprovalRequestOrReply(request, reply);
+      if (!approvalRequest) return;
+      if (approvalRequest.status !== 'PENDING') {
+        return reply.code(400).send({ error: 'This approval request has already been resolved.' });
+      }
+
+      const rejectionReason = String(request.body?.reason || '').trim();
+
+      const updated = await prisma.approvalRequest.update({
+        where: { id: approvalRequest.id },
+        data: {
+          status: 'REJECTED',
+          approvedById: request.user.sub,
+          resolvedAt: new Date(),
+          afterData: rejectionReason
+            ? { resolution: 'REJECTED', reason: rejectionReason }
+            : { resolution: 'REJECTED' },
+        },
+        include: {
+          requestedBy: { select: { id: true, firstName: true, lastName: true, role: true } },
+          approvedBy: { select: { id: true, firstName: true, lastName: true, role: true } },
+        },
+      });
+
+      return reply.send({ approvalRequest: updated });
     },
   });
 
