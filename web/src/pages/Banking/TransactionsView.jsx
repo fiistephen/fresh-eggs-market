@@ -17,6 +17,8 @@ export default function TransactionsView({
   onPageSizeChange,
   onFilterChange,
   canRequestDelete = false,
+  canRequestEdit = false,
+  onRequestEdit,
   onRequestDelete,
 }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -180,7 +182,7 @@ export default function TransactionsView({
                   <th className="px-4 py-2.5 text-left text-xs font-medium uppercase text-surface-500">Customer</th>
                   {detailsOpen && <th className="px-4 py-2.5 text-left text-xs font-medium uppercase text-surface-500">Recorded by</th>}
                   <th className="px-4 py-2.5 text-right text-xs font-medium uppercase text-surface-500">Amount</th>
-                  {canRequestDelete && <th className="px-4 py-2.5 text-right text-xs font-medium uppercase text-surface-500">Action</th>}
+                  {(canRequestDelete || canRequestEdit) && <th className="px-4 py-2.5 text-right text-xs font-medium uppercase text-surface-500">Action</th>}
                 </tr>
               </thead>
               <tbody>
@@ -198,18 +200,33 @@ export default function TransactionsView({
                     <td className={`px-4 py-2.5 text-right text-sm font-semibold ${DIRECTION_COLORS[t.direction]}`}>
                       {t.direction === 'INFLOW' ? '+' : '−'}{fmtMoney(t.amount)}
                     </td>
-                    {canRequestDelete && (
+                    {(canRequestDelete || canRequestEdit) && (
                       <td className="px-4 py-2.5 text-right">
-                        {t.sourceType === 'MANUAL' ? (
-                          <button
-                            type="button"
-                            onClick={() => onRequestDelete?.(t)}
-                            className="text-xs font-medium text-error-600 transition-colors duration-fast hover:text-error-800"
-                          >
-                            Request delete
-                          </button>
+                        {t.sourceType === 'MANUAL' && t.approvalEligible ? (
+                          <div className="flex items-center justify-end gap-3">
+                            {canRequestEdit ? (
+                              <button
+                                type="button"
+                                onClick={() => onRequestEdit?.(t)}
+                                className="text-xs font-medium text-brand-700 transition-colors duration-fast hover:text-brand-900"
+                              >
+                                Request edit
+                              </button>
+                            ) : null}
+                            {canRequestDelete ? (
+                              <button
+                                type="button"
+                                onClick={() => onRequestDelete?.(t)}
+                                className="text-xs font-medium text-error-600 transition-colors duration-fast hover:text-error-800"
+                              >
+                                Request delete
+                              </button>
+                            ) : null}
+                          </div>
                         ) : (
-                          <span className="text-xs text-surface-400">Protected</span>
+                          <span className="text-xs text-surface-400" title={t.approvalProtectionReason || 'This entry cannot go through approvals.'}>
+                            Protected
+                          </span>
                         )}
                       </td>
                     )}

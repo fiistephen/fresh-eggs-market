@@ -27,6 +27,7 @@ enum ApprovalRequestStatus {
 }
 
 enum ApprovalRequestType {
+  BANK_TRANSACTION_EDIT
   BANK_TRANSACTION_DELETE
 }
 

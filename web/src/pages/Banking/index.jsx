@@ -23,6 +23,7 @@ import InternalTransferModal from './InternalTransferModal';
 import StatementImportModal from './StatementImportModal';
 import ReconciliationModal from './ReconciliationModal';
 import RequestDeleteApprovalModal from './RequestDeleteApprovalModal';
+import RequestEditApprovalModal from './RequestEditApprovalModal';
 
 /* ── Tab config ────────────────────────────────────────── */
 
@@ -114,6 +115,7 @@ export default function Banking() {
   const [showImportModal, setShowImportModal] = useState(false);
   const [showReconcileModal, setShowReconcileModal] = useState(false);
   const [postingImport, setPostingImport] = useState(false);
+  const [requestEditTransaction, setRequestEditTransaction] = useState(null);
   const [requestDeleteTransaction, setRequestDeleteTransaction] = useState(null);
   const [workingApprovalId, setWorkingApprovalId] = useState('');
 
@@ -534,6 +536,8 @@ export default function Banking() {
             setTransactionsPage(1);
           }}
           onFilterChange={handleFilterChange}
+          canRequestEdit={canRecord}
+          onRequestEdit={setRequestEditTransaction}
           canRequestDelete={canRecord}
           onRequestDelete={setRequestDeleteTransaction}
         />
@@ -697,6 +701,19 @@ export default function Banking() {
           onClose={() => setRequestDeleteTransaction(null)}
           onRequested={() => {
             setRequestDeleteTransaction(null);
+            loadApprovalRequests();
+          }}
+        />
+      )}
+
+      {requestEditTransaction && (
+        <RequestEditApprovalModal
+          transaction={requestEditTransaction}
+          accounts={accounts}
+          categoryMap={categoryMap}
+          onClose={() => setRequestEditTransaction(null)}
+          onRequested={() => {
+            setRequestEditTransaction(null);
             loadApprovalRequests();
           }}
         />
