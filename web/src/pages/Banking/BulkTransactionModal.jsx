@@ -18,7 +18,7 @@ function createRow(defaults = {}) {
 }
 
 export default function BulkTransactionModal({ accounts, transactionCategories, categoryMap, onCategoriesChanged, onClose, onRecorded, embedded = false }) {
-  const defaultAccountId = accounts.find((a) => a.accountType === 'CASH_ON_HAND')?.id || accounts[0]?.id || '';
+  const defaultAccountId = accounts.find((a) => a.accountType === 'CUSTOMER_DEPOSIT')?.id || accounts[0]?.id || '';
   const defaultCategory = categoryOptionsForDirection('INFLOW', categoryMap, 'UNALLOCATED_INCOME')[0] || 'UNALLOCATED_INCOME';
   const initialDefaults = { bankAccountId: defaultAccountId, direction: 'INFLOW', category: defaultCategory, transactionDate: todayStr() };
 

@@ -15,8 +15,8 @@ export default function RecordTransactionModal({
 }) {
   const defaultDirection = 'INFLOW';
   const defaultCategory = categoryOptionsForDirection(defaultDirection, categoryMap, 'UNALLOCATED_INCOME')[0] || 'UNALLOCATED_INCOME';
-  const cashAccount = accounts.find((a) => a.accountType === 'CASH_ON_HAND');
-  const defaultAccountId = cashAccount?.id || accounts[0]?.id || '';
+  const customerDepositAccount = accounts.find((a) => a.accountType === 'CUSTOMER_DEPOSIT');
+  const defaultAccountId = customerDepositAccount?.id || accounts[0]?.id || '';
 
   const [form, setForm] = useState({
     bankAccountId: defaultAccountId,
@@ -197,9 +197,9 @@ export default function RecordTransactionModal({
         />
       )}
 
-      {form.category === 'CUSTOMER_BOOKING' && (
+      {['CUSTOMER_DEPOSIT', 'CUSTOMER_BOOKING'].includes(form.category) && (
         <div className="rounded-lg border border-info-100 bg-info-50 px-4 py-3 text-body text-info-700">
-          Save the money here first. After saving, go to <span className="font-semibold">Bookings Queue</span> to link the customer, choose the batch, and allocate the payment.
+          Save the money here first. After saving, go to <span className="font-semibold">Bookings</span> to match the deposit to a portal booking or create a manual booking from it.
         </div>
       )}
 

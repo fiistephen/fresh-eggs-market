@@ -20,6 +20,8 @@ import {
 import { getCustomerTrackedOrderCount, getPerOrderCrateLimit } from '../utils/customerOrderPolicy.js';
 import { buildCleanDescription, parseProvidusStatement } from '../utils/providusStatement.js';
 
+const CUSTOMER_DEPOSIT_QUEUE_CATEGORIES = ['CUSTOMER_DEPOSIT', 'CUSTOMER_BOOKING', 'UNALLOCATED_INCOME'];
+
 function toNumber(value) {
   return value == null ? null : Number(value);
 }
@@ -1774,8 +1776,11 @@ export default async function bankingRoutes(fastify) {
         getOperationsPolicy(),
         prisma.bankTransaction.findMany({
           where: {
-            category: 'CUSTOMER_BOOKING',
             direction: 'INFLOW',
+            OR: [
+              { category: { in: ['CUSTOMER_DEPOSIT', 'CUSTOMER_BOOKING'] } },
+              { category: 'UNALLOCATED_INCOME', customerId: { not: null } },
+            ],
           },
           include: {
             bankAccount: { select: { id: true, name: true, accountType: true, lastFour: true, isVirtual: true } },
@@ -1866,7 +1871,7 @@ export default async function bankingRoutes(fastify) {
         where: { id: request.params.transactionId },
       });
 
-      if (!transaction || transaction.category !== 'CUSTOMER_BOOKING') {
+      if (!transaction || !CUSTOMER_DEPOSIT_QUEUE_CATEGORIES.includes(transaction.category)) {
         return reply.code(404).send({ error: 'Customer booking transaction not found.' });
       }
 
@@ -1896,7 +1901,7 @@ export default async function bankingRoutes(fastify) {
         where: { id: request.params.transactionId },
       });
 
-      if (!transaction || transaction.category !== 'CUSTOMER_BOOKING') {
+      if (!transaction || !CUSTOMER_DEPOSIT_QUEUE_CATEGORIES.includes(transaction.category)) {
         return reply.code(404).send({ error: 'Customer booking transaction not found.' });
       }
 
@@ -1944,7 +1949,7 @@ export default async function bankingRoutes(fastify) {
         },
       });
 
-      if (!transaction || transaction.category !== 'CUSTOMER_BOOKING') {
+      if (!transaction || !CUSTOMER_DEPOSIT_QUEUE_CATEGORIES.includes(transaction.category)) {
         return reply.code(404).send({ error: 'Customer booking transaction not found.' });
       }
       if (!transaction.customerId) {

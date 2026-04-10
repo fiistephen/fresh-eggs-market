@@ -27,9 +27,33 @@ function formatDate(value) {
   });
 }
 
+function bookingSourceMeta(booking) {
+  if (booking.portalCheckout?.checkoutType === 'BUY_NOW') {
+    return { label: 'Portal · Buy now', tone: 'info' };
+  }
+  if (booking.portalCheckout?.checkoutType === 'BOOK_UPCOMING') {
+    return { label: 'Portal · Book now', tone: 'brand' };
+  }
+  if (booking.channel === 'website') {
+    return { label: 'Portal booking', tone: 'info' };
+  }
+  return { label: 'Manual booking', tone: 'default' };
+}
+
+function hangingAgeLabel(ageInDays) {
+  if (ageInDays >= 90) return '90+ days hanging';
+  if (ageInDays >= 30) return '30+ days hanging';
+  if (ageInDays >= 8) return '8-30 days hanging';
+  if (ageInDays >= 1) return '1-7 days hanging';
+  return 'Today';
+}
+
 export default function Bookings() {
   const { user } = useAuth();
   const [bookings, setBookings] = useState([]);
+  const [hangingDeposits, setHangingDeposits] = useState([]);
+  const [hangingDepositsLoading, setHangingDepositsLoading] = useState(true);
+  const [hangingDepositsError, setHangingDepositsError] = useState('');
   const [portalTransferBookings, setPortalTransferBookings] = useState([]);
   const [portalCardBookings, setPortalCardBookings] = useState([]);
   const [portalQueueLoading, setPortalQueueLoading] = useState(true);
@@ -37,7 +61,7 @@ export default function Bookings() {
   const [workingPortalCheckoutId, setWorkingPortalCheckoutId] = useState('');
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
-  const [showCreate, setShowCreate] = useState(false);
+  const [showCreate, setShowCreate] = useState(null);
   const [showCancel, setShowCancel] = useState(null);
   const [error, setError] = useState('');
 
@@ -50,6 +74,10 @@ export default function Bookings() {
 
   useEffect(() => {
     loadPortalBookingQueue();
+  }, []);
+
+  useEffect(() => {
+    loadHangingDeposits();
   }, []);
 
   useEffect(() => {
@@ -92,6 +120,19 @@ export default function Bookings() {
       setPortalQueueError('Failed to load portal booking confirmations');
     } finally {
       setPortalQueueLoading(false);
+    }
+  }
+
+  async function loadHangingDeposits() {
+    setHangingDepositsLoading(true);
+    setHangingDepositsError('');
+    try {
+      const data = await api.get('/bookings/customer-deposits-hanging');
+      setHangingDeposits(data.deposits || []);
+    } catch {
+      setHangingDepositsError('Failed to load customer deposits waiting for booking');
+    } finally {
+      setHangingDepositsLoading(false);
     }
   }
 
@@ -142,7 +183,7 @@ export default function Bookings() {
         </div>
         {canCreate && (
           <Button
-            onClick={() => setShowCreate(true)}
+            onClick={() => setShowCreate({})}
             variant="primary"
             size="md"
           >
@@ -154,9 +195,21 @@ export default function Bookings() {
       <Card variant="info" className="p-4">
         <h2 className="text-overline uppercase text-info-900">Booking rule</h2>
         <p className="mt-2 text-body text-info-900">
-          Do not type payment manually here. First record the customer&apos;s payment in Banking. Then come here and apply that money to the booking.
+          Do not decide bookings during Banking entry. First record customer money in Banking as a customer deposit. Then come here to match that hanging deposit to a portal booking or create a manual booking.
         </p>
       </Card>
+
+      <HangingDepositsSection
+        loading={hangingDepositsLoading}
+        error={hangingDepositsError}
+        deposits={hangingDeposits}
+        canCreate={canCreate}
+        onRefresh={loadHangingDeposits}
+        onUseDeposit={(deposit) => setShowCreate({
+          customer: deposit.customer || null,
+          depositId: deposit.id,
+        })}
+      />
 
       <PortalBookingReviewSection
         loading={portalQueueLoading}
@@ -222,6 +275,7 @@ export default function Bookings() {
             <thead>
               <tr className="border-b border-surface-200">
                 <th className="px-4 py-3 text-left text-overline text-surface-600">Customer</th>
+                <th className="px-4 py-3 text-left text-overline text-surface-600">Source</th>
                 <th className="px-4 py-3 text-left text-overline text-surface-600">Batch</th>
                 <th className="px-4 py-3 text-right text-overline text-surface-600">Qty</th>
                 <th className="px-4 py-3 text-right text-overline text-surface-600">Booking value</th>
@@ -241,6 +295,11 @@ export default function Bookings() {
                     {booking.customer?.phone && <div className="text-caption text-surface-500">{booking.customer.phone}</div>}
                   </td>
                   <td className="px-4 py-3">
+                    <Badge color={bookingSourceMeta(booking).tone}>
+                      {bookingSourceMeta(booking).label}
+                    </Badge>
+                  </td>
+                  <td className="px-4 py-3">
                     <div className="text-body font-medium text-surface-700">{booking.batch?.name || '—'}</div>
                     {booking.batchEggCode?.code && <div className="text-caption text-surface-500">{booking.batchEggCode.code}</div>}
                   </td>
@@ -252,7 +311,7 @@ export default function Bookings() {
                   </td>
                   <td className="px-4 py-3 text-center text-body text-surface-500">{booking.allocations?.length || 0}</td>
                   <td className="px-4 py-3 text-center">
-                    <Badge variant={BOOKING_STATUS_BADGES[booking.status] || 'default'}>
+                    <Badge color={BOOKING_STATUS_BADGES[booking.status] || 'neutral'}>
                       {booking.status.replace('_', ' ')}
                     </Badge>
                   </td>
@@ -278,10 +337,13 @@ export default function Bookings() {
 
       {showCreate && (
         <CreateBookingModal
-          onClose={() => setShowCreate(false)}
+          initialCustomer={showCreate.customer || null}
+          initialDepositId={showCreate.depositId || ''}
+          onClose={() => setShowCreate(null)}
           onCreated={() => {
-            setShowCreate(false);
+            setShowCreate(null);
             loadBookings();
+            loadHangingDeposits();
           }}
         />
       )}
@@ -305,6 +367,143 @@ function SummaryCard({ label, value }) {
     <Card>
       <p className="text-overline text-surface-600">{label}</p>
       <p className="mt-3 text-metric font-bold text-surface-900">{value}</p>
+    </Card>
+  );
+}
+
+function HangingDepositsSection({ loading, error, deposits, canCreate, onRefresh, onUseDeposit }) {
+  if (loading) {
+    return (
+      <Card className="p-4">
+        <p className="text-body text-surface-500">Loading customer deposits hanging for booking…</p>
+      </Card>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card variant="error" className="p-4">
+        <p className="text-body text-error-900">{error}</p>
+      </Card>
+    );
+  }
+
+  if (!deposits?.length) {
+    return (
+      <Card className="p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-heading font-semibold text-surface-900">Customer deposits hanging</h2>
+            <p className="mt-2 text-body text-surface-500">Any customer money recorded in Banking but not yet matched to a booking will show up here.</p>
+          </div>
+          <Button variant="secondary" size="sm" onClick={onRefresh}>
+            Refresh
+          </Button>
+        </div>
+        <div className="mt-6">
+          <EmptyState
+            title="No customer deposits hanging"
+            body="Customer deposits that still need booking action will show here."
+            compact
+          />
+        </div>
+      </Card>
+    );
+  }
+
+  const totalAvailable = deposits.reduce((sum, deposit) => sum + Number(deposit.availableAmount || 0), 0);
+
+  return (
+    <Card className="p-4 space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-heading font-semibold text-surface-900">Customer deposits hanging</h2>
+          <p className="mt-2 text-body text-surface-500">
+            These are customer-related inflows already entered in Banking but not yet fully matched to bookings.
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-overline text-surface-500">Still hanging</p>
+          <p className="mt-2 text-title font-semibold text-surface-900">{formatCurrency(totalAvailable)}</p>
+          <div className="mt-3">
+            <Button variant="secondary" size="sm" onClick={onRefresh}>
+              Refresh
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {deposits.map((deposit) => (
+          <div key={deposit.id} className="rounded-lg border border-surface-200 p-4">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-body-medium font-semibold text-surface-900">
+                    {deposit.customer?.name || 'Customer not linked yet'}
+                  </p>
+                  <Badge color={deposit.customer ? 'info' : 'warning'}>
+                    {deposit.customer ? 'Customer linked' : 'Needs customer'}
+                  </Badge>
+                  <Badge color="neutral">
+                    {deposit.category === 'CUSTOMER_DEPOSIT' ? 'Customer deposit' : deposit.category === 'UNALLOCATED_INCOME' ? 'Unallocated income' : 'Legacy customer booking'}
+                  </Badge>
+                  <Badge color={deposit.ageInDays >= 30 ? 'warning' : 'neutral'}>
+                    {hangingAgeLabel(deposit.ageInDays)}
+                  </Badge>
+                </div>
+                <p className="text-body text-surface-500">
+                  {formatDate(deposit.transactionDate)} · {deposit.bankAccount?.name || 'Bank account'}
+                </p>
+                <p className="text-body text-surface-600">
+                  {deposit.description || deposit.reference || 'Customer deposit entered from Banking'}
+                </p>
+                {deposit.reference ? (
+                  <p className="text-caption text-surface-500">Ref {deposit.reference}</p>
+                ) : null}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 lg:min-w-[320px]">
+                <SummaryCard label="Money in" value={formatCurrency(deposit.amount)} />
+                <SummaryCard label="Still hanging" value={formatCurrency(deposit.availableAmount)} />
+              </div>
+            </div>
+
+            {deposit.allocations?.length ? (
+              <div className="mt-4 rounded-lg border border-surface-200 bg-surface-50 p-4">
+                <p className="text-body-medium font-semibold text-surface-900">Already matched from this deposit</p>
+                <div className="mt-3 space-y-2">
+                  {deposit.allocations.map((allocation) => (
+                    <div key={allocation.id} className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between text-body">
+                      <div>
+                        <span className="font-medium text-surface-900">{allocation.booking?.batch?.name || 'Batch'}</span>
+                        {allocation.booking?.batch?.expectedDate ? (
+                          <span className="ml-2 text-surface-500">Expected {formatDate(allocation.booking.batch.expectedDate)}</span>
+                        ) : null}
+                      </div>
+                      <div className="text-surface-600">
+                        {allocation.booking?.quantity || 0} crates · {formatCurrency(allocation.amount)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {canCreate ? (
+              <div className="mt-4 flex justify-end">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => onUseDeposit(deposit)}
+                >
+                  {deposit.customer ? 'Create or match booking' : 'Link customer and create booking'}
+                </Button>
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
     </Card>
   );
 }
@@ -447,12 +646,12 @@ function PortalBookingReviewSection({
   );
 }
 
-function CreateBookingModal({ onClose, onCreated }) {
-  const [step, setStep] = useState(1);
+function CreateBookingModal({ initialCustomer = null, initialDepositId = '', onClose, onCreated }) {
+  const [step, setStep] = useState(initialCustomer ? 2 : 1);
   const [customerSearch, setCustomerSearch] = useState('');
   const [customers, setCustomers] = useState([]);
   const [searchingCustomers, setSearchingCustomers] = useState(false);
-  const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [selectedCustomer, setSelectedCustomer] = useState(initialCustomer);
   const [showNewCustomer, setShowNewCustomer] = useState(false);
 
   const [openBatches, setOpenBatches] = useState([]);
@@ -473,6 +672,11 @@ function CreateBookingModal({ onClose, onCreated }) {
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    setSelectedCustomer(initialCustomer);
+    setStep(initialCustomer ? 2 : 1);
+  }, [initialCustomer]);
 
   useEffect(() => {
     if (!customerSearch.trim()) {
@@ -529,8 +733,16 @@ function CreateBookingModal({ onClose, onCreated }) {
     setLoadingFunds(true);
     try {
       const data = await api.get(`/bookings/customer-funds/${customerId}`);
-      setFunds(data.payments || []);
-      setAllocationDrafts({});
+      const payments = data.payments || [];
+      setFunds(payments);
+      setAllocationDrafts((current) => {
+        if (!initialDepositId) return {};
+        const highlightedPayment = payments.find((payment) => payment.id === initialDepositId);
+        if (!highlightedPayment) return {};
+        return {
+          [highlightedPayment.id]: Number(highlightedPayment.availableAmount).toFixed(2),
+        };
+      });
       if (data.customer) {
         setSelectedCustomer((current) => (
           current?.id === customerId
@@ -677,7 +889,7 @@ function CreateBookingModal({ onClose, onCreated }) {
                         <span className="font-medium text-surface-900">{customer.name}</span>
                         <span className="text-body text-surface-500">{customer.phone}</span>
                         {customer.orderLimitProfile?.isUsingEarlyOrderLimit && (
-                          <Badge variant="warning" size="sm">
+                          <Badge color="warning" size="sm">
                             Early-order limit active
                           </Badge>
                         )}
@@ -847,6 +1059,9 @@ function CreateBookingModal({ onClose, onCreated }) {
                   <div>
                     <h3 className="text-heading font-semibold text-surface-900">Apply customer payments</h3>
                     <p className="mt-2 text-body text-surface-500">Choose how much of the customer&apos;s available money should fund this booking.</p>
+                    {initialDepositId ? (
+                      <p className="mt-2 text-caption text-brand-700">The deposit you selected from the hanging list is already filled in below. You can still adjust or combine it with other customer deposits.</p>
+                    ) : null}
                   </div>
                   <div className="flex flex-wrap gap-2 flex-shrink-0">
                     <Button
@@ -893,7 +1108,14 @@ function CreateBookingModal({ onClose, onCreated }) {
                       {funds.map((payment) => (
                         <tr key={payment.id} className="border-b border-surface-100 hover:bg-surface-50 transition-colors duration-fast">
                           <td className="px-4 py-3 text-body text-surface-600">{formatDate(payment.transactionDate)}</td>
-                          <td className="px-4 py-3 text-body text-surface-700">{payment.description || payment.reference || 'Payment received'}</td>
+                          <td className="px-4 py-3 text-body text-surface-700">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span>{payment.description || payment.reference || 'Payment received'}</span>
+                              {payment.id === initialDepositId ? (
+                                <Badge color="brand" size="sm">Selected deposit</Badge>
+                              ) : null}
+                            </div>
+                          </td>
                           <td className="px-4 py-3 text-body text-surface-500">{payment.bankAccount?.name || '—'}</td>
                           <td className="px-4 py-3 text-right text-body font-medium text-surface-900">{formatCurrency(payment.availableAmount)}</td>
                           <td className="px-4 py-3">
@@ -971,7 +1193,7 @@ function CreateBookingModal({ onClose, onCreated }) {
 function StepPill({ active, complete, label }) {
   return (
     <Badge
-      variant={active || complete ? 'brand' : 'default'}
+      color={active || complete ? 'brand' : 'neutral'}
       size="sm"
     >
       {label}

@@ -107,6 +107,16 @@ function buildBookingInclude() {
       },
     },
     sale: true,
+    portalCheckout: {
+      select: {
+        id: true,
+        reference: true,
+        checkoutType: true,
+        paymentMethod: true,
+        status: true,
+        createdAt: true,
+      },
+    },
     allocations: {
       include: {
         bankTransaction: {
@@ -187,6 +197,84 @@ async function getAvailableCustomerPayments(customerId, options = {}) {
         amount: Number(transaction.amount),
         allocatedAmount,
         availableAmount,
+      };
+    })
+    .filter((transaction) => transaction.availableAmount > 0.009);
+}
+
+async function getHangingCustomerDeposits(options = {}) {
+  const { customerId = null } = options;
+
+  const where = customerId
+    ? {
+        direction: 'INFLOW',
+        customerId,
+        category: { in: ELIGIBLE_BOOKING_PAYMENT_CATEGORIES },
+      }
+    : {
+        direction: 'INFLOW',
+        OR: [
+          { category: { in: ['CUSTOMER_DEPOSIT', 'CUSTOMER_BOOKING'] } },
+          { category: 'UNALLOCATED_INCOME', customerId: { not: null } },
+        ],
+      };
+
+  const transactions = await prisma.bankTransaction.findMany({
+    where,
+    include: {
+      bankAccount: { select: { id: true, name: true, accountType: true, lastFour: true } },
+      customer: { select: { id: true, name: true, phone: true, email: true, isFirstTime: true } },
+      enteredBy: { select: { firstName: true, lastName: true } },
+      allocations: {
+        include: {
+          booking: {
+            include: {
+              batch: {
+                select: {
+                  id: true,
+                  name: true,
+                  expectedDate: true,
+                  eggTypeKey: true,
+                  wholesalePrice: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: { createdAt: 'asc' },
+      },
+    },
+    orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }],
+  });
+
+  return transactions
+    .map((transaction) => {
+      const allocatedAmount = transaction.allocations.reduce((sum, allocation) => sum + Number(allocation.amount), 0);
+      const availableAmount = Math.max(0, Number(transaction.amount) - allocatedAmount);
+      const ageInDays = Math.max(
+        0,
+        Math.floor((Date.now() - new Date(transaction.transactionDate).getTime()) / (1000 * 60 * 60 * 24)),
+      );
+
+      return {
+        ...enrichTransaction(transaction),
+        allocatedAmount,
+        availableAmount,
+        ageInDays,
+        allocations: transaction.allocations.map((allocation) => ({
+          id: allocation.id,
+          amount: Number(allocation.amount),
+          booking: allocation.booking ? {
+            id: allocation.booking.id,
+            quantity: allocation.booking.quantity,
+            orderValue: Number(allocation.booking.orderValue),
+            amountPaid: Number(allocation.booking.amountPaid),
+            batch: allocation.booking.batch ? {
+              ...allocation.booking.batch,
+              wholesalePrice: Number(allocation.booking.batch.wholesalePrice),
+            } : null,
+          } : null,
+        })),
       };
     })
     .filter((transaction) => transaction.availableAmount > 0.009);
@@ -379,6 +467,23 @@ export default async function bookingRoutes(fastify) {
             ...payment.bankAccount,
           } : null,
         })),
+      });
+    },
+  });
+
+  fastify.get('/bookings/customer-deposits-hanging', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
+    handler: async (request, reply) => {
+      const customerId = request.query?.customerId || null;
+      const deposits = await getHangingCustomerDeposits({ customerId });
+
+      return reply.send({
+        deposits,
+        summary: {
+          count: deposits.length,
+          totalAvailable: deposits.reduce((sum, deposit) => sum + Number(deposit.availableAmount || 0), 0),
+          customersInView: new Set(deposits.map((deposit) => deposit.customerId).filter(Boolean)).size,
+        },
       });
     },
   });
