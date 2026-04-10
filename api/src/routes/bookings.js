@@ -443,6 +443,7 @@ export default async function bookingRoutes(fastify) {
   fastify.get('/bookings/customer-funds/:customerId', {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER')],
     handler: async (request, reply) => {
+      const excludeBookingId = request.query?.excludeBookingId || null;
       const customer = await prisma.customer.findUnique({
         where: { id: request.params.customerId },
         select: { id: true, name: true, phone: true, isFirstTime: true },
@@ -452,7 +453,7 @@ export default async function bookingRoutes(fastify) {
 
       const policy = await getOperationsPolicy();
       const orderLimitProfile = await getCustomerOrderLimitProfile(customer.id, policy);
-      const payments = await getAvailableCustomerPayments(customer.id);
+      const payments = await getAvailableCustomerPayments(customer.id, { excludeBookingId });
       const totalAvailable = payments.reduce((sum, payment) => sum + payment.availableAmount, 0);
 
       return reply.send({

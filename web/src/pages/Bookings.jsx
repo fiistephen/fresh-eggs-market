@@ -62,6 +62,7 @@ export default function Bookings() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
   const [showCreate, setShowCreate] = useState(null);
+  const [managePaymentsBooking, setManagePaymentsBooking] = useState(null);
   const [showCancel, setShowCancel] = useState(null);
   const [error, setError] = useState('');
 
@@ -284,7 +285,7 @@ export default function Bookings() {
                 <th className="px-4 py-3 text-center text-overline text-surface-600">Payments used</th>
                 <th className="px-4 py-3 text-center text-overline text-surface-600">Status</th>
                 <th className="px-4 py-3 text-left text-overline text-surface-600">Date</th>
-                {canCancel && <th className="px-4 py-3 text-center text-overline text-surface-600">Action</th>}
+                {(canCreate || canCancel) && <th className="px-4 py-3 text-center text-overline text-surface-600">Action</th>}
               </tr>
             </thead>
             <tbody>
@@ -316,16 +317,26 @@ export default function Bookings() {
                     </Badge>
                   </td>
                   <td className="px-4 py-3 text-body text-surface-500">{formatDate(booking.createdAt)}</td>
-                  {canCancel && (
+                  {(canCreate || canCancel) && (
                     <td className="px-4 py-3 text-center">
-                      {booking.status === 'CONFIRMED' && (
-                        <button
-                          onClick={() => setShowCancel(booking)}
-                          className="text-caption font-medium text-error-500 hover:text-error-700 transition-colors duration-fast"
-                        >
-                          Cancel
-                        </button>
-                      )}
+                      <div className="flex flex-col items-center gap-2">
+                        {canCreate && booking.status === 'CONFIRMED' && booking.portalCheckout?.paymentMethod !== 'CARD' && (
+                          <button
+                            onClick={() => setManagePaymentsBooking(booking)}
+                            className="text-caption font-medium text-brand-700 hover:text-brand-800 transition-colors duration-fast"
+                          >
+                            Manage payments
+                          </button>
+                        )}
+                        {canCancel && booking.status === 'CONFIRMED' && (
+                          <button
+                            onClick={() => setShowCancel(booking)}
+                            className="text-caption font-medium text-error-500 hover:text-error-700 transition-colors duration-fast"
+                          >
+                            Cancel
+                          </button>
+                        )}
+                      </div>
                     </td>
                   )}
                 </tr>
@@ -342,6 +353,18 @@ export default function Bookings() {
           onClose={() => setShowCreate(null)}
           onCreated={() => {
             setShowCreate(null);
+            loadBookings();
+            loadHangingDeposits();
+          }}
+        />
+      )}
+
+      {managePaymentsBooking && (
+        <ManageBookingPaymentsModal
+          booking={managePaymentsBooking}
+          onClose={() => setManagePaymentsBooking(null)}
+          onSaved={() => {
+            setManagePaymentsBooking(null);
             loadBookings();
             loadHangingDeposits();
           }}
@@ -1198,6 +1221,193 @@ function StepPill({ active, complete, label }) {
     >
       {label}
     </Badge>
+  );
+}
+
+function ManageBookingPaymentsModal({ booking, onClose, onSaved }) {
+  const [funds, setFunds] = useState([]);
+  const [allocationDrafts, setAllocationDrafts] = useState({});
+  const [loadingFunds, setLoadingFunds] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingFunds(true);
+    setError('');
+    api
+      .get(`/bookings/customer-funds/${booking.customerId}?excludeBookingId=${encodeURIComponent(booking.id)}`)
+      .then((data) => {
+        if (cancelled) return;
+        const payments = data.payments || [];
+        setFunds(payments);
+        const currentAllocations = (booking.allocations || []).reduce((acc, allocation) => {
+          if (allocation.bankTransaction?.id) {
+            acc[allocation.bankTransaction.id] = Number(allocation.amount).toFixed(2);
+          }
+          return acc;
+        }, {});
+        setAllocationDrafts(currentAllocations);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setError(err.error || 'Failed to load booking payments');
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingFunds(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [booking.customerId, booking.id, booking.allocations]);
+
+  const paymentRows = useMemo(() => {
+    const currentAllocationRows = (booking.allocations || [])
+      .filter((allocation) => allocation.bankTransaction?.id)
+      .map((allocation) => ({
+        ...allocation.bankTransaction,
+        availableAmount: Number(
+          funds.find((payment) => payment.id === allocation.bankTransaction?.id)?.availableAmount ?? allocation.amount
+        ),
+        allocatedAmount: Number(allocation.amount),
+        currentAllocation: Number(allocation.amount),
+        isExistingAllocation: true,
+      }));
+
+    const existingIds = new Set(currentAllocationRows.map((row) => row.id));
+    const newRows = funds.filter((payment) => !existingIds.has(payment.id));
+
+    return [...currentAllocationRows, ...newRows];
+  }, [booking.allocations, funds]);
+
+  const totalAllocated = Object.values(allocationDrafts).reduce((sum, value) => sum + Number(value || 0), 0);
+  const remaining = Math.max(0, Number(booking.orderValue) - totalAllocated);
+  const minimumPayment = Number(booking.minimumPayment || 0);
+
+  function updateAllocation(paymentId, value) {
+    setAllocationDrafts((current) => ({
+      ...current,
+      [paymentId]: value,
+    }));
+  }
+
+  async function handleSave(event) {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+    try {
+      await api.patch(`/bookings/${booking.id}`, {
+        paymentAllocations: Object.entries(allocationDrafts)
+          .map(([bankTransactionId, amount]) => ({
+            bankTransactionId,
+            amount: Number(amount),
+          }))
+          .filter((allocation) => allocation.amount > 0),
+      });
+      onSaved();
+    } catch (err) {
+      setError(err.error || 'Failed to update booking payments');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal title="Manage booking payments" open={true} onClose={onClose}>
+      <form onSubmit={handleSave} className="space-y-4">
+        {error ? (
+          <Card variant="error" className="p-4">
+            <p className="text-body text-error-900">{error}</p>
+          </Card>
+        ) : null}
+
+        <Card className="bg-surface-50 p-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+            <BookingStat label="Customer" value={booking.customer?.name || '—'} />
+            <BookingStat label="Batch" value={booking.batch?.name || '—'} />
+            <BookingStat label="Booking value" value={formatCurrency(booking.orderValue)} />
+            <BookingStat label="Minimum payment" value={formatCurrency(minimumPayment)} />
+          </div>
+        </Card>
+
+        {loadingFunds ? (
+          <p className="text-body text-surface-500">Loading available deposits…</p>
+        ) : paymentRows.length === 0 ? (
+          <Card variant="warning" className="p-4">
+            <p className="text-body text-warning-900">
+              No customer deposits are available to link right now.
+            </p>
+          </Card>
+        ) : (
+          <Card className="overflow-x-auto custom-scrollbar">
+            <table className="w-full min-w-[760px]">
+              <thead>
+                <tr className="border-b border-surface-200 bg-surface-50">
+                  <th className="px-4 py-3 text-left text-overline text-surface-600">Date</th>
+                  <th className="px-4 py-3 text-left text-overline text-surface-600">Deposit</th>
+                  <th className="px-4 py-3 text-right text-overline text-surface-600">Available</th>
+                  <th className="px-4 py-3 text-right text-overline text-surface-600">Use for booking</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paymentRows.map((payment) => (
+                  <tr key={payment.id} className="border-b border-surface-100 hover:bg-surface-50 transition-colors duration-fast">
+                    <td className="px-4 py-3 text-body text-surface-600">{formatDate(payment.transactionDate)}</td>
+                    <td className="px-4 py-3 text-body text-surface-700">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span>{payment.description || payment.reference || 'Customer deposit'}</span>
+                        {payment.isExistingAllocation ? <Badge color="brand" size="sm">Already linked</Badge> : null}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-right text-body font-medium text-surface-900">
+                      {formatCurrency(payment.availableAmount)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={allocationDrafts[payment.id] || ''}
+                          onChange={(event) => updateAllocation(payment.id, event.target.value)}
+                          className="text-right"
+                        />
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => updateAllocation(payment.id, Number(payment.availableAmount).toFixed(2))}
+                        >
+                          Use all
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+        )}
+
+        <Card className="bg-surface-50 p-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <BookingStat label="Allocated now" value={formatCurrency(totalAllocated)} />
+            <BookingStat label="Still to pay" value={formatCurrency(remaining)} tone={remaining > 0 ? 'warning' : 'success'} />
+            <BookingStat label="Minimum met?" value={totalAllocated >= minimumPayment ? 'Yes' : 'No'} tone={totalAllocated >= minimumPayment ? 'success' : 'warning'} />
+          </div>
+        </Card>
+
+        <div className="flex justify-end gap-3">
+          <Button type="button" variant="secondary" size="sm" onClick={onClose}>
+            Close
+          </Button>
+          <Button type="submit" variant="primary" size="sm" disabled={saving}>
+            {saving ? 'Saving…' : 'Save payment links'}
+          </Button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 

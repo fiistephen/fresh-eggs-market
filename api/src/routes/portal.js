@@ -423,38 +423,6 @@ async function verifyPaystackTransaction(reference) {
   return payload.data;
 }
 
-async function createPortalBankTransaction({
-  enteredById,
-  customerId,
-  bookingId = null,
-  amount,
-  category,
-  description,
-  reference,
-}) {
-  const depositAccount = await getCustomerDepositAccount();
-  if (!depositAccount) {
-    throw new Error('Customer Deposit Account is missing. Please set it up in Admin before using portal payments.');
-  }
-
-  return prisma.bankTransaction.create({
-    data: {
-      bankAccountId: depositAccount.id,
-      direction: 'INFLOW',
-      category,
-      amount: Number(amount),
-      description,
-      reference,
-      transactionDate: new Date(),
-      sourceType: 'SYSTEM',
-      customerId,
-      bookingId,
-      enteredById,
-      postedAt: new Date(),
-    },
-  });
-}
-
 async function finalizeUpcomingBookingCheckout(checkout, enteredById) {
   if (checkout.bookingId) {
     return prisma.booking.findUnique({
@@ -463,11 +431,6 @@ async function finalizeUpcomingBookingCheckout(checkout, enteredById) {
         batch: { select: { id: true, name: true, expectedDate: true, eggTypeKey: true, status: true } },
       },
     });
-  }
-
-  const depositAccount = await getCustomerDepositAccount();
-  if (!depositAccount) {
-    throw new Error('Customer Deposit Account is missing. Please set it up in Admin before using portal payments.');
   }
 
   return prisma.$transaction(async (tx) => {
@@ -487,32 +450,6 @@ async function finalizeUpcomingBookingCheckout(checkout, enteredById) {
       },
     });
 
-    const bankTransaction = await tx.bankTransaction.create({
-      data: {
-        bankAccountId: depositAccount.id,
-        direction: 'INFLOW',
-        category: 'CUSTOMER_BOOKING',
-        amount: checkout.amountToPay,
-        description: `Portal booking payment for ${booking.batch.name}`,
-        reference: checkout.reference,
-        transactionDate: new Date(),
-        sourceType: 'SYSTEM',
-        customerId: checkout.customerId,
-        bookingId: booking.id,
-        enteredById,
-        postedAt: new Date(),
-      },
-    });
-
-    await tx.bookingPaymentAllocation.create({
-      data: {
-        bookingId: booking.id,
-        bankTransactionId: bankTransaction.id,
-        amount: checkout.amountToPay,
-        createdById: enteredById,
-      },
-    });
-
     await tx.portalCheckout.update({
       where: { id: checkout.id },
       data: {
@@ -526,7 +463,7 @@ async function finalizeUpcomingBookingCheckout(checkout, enteredById) {
   });
 }
 
-async function finalizeBuyNowCheckout(checkout, enteredById) {
+async function finalizeBuyNowCheckout(checkout) {
   if (checkout.portalOrderRequestId) {
     return prisma.portalOrderRequest.findUnique({
       where: { id: checkout.portalOrderRequestId },
@@ -534,11 +471,6 @@ async function finalizeBuyNowCheckout(checkout, enteredById) {
         batch: { select: { id: true, name: true, expectedDate: true, receivedDate: true, eggTypeKey: true, status: true } },
       },
     });
-  }
-
-  const depositAccount = await getCustomerDepositAccount();
-  if (!depositAccount) {
-    throw new Error('Customer Deposit Account is missing. Please set it up in Admin before using portal payments.');
   }
 
   const pickupWindow = buildPickupWindow(new Date());
@@ -562,22 +494,6 @@ async function finalizeBuyNowCheckout(checkout, enteredById) {
       },
       include: {
         batch: { select: { id: true, name: true, expectedDate: true, receivedDate: true, eggTypeKey: true, status: true } },
-      },
-    });
-
-    await tx.bankTransaction.create({
-      data: {
-        bankAccountId: depositAccount.id,
-        direction: 'INFLOW',
-        category: 'DIRECT_SALE_TRANSFER',
-        amount: checkout.amountToPay,
-        description: `Portal buy-now payment for ${order.batch.name}`,
-        reference: checkout.reference,
-        transactionDate: new Date(),
-        sourceType: 'SYSTEM',
-        customerId: checkout.customerId,
-        enteredById,
-        postedAt: new Date(),
       },
     });
 
@@ -1250,7 +1166,7 @@ export default async function portalRoutes(fastify) {
       if (checkout.checkoutType === 'BOOK_UPCOMING') {
         await finalizeUpcomingBookingCheckout(checkout, request.user.sub);
       } else {
-        await finalizeBuyNowCheckout(checkout, request.user.sub);
+        await finalizeBuyNowCheckout(checkout);
       }
 
       const orders = await getPortalOrdersForCustomer(customer.id);
@@ -1536,7 +1452,7 @@ export default async function portalRoutes(fastify) {
           message: 'Transfer marked as seen. This booking still needs a matching bank statement line for full confirmation.',
         });
       } else {
-        await finalizeBuyNowCheckout(checkout, request.user.sub);
+        await finalizeBuyNowCheckout(checkout);
         await recordPortalCheckoutDecision({
           portalCheckoutId: checkout.id,
           actorId: request.user.sub,
