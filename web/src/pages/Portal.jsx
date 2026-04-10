@@ -33,6 +33,14 @@ const PICKUP_DETAILS = {
 const WHATSAPP_NUMBER = '2349160007184';
 const WHATSAPP_URL = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent('Hello, I have a question about my egg order.')}`;
 
+function buildDisputeWhatsappUrl(order) {
+  const orderType = order?.kind === 'BOOKING' ? 'booking' : 'order';
+  const batchName = order?.batch?.name || 'Unknown batch';
+  const reference = order?.reference || 'No reference';
+  const message = `Hello, my transfer ${orderType} was declined because payment could not be confirmed. I want to dispute this with evidence.\n\nReference: ${reference}\nBatch: ${batchName}\nQuantity: ${order?.quantity || 0} crate(s)`;
+  return `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
+}
+
 function profileDisplayName(profile, user) {
   if (profile?.customer?.name) return profile.customer.name;
   const fullName = [profile?.user?.firstName, profile?.user?.lastName].filter(Boolean).join(' ').trim();
@@ -803,6 +811,7 @@ function getOrderStatus(order) {
       if (order.status === 'FAILED') return { label: 'Payment failed', tone: 'error' };
       if (order.status === 'PAID') return { label: 'Confirmed', tone: 'success' };
       if (order.status === 'PICKED_UP') return { label: 'Completed', tone: 'success' };
+      if (order.status === 'CANCELLED' && order.paymentMethod === 'TRANSFER') return { label: 'Transfer declined', tone: 'error' };
       if (order.status === 'CANCELLED') return { label: 'Cancelled', tone: 'error' };
     } else {
       if (order.status === 'CONFIRMED' && order.batchArrived) return { label: 'Ready for pickup', tone: 'success' };
@@ -816,6 +825,7 @@ function getOrderStatus(order) {
       if (order.status === 'AWAITING_PAYMENT') return { label: 'Awaiting card payment', tone: 'warning' };
       if (order.status === 'AWAITING_TRANSFER') return { label: 'Awaiting transfer', tone: 'info' };
       if (order.status === 'FAILED') return { label: 'Payment failed', tone: 'error' };
+      if (order.status === 'CANCELLED' && order.paymentMethod === 'TRANSFER') return { label: 'Transfer declined', tone: 'error' };
       if (order.status === 'CANCELLED') return { label: 'Cancelled', tone: 'error' };
     }
     if (order.status === 'APPROVED_FOR_PICKUP') return { label: 'Ready for pickup', tone: 'success' };
@@ -833,6 +843,9 @@ function getNextStep(order) {
       if (order.status === 'AWAITING_TRANSFER') return `Transfer ${fmtMoney(order.amountToPay || order.orderValue)} to complete your booking.`;
       if (order.status === 'ADMIN_CONFIRMED') return 'Your transfer has been seen. Full confirmation is in progress.';
       if (order.status === 'FAILED') return 'Payment was not completed. You can place a new order.';
+      if (order.status === 'CANCELLED' && order.paymentMethod === 'TRANSFER') {
+        return 'Your transfer booking was declined because your payment could not be confirmed. If you have proof of payment, please dispute it with evidence.';
+      }
       if (order.status === 'PICKED_UP') return 'Order complete.';
     } else {
       if (order.status === 'CONFIRMED' && order.batchArrived) return 'Your batch has arrived. Come for pickup!';
@@ -845,6 +858,9 @@ function getNextStep(order) {
       if (order.status === 'AWAITING_PAYMENT') return 'Complete your card payment to confirm this order.';
       if (order.status === 'AWAITING_TRANSFER') return `Transfer ${fmtMoney(order.amountToPay || order.orderValue)} to confirm this order.`;
       if (order.status === 'FAILED') return 'Payment was not completed. You can place a new order.';
+      if (order.status === 'CANCELLED' && order.paymentMethod === 'TRANSFER') {
+        return 'Your transfer order was declined because your payment could not be confirmed. If you have proof of payment, please dispute it with evidence.';
+      }
     }
     if (order.status === 'APPROVED_FOR_PICKUP') return 'Your eggs are ready! Pick up within 3 days.';
     if (order.status === 'PICKED_UP') return 'Order complete.';
@@ -857,6 +873,8 @@ function OrderDetailModal({ order, onClose }) {
   const status = getOrderStatus(order);
   const nextStep = getNextStep(order);
   const needsTransfer = order.status === 'AWAITING_TRANSFER';
+  const isRejectedTransfer = order.status === 'CANCELLED' && order.paymentMethod === 'TRANSFER';
+  const disputeUrl = isRejectedTransfer ? buildDisputeWhatsappUrl(order) : null;
 
   return (
     <Modal title="Order details" open={true} onClose={onClose}>
@@ -925,7 +943,21 @@ function OrderDetailModal({ order, onClose }) {
           </div>
         )}
 
-        <Button variant="primary" size="lg" onClick={onClose} className="w-full">Close</Button>
+        <div className="flex gap-3">
+          {isRejectedTransfer && disputeUrl && (
+            <a
+              href={disputeUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex-1"
+            >
+              <Button variant="secondary" size="lg" className="w-full">
+                Dispute with evidence
+              </Button>
+            </a>
+          )}
+          <Button variant="primary" size="lg" onClick={onClose} className="flex-1">Close</Button>
+        </div>
       </div>
     </Modal>
   );
