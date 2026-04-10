@@ -3,7 +3,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Button, Input, Select, Modal, Card, Badge, EmptyState, useToast } from '../components/ui';
 
-const PAYMENT_LABELS = { CASH: 'Cash', TRANSFER: 'Transfer', POS_CARD: 'POS/Card', PRE_ORDER: 'Pre-order' };
+const PAYMENT_LABELS = { CASH: 'Cash', TRANSFER: 'Transfer', POS_CARD: 'POS/Card', PRE_ORDER: 'Pre-order', MIXED: 'Mixed' };
 const SALE_TYPE_LABELS = { WHOLESALE: 'Wholesale', RETAIL: 'Retail', CRACKED: 'Cracked', WRITE_OFF: 'Write-off' };
 const SALE_TYPE_BADGE_COLORS = {
   WHOLESALE: 'success',
@@ -12,12 +12,6 @@ const SALE_TYPE_BADGE_COLORS = {
   WRITE_OFF: 'error',
 };
 const SOURCE_LABELS = { BOOKING: 'Booking pickup', DIRECT: 'Direct sale' };
-const DIRECT_PAYMENT_TRAIL_HINTS = {
-  CASH: 'This sale will add money to Cash Account automatically.',
-  TRANSFER: 'This sale will add money to Customer Deposit Account automatically.',
-  POS_CARD: 'This sale will add a POS settlement record to Customer Deposit Account automatically.',
-};
-
 function bookingSourceMeta(booking) {
   if (booking?.portalCheckout?.checkoutType === 'BUY_NOW') {
     return {
@@ -83,6 +77,23 @@ function paymentAccountLabel(paymentTransaction) {
     return 'Cash Account';
   }
   return `${account.name} • ••••${account.lastFour}`;
+}
+
+function paymentRowLabel(paymentTransaction, fallbackMethod = '') {
+  if (!paymentTransaction) return PAYMENT_LABELS[fallbackMethod] || fallbackMethod || 'Payment';
+  if (paymentTransaction.bankAccount?.accountType === 'CASH_ON_HAND') return PAYMENT_LABELS.CASH;
+  if (paymentTransaction.category === 'DIRECT_SALE_TRANSFER') return PAYMENT_LABELS.TRANSFER;
+  if (paymentTransaction.category === 'POS_SETTLEMENT') return PAYMENT_LABELS.POS_CARD;
+  return PAYMENT_LABELS[fallbackMethod] || fallbackMethod || 'Payment';
+}
+
+function salePaymentRows(sale) {
+  if (sale.paymentTransactions?.length) return sale.paymentTransactions;
+  if (sale.paymentTransaction) return [sale.paymentTransaction];
+  if (sale.paymentMethod === 'PRE_ORDER') {
+    return [{ id: 'pre-order', amount: sale.totalAmount, category: 'PRE_ORDER', bankAccount: null }];
+  }
+  return [];
 }
 
 function saleBatchLabel(sale) {
@@ -421,7 +432,8 @@ function RecordSaleModal({ onClose, onRecorded }) {
   const [selectedBatch, setSelectedBatch] = useState(null);
   const [saleScopeLabel, setSaleScopeLabel] = useState('');
   const [lineItems, setLineItems] = useState([]);
-  const [paymentMethod, setPaymentMethod] = useState('CASH');
+  const [paymentMethod, setPaymentMethod] = useState('');
+  const [paymentBreakdown, setPaymentBreakdown] = useState([{ paymentMethod: '', amount: '' }]);
   const [limitOverrideNote, setLimitOverrideNote] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
@@ -511,6 +523,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
     setWorkflow('');
     setLineItems([]);
     setPaymentMethod('');
+    setPaymentBreakdown([{ paymentMethod: '', amount: '' }]);
     setLimitOverrideNote('');
     setError('');
     setStep(2);
@@ -549,6 +562,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
     setSelectedBatch(booking.batch);
     setSaleScopeLabel(booking.batch?.name || 'Booked batch');
     setPaymentMethod('PRE_ORDER');
+    setPaymentBreakdown([]);
     setLimitOverrideNote('');
     const preferredRows = booking.batchEggCodeId
       ? (booking.batch?.eggCodes || []).filter((eggCode) => eggCode.id === booking.batchEggCodeId)
@@ -571,6 +585,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
     setSelectedBatch(batch);
     setSaleScopeLabel(batch.name);
     setPaymentMethod('');
+    setPaymentBreakdown([{ paymentMethod: '', amount: '' }]);
     setLimitOverrideNote('');
     initializeLineItems(batch);
     setError('');
@@ -583,6 +598,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
     setSelectedBatch(null);
     setSaleScopeLabel('Multiple batches');
     setPaymentMethod('');
+    setPaymentBreakdown([{ paymentMethod: '', amount: '' }]);
     setLimitOverrideNote('');
     initializeLineItemsFromRows(customerWorkspace.mixedDirectSaleStock || []);
     setError('');
@@ -603,6 +619,23 @@ function RecordSaleModal({ onClose, onRecorded }) {
     setLineItems(updated);
   }
 
+  function updatePaymentRow(index, field, value) {
+    setPaymentBreakdown((current) => current.map((row, rowIndex) => (
+      rowIndex === index ? { ...row, [field]: value } : row
+    )));
+  }
+
+  function addPaymentRow() {
+    setPaymentBreakdown((current) => [...current, { paymentMethod: '', amount: '' }]);
+  }
+
+  function removePaymentRow(index) {
+    setPaymentBreakdown((current) => {
+      if (current.length === 1) return [{ paymentMethod: '', amount: '' }];
+      return current.filter((_, rowIndex) => rowIndex !== index);
+    });
+  }
+
   const activeItems = lineItems.filter((lineItem) => lineItem.quantity && Number(lineItem.quantity) > 0);
   const totalQty = activeItems.reduce((sum, lineItem) => sum + Number(lineItem.quantity), 0);
   const totalAmount = activeItems.reduce((sum, lineItem) => sum + Number(lineItem.quantity) * Number(lineItem.unitPrice), 0);
@@ -613,11 +646,15 @@ function RecordSaleModal({ onClose, onRecorded }) {
   const orderLimitProfile = customerWorkspace.customer?.orderLimitProfile || null;
   const currentPerOrderLimit = Number(orderLimitProfile?.currentPerOrderLimit || 0);
   const needsLimitOverride = workflow === 'DIRECT' && currentPerOrderLimit > 0 && totalQty > currentPerOrderLimit;
-  const isDirectPaymentChosen = workflow !== 'DIRECT' || Boolean(paymentMethod);
+  const activePaymentRows = paymentBreakdown.filter((row) => row.paymentMethod && Number(row.amount) > 0);
+  const paymentTotal = activePaymentRows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+  const paymentGap = totalAmount - paymentTotal;
+  const isDirectPaymentChosen = workflow !== 'DIRECT' || activePaymentRows.length > 0;
+  const isPaymentBalanced = workflow !== 'DIRECT' || (totalAmount > 0 && Math.abs(paymentGap) <= 0.009);
   const canSubmit =
     workflow === 'BOOKING'
       ? !!selectedBooking && selectedBooking.isFullyPaid && isBookingQuantityReady
-      : totalQty > 0 && isDirectPaymentChosen && (!needsLimitOverride || limitOverrideNote.trim().length > 0);
+      : totalQty > 0 && isDirectPaymentChosen && isPaymentBalanced && (!needsLimitOverride || limitOverrideNote.trim().length > 0);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -643,11 +680,18 @@ function RecordSaleModal({ onClose, onRecorded }) {
     }
 
     try {
+      const paymentPayload = workflow === 'DIRECT'
+        ? activePaymentRows.map((row) => ({
+            paymentMethod: row.paymentMethod,
+            amount: Number(row.amount),
+          }))
+        : [];
       await api.post('/sales', {
         customerId: selectedCustomer.id,
         bookingId: workflow === 'BOOKING' ? selectedBooking.id : undefined,
         batchId: workflow === 'DIRECT' ? selectedBatch?.id : undefined,
-        paymentMethod: workflow === 'DIRECT' ? paymentMethod : undefined,
+        paymentMethod: workflow === 'DIRECT' && paymentPayload.length === 1 ? paymentPayload[0].paymentMethod : undefined,
+        paymentBreakdown: workflow === 'DIRECT' ? paymentPayload : undefined,
         limitOverrideNote: workflow === 'DIRECT' ? limitOverrideNote.trim() || undefined : undefined,
         lineItems: activeItems.map((lineItem) => ({
           batchEggCodeId: lineItem.batchEggCodeId,
@@ -1149,33 +1193,65 @@ function RecordSaleModal({ onClose, onRecorded }) {
 
           {workflow === 'DIRECT' ? (
             <div>
-              <label className="block text-body-medium font-semibold text-surface-900 mb-3">Payment Method</label>
-              <div className="flex flex-wrap gap-2">
-                {Object.entries(PAYMENT_LABELS)
-                  .filter(([key]) => key !== 'PRE_ORDER')
-                  .map(([key, label]) => (
-                    <Button
-                      key={key}
-                      type="button"
-                      variant={paymentMethod === key ? 'primary' : 'secondary'}
+              <label className="block text-body-medium font-semibold text-surface-900 mb-3">Payment breakdown</label>
+              <div className="space-y-3">
+                {paymentBreakdown.map((row, index) => (
+                  <div key={`payment-row-${index}`} className="grid grid-cols-1 gap-3 rounded-lg border border-surface-200 p-3 sm:grid-cols-[1fr_180px_auto]">
+                    <Select
+                      value={row.paymentMethod}
+                      onChange={(e) => updatePaymentRow(index, 'paymentMethod', e.target.value)}
                       size="md"
-                      onClick={() => setPaymentMethod(key)}
                     >
-                      {label}
-                    </Button>
-                  ))}
+                      <option value="">Choose payment method</option>
+                      {Object.entries(PAYMENT_LABELS)
+                        .filter(([key]) => !['PRE_ORDER', 'MIXED'].includes(key))
+                        .map(([key, label]) => (
+                          <option key={key} value={key}>{label}</option>
+                        ))}
+                    </Select>
+                    <Input
+                      label="Amount"
+                      type="number"
+                      min="0"
+                      value={row.amount}
+                      onChange={(e) => updatePaymentRow(index, 'amount', e.target.value)}
+                      placeholder="0"
+                      size="md"
+                    />
+                    <div className="flex items-end">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="md"
+                        onClick={() => removePaymentRow(index)}
+                        disabled={paymentBreakdown.length === 1}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  </div>
+                ))}
               </div>
-              {!paymentMethod && (
-                <p className="text-caption text-warning-700 mt-3">
-                  Choose the payment method before you save this sale.
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <Button type="button" variant="secondary" size="md" onClick={addPaymentRow}>
+                  Add payment part
+                </Button>
+                <p className={`text-caption ${activePaymentRows.length === 0 ? 'text-warning-700' : Math.abs(paymentGap) <= 0.009 ? 'text-success-700' : 'text-warning-700'}`}>
+                  {activePaymentRows.length === 0
+                    ? 'Add at least one payment part before you save this sale.'
+                    : Math.abs(paymentGap) <= 0.009
+                      ? 'Payments balance exactly.'
+                      : paymentGap > 0
+                        ? `${formatCurrency(paymentGap)} still needs to be covered.`
+                        : `${formatCurrency(Math.abs(paymentGap))} is too much. Reduce the payment parts.`}
                 </p>
-              )}
+              </div>
               <Card variant="outlined" padding="comfortable" className="mt-3 bg-surface-50">
                 <p className="text-body-medium font-semibold text-surface-900">What happens when you save</p>
                 <p className="text-body text-surface-700 mt-1">
-                  {paymentMethod
-                    ? DIRECT_PAYMENT_TRAIL_HINTS[paymentMethod]
-                    : 'Pick a payment method first so the app knows where this money should land.'}
+                  {activePaymentRows.length > 0
+                    ? 'Each payment part will create its own money trail automatically when you save this sale.'
+                    : 'Add the payment parts first so the app knows exactly where each part of the money should land.'}
                 </p>
                 <p className="text-caption text-surface-600 mt-2">
                   You do not need to enter this same direct sale again in Banking.
@@ -1218,6 +1294,20 @@ function RecordSaleModal({ onClose, onRecorded }) {
                 <span className="text-surface-600">Total Amount</span>
                 <span className="text-metric font-bold text-surface-900">{formatCurrency(totalAmount)}</span>
               </div>
+              {workflow === 'DIRECT' && (
+                <>
+                  <div className="flex justify-between text-body">
+                    <span className="text-surface-600">Payments entered</span>
+                    <span className="text-body-medium font-semibold text-surface-900">{formatCurrency(paymentTotal)}</span>
+                  </div>
+                  <div className="flex justify-between text-body">
+                    <span className="text-surface-600">Difference</span>
+                    <span className={`text-body-medium font-semibold ${Math.abs(paymentGap) <= 0.009 ? 'text-success-700' : paymentGap > 0 ? 'text-warning-700' : 'text-error-700'}`}>
+                      {Math.abs(paymentGap) <= 0.009 ? 'Balanced' : paymentGap > 0 ? `${formatCurrency(paymentGap)} short` : `${formatCurrency(Math.abs(paymentGap))} over`}
+                    </span>
+                  </div>
+                </>
+              )}
               <div className="flex justify-between text-body">
                 <span className="text-surface-600">Total Cost</span>
                 <span className="text-body-medium font-semibold text-surface-700">{formatCurrency(totalCost)}</span>
@@ -1270,6 +1360,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
 
 function SaleDetailModal({ sale, onClose }) {
   const profit = sale.totalAmount - sale.totalCost;
+  const paymentRows = salePaymentRows(sale);
 
   function customerLineItems(currentSale) {
     return (currentSale.lineItems || []).map((lineItem) => ({
@@ -1437,14 +1528,12 @@ function SaleDetailModal({ sale, onClose }) {
                   <td class="summary-label">Total</td>
                   <td class="summary-value">${formatCurrency(sale.totalAmount)}</td>
                 </tr>
-                <tr class="summary-row">
-                  <td class="summary-label">Amount due</td>
-                  <td class="summary-value">${formatCurrency(0)}</td>
-                </tr>
-                <tr class="summary-row">
-                  <td class="summary-label">${PAYMENT_LABELS[sale.paymentMethod] || sale.paymentMethod}</td>
-                  <td class="summary-value">${formatCurrency(sale.totalAmount)}</td>
-                </tr>
+                ${paymentRows.map((row) => `
+                  <tr class="summary-row">
+                    <td class="summary-label">${paymentRowLabel(row, sale.paymentMethod)}</td>
+                    <td class="summary-value">${formatCurrency(row.amount)}</td>
+                  </tr>
+                `).join('')}
               </tbody>
             </table>
 
@@ -1524,13 +1613,19 @@ function SaleDetailModal({ sale, onClose }) {
               <p className="text-caption text-surface-600 mt-1">Paid {formatCurrency(sale.booking.amountPaid)}</p>
             </div>
           )}
-          {sale.paymentTransaction && (
+          {paymentRows.length > 0 && (
             <div>
               <p className="text-surface-600">Money trail</p>
-              <p className="text-body-medium font-semibold text-surface-900 mt-1">{paymentAccountLabel(sale.paymentTransaction)}</p>
-              <p className="text-caption text-surface-600 mt-1">
-                {formatCurrency(sale.paymentTransaction.amount)} recorded automatically
-              </p>
+              <div className="mt-1 space-y-2">
+                {paymentRows.map((row) => (
+                  <div key={row.id}>
+                    <p className="text-body-medium font-semibold text-surface-900">{row.bankAccount ? paymentAccountLabel(row) : 'Already covered before pickup'}</p>
+                    <p className="text-caption text-surface-600">
+                      {paymentRowLabel(row, sale.paymentMethod)} · {formatCurrency(row.amount)}{row.bankAccount ? ' recorded automatically' : ''}
+                    </p>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>

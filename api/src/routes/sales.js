@@ -6,7 +6,7 @@ import { buildCustomerOrderLimitProfile, getCustomerTrackedOrderCount } from '..
 import { getActivePortalBuyNowHoldQuantity } from '../utils/portalCheckout.js';
 
 const VALID_SALE_TYPES = ['WHOLESALE', 'RETAIL', 'CRACKED', 'WRITE_OFF'];
-const VALID_PAYMENT_METHODS = ['CASH', 'TRANSFER', 'POS_CARD', 'PRE_ORDER'];
+const VALID_PAYMENT_METHODS = ['CASH', 'TRANSFER', 'POS_CARD', 'PRE_ORDER', 'MIXED'];
 const DIRECT_SALE_PAYMENT_METHODS = ['CASH', 'TRANSFER', 'POS_CARD'];
 const DIRECT_SALE_PAYMENT_CONFIG = {
   CASH: {
@@ -187,16 +187,23 @@ function mapBookingForWorkspace(booking, eggTypes = []) {
   };
 }
 
+function mapSalePaymentTransaction(paymentTransaction) {
+  return {
+    ...paymentTransaction,
+    amount: Number(paymentTransaction.amount),
+  };
+}
+
 function enrichSale(sale, eggTypes = []) {
   return {
     ...sale,
     totalAmount: Number(sale.totalAmount),
     totalCost: Number(sale.totalCost),
     sourceType: sale.bookingId ? 'BOOKING' : 'DIRECT',
-    paymentTransaction: sale.paymentTransaction ? {
-      ...sale.paymentTransaction,
-      amount: Number(sale.paymentTransaction.amount),
-    } : undefined,
+    paymentTransactions: (sale.paymentTransactions || []).map(mapSalePaymentTransaction),
+    paymentTransaction: sale.paymentTransactions?.[0]
+      ? mapSalePaymentTransaction(sale.paymentTransactions[0])
+      : undefined,
     limitOverride: sale.limitOverrideNote
       ? {
           note: sale.limitOverrideNote,
@@ -264,10 +271,11 @@ function buildSaleInclude() {
         },
       },
     },
-    paymentTransaction: {
+    paymentTransactions: {
       include: {
         bankAccount: { select: { id: true, name: true, accountType: true, lastFour: true, isVirtual: true } },
       },
+      orderBy: [{ transactionDate: 'asc' }, { createdAt: 'asc' }],
     },
     recordedBy: { select: { firstName: true, lastName: true } },
     limitOverrideBy: { select: { firstName: true, lastName: true } },
@@ -313,6 +321,13 @@ function directSalePaymentDescription({ paymentMethod, customer, batch, receiptN
   ].filter(Boolean);
 
   return parts.join(' · ');
+}
+
+function resolveSalePaymentMethod(paymentTransaction, fallbackMethod) {
+  if (paymentTransaction?.bankAccount?.accountType === 'CASH_ON_HAND') return 'CASH';
+  if (paymentTransaction?.category === 'DIRECT_SALE_TRANSFER') return 'TRANSFER';
+  if (paymentTransaction?.category === 'POS_SETTLEMENT') return 'POS_CARD';
+  return fallbackMethod;
 }
 
 export default async function salesRoutes(fastify) {
@@ -481,6 +496,7 @@ export default async function salesRoutes(fastify) {
         batchId,
         bookingId,
         paymentMethod,
+        paymentBreakdown,
         lineItems,
         saleDate,
         limitOverrideNote,
@@ -577,12 +593,30 @@ export default async function salesRoutes(fastify) {
       }
 
       let resolvedPaymentMethod = paymentMethod;
+      let normalizedPaymentBreakdown = [];
       if (booking) {
         resolvedPaymentMethod = 'PRE_ORDER';
+        normalizedPaymentBreakdown = [];
       } else if (!resolvedPaymentMethod || !DIRECT_SALE_PAYMENT_METHODS.includes(resolvedPaymentMethod)) {
-        return reply.code(400).send({
-          error: `Payment method must be one of: ${DIRECT_SALE_PAYMENT_METHODS.join(', ')}`,
-        });
+        normalizedPaymentBreakdown = Array.isArray(paymentBreakdown)
+          ? paymentBreakdown
+              .map((row) => ({
+                paymentMethod: row?.paymentMethod,
+                amount: Number(row?.amount),
+              }))
+              .filter((row) => DIRECT_SALE_PAYMENT_METHODS.includes(row.paymentMethod) && row.amount > 0)
+          : [];
+
+        if (normalizedPaymentBreakdown.length === 0) {
+          return reply.code(400).send({
+            error: `Payment method must be one of: ${DIRECT_SALE_PAYMENT_METHODS.join(', ')}`,
+          });
+        }
+        resolvedPaymentMethod = normalizedPaymentBreakdown.length === 1
+          ? normalizedPaymentBreakdown[0].paymentMethod
+          : 'MIXED';
+      } else {
+        normalizedPaymentBreakdown = [{ paymentMethod: resolvedPaymentMethod, amount: 0 }];
       }
 
       if (!VALID_PAYMENT_METHODS.includes(resolvedPaymentMethod)) {
@@ -719,9 +753,29 @@ export default async function salesRoutes(fastify) {
         : involvedBatchIds.length === 1
           ? { name: stockByBatch.get(involvedBatchIds[0])?.batch.name }
           : { label: `${involvedBatchIds.length} batches` };
-      const directSaleDestination = !bookingId
-        ? await resolveDirectSalePaymentDestination(resolvedPaymentMethod)
-        : null;
+      if (!booking) {
+        if (normalizedPaymentBreakdown.length === 1 && Number(normalizedPaymentBreakdown[0].amount || 0) <= 0) {
+          normalizedPaymentBreakdown = [{
+            ...normalizedPaymentBreakdown[0],
+            amount: totalAmount,
+          }];
+        }
+        const paymentTotal = normalizedPaymentBreakdown.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+        if (Math.abs(paymentTotal - totalAmount) > 0.009) {
+          return reply.code(400).send({
+            error: `Payment breakdown must add up exactly to ${totalAmount.toLocaleString('en-NG', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}.`,
+          });
+        }
+      }
+
+      const directSaleDestinations = !bookingId
+        ? await Promise.all(
+            normalizedPaymentBreakdown.map(async (row) => ({
+              ...row,
+              ...(await resolveDirectSalePaymentDestination(row.paymentMethod)),
+            })),
+          )
+        : [];
 
       const sale = await prisma.$transaction(async (tx) => {
         let persistedCustomer = customer;
@@ -757,28 +811,27 @@ export default async function salesRoutes(fastify) {
         });
 
         if (!bookingId) {
-          const { account, category } = directSaleDestination;
-          await tx.bankTransaction.create({
-            data: {
+          await tx.bankTransaction.createMany({
+            data: directSaleDestinations.map(({ account, category, paymentMethod: directPaymentMethod, amount }, index) => ({
               bankAccountId: account.id,
               direction: 'INFLOW',
               category,
-              amount: totalAmount,
+              amount,
               description: directSalePaymentDescription({
-                paymentMethod: resolvedPaymentMethod,
+                paymentMethod: directPaymentMethod,
                 customer: persistedCustomer,
                 batch: batchLabel,
                 receiptNumber,
               }),
-              reference: receiptNumber,
+              reference: directSaleDestinations.length > 1 ? `${receiptNumber}-${index + 1}` : receiptNumber,
               transactionDate: effectiveSaleDate,
               sourceType: 'SYSTEM',
-              sourceFingerprint: `sale:${createdSale.id}:payment`,
+              sourceFingerprint: `sale:${createdSale.id}:payment:${index + 1}`,
               saleId: createdSale.id,
               customerId: persistedCustomer.id,
               enteredById: request.user.sub,
               postedAt: new Date(),
-            },
+            })),
           });
         }
 
@@ -825,6 +878,11 @@ export default async function salesRoutes(fastify) {
             },
           },
           batch: { select: { name: true } },
+          paymentTransactions: {
+            include: {
+              bankAccount: { select: { accountType: true } },
+            },
+          },
         },
       });
 
@@ -834,10 +892,19 @@ export default async function salesRoutes(fastify) {
 
       const byPaymentMethod = {};
       for (const sale of sales) {
-        const key = sale.paymentMethod;
-        if (!byPaymentMethod[key]) byPaymentMethod[key] = { count: 0, total: 0 };
-        byPaymentMethod[key].count += 1;
-        byPaymentMethod[key].total += Number(sale.totalAmount);
+        const totalAmount = Number(sale.totalAmount);
+        const paymentRows = sale.paymentTransactions?.length
+          ? sale.paymentTransactions.map((paymentTransaction) => ({
+              paymentMethod: resolveSalePaymentMethod(paymentTransaction, sale.paymentMethod),
+              amount: Number(paymentTransaction.amount),
+            }))
+          : [{ paymentMethod: sale.paymentMethod, amount: totalAmount }];
+        for (const row of paymentRows) {
+          const key = row.paymentMethod;
+          if (!byPaymentMethod[key]) byPaymentMethod[key] = { count: 0, total: 0 };
+          byPaymentMethod[key].count += 1;
+          byPaymentMethod[key].total += row.amount;
+        }
       }
 
       const bySaleType = {};
@@ -898,16 +965,32 @@ export default async function salesRoutes(fastify) {
 
       const sales = await prisma.sale.findMany({
         where,
-        select: { paymentMethod: true, totalAmount: true, totalQuantity: true },
+        include: {
+          paymentTransactions: {
+            include: {
+              bankAccount: { select: { accountType: true } },
+            },
+          },
+        },
       });
 
       const report = {};
       for (const sale of sales) {
-        const key = sale.paymentMethod;
-        if (!report[key]) report[key] = { count: 0, totalAmount: 0, totalQuantity: 0 };
-        report[key].count += 1;
-        report[key].totalAmount += Number(sale.totalAmount);
-        report[key].totalQuantity += sale.totalQuantity;
+        const totalAmount = Number(sale.totalAmount);
+        const paymentRows = sale.paymentTransactions?.length
+          ? sale.paymentTransactions.map((paymentTransaction) => ({
+              paymentMethod: resolveSalePaymentMethod(paymentTransaction, sale.paymentMethod),
+              amount: Number(paymentTransaction.amount),
+            }))
+          : [{ paymentMethod: sale.paymentMethod, amount: totalAmount }];
+        for (const row of paymentRows) {
+          const share = totalAmount > 0 ? row.amount / totalAmount : 0;
+          const key = row.paymentMethod;
+          if (!report[key]) report[key] = { count: 0, totalAmount: 0, totalQuantity: 0 };
+          report[key].count += 1;
+          report[key].totalAmount += row.amount;
+          report[key].totalQuantity += sale.totalQuantity * share;
+        }
       }
 
       return reply.send({ report, totalTransactions: sales.length });

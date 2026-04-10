@@ -52,6 +52,13 @@ function monthBucketKey(value) {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
+function resolveSalePaymentMethod(paymentTransaction, fallbackMethod) {
+  if (paymentTransaction?.bankAccount?.accountType === 'CASH_ON_HAND') return 'CASH';
+  if (paymentTransaction?.category === 'DIRECT_SALE_TRANSFER') return 'TRANSFER';
+  if (paymentTransaction?.category === 'POS_SETTLEMENT') return 'POS_CARD';
+  return fallbackMethod;
+}
+
 export default async function reportsRoutes(fastify) {
   fastify.get('/reports/sales', {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER')],
@@ -91,10 +98,11 @@ export default async function reportsRoutes(fastify) {
               },
             },
           },
-          paymentTransaction: {
+          paymentTransactions: {
             include: {
               bankAccount: { select: { id: true, name: true, accountType: true, lastFour: true } },
             },
+            orderBy: [{ transactionDate: 'asc' }, { createdAt: 'asc' }],
           },
         },
         orderBy: [{ saleDate: 'desc' }, { createdAt: 'desc' }],
@@ -143,18 +151,31 @@ export default async function reportsRoutes(fastify) {
         dayEntry.totalCost += totalCost;
         byDayMap.set(saleDay, dayEntry);
 
-        const paymentEntry = byPaymentMethodMap.get(sale.paymentMethod) || {
-          paymentMethod: sale.paymentMethod,
-          transactionCount: 0,
-          totalQuantity: 0,
-          totalAmount: 0,
-          grossProfit: 0,
-        };
-        paymentEntry.transactionCount += 1;
-        paymentEntry.totalQuantity += sale.totalQuantity;
-        paymentEntry.totalAmount += totalAmount;
-        paymentEntry.grossProfit += grossProfit;
-        byPaymentMethodMap.set(sale.paymentMethod, paymentEntry);
+        const paymentRows = sale.paymentTransactions?.length
+          ? sale.paymentTransactions.map((paymentTransaction) => ({
+              paymentMethod: resolveSalePaymentMethod(paymentTransaction, sale.paymentMethod),
+              amount: Number(paymentTransaction.amount),
+            }))
+          : [{
+              paymentMethod: sale.paymentMethod,
+              amount: totalAmount,
+            }];
+
+        for (const paymentRow of paymentRows) {
+          const share = totalAmount > 0 ? paymentRow.amount / totalAmount : 0;
+          const paymentEntry = byPaymentMethodMap.get(paymentRow.paymentMethod) || {
+            paymentMethod: paymentRow.paymentMethod,
+            transactionCount: 0,
+            totalQuantity: 0,
+            totalAmount: 0,
+            grossProfit: 0,
+          };
+          paymentEntry.transactionCount += 1;
+          paymentEntry.totalQuantity += sale.totalQuantity * share;
+          paymentEntry.totalAmount += paymentRow.amount;
+          paymentEntry.grossProfit += grossProfit * share;
+          byPaymentMethodMap.set(paymentRow.paymentMethod, paymentEntry);
+        }
 
         const employeeName = sale.recordedBy
           ? `${sale.recordedBy.firstName} ${sale.recordedBy.lastName}`.trim()
@@ -272,14 +293,24 @@ export default async function reportsRoutes(fastify) {
               grossProfit: lineTotal - totalCost,
             };
           }),
-          paymentTransaction: sale.paymentTransaction ? {
-            id: sale.paymentTransaction.id,
-            amount: Number(sale.paymentTransaction.amount),
-            category: sale.paymentTransaction.category,
-            reference: sale.paymentTransaction.reference,
-            transactionDate: sale.paymentTransaction.transactionDate,
-            bankAccount: sale.paymentTransaction.bankAccount,
-          } : null,
+          paymentTransactions: (sale.paymentTransactions || []).map((paymentTransaction) => ({
+            id: paymentTransaction.id,
+            amount: Number(paymentTransaction.amount),
+            category: paymentTransaction.category,
+            reference: paymentTransaction.reference,
+            transactionDate: paymentTransaction.transactionDate,
+            bankAccount: paymentTransaction.bankAccount,
+          })),
+          paymentTransaction: sale.paymentTransactions?.[0]
+            ? {
+                id: sale.paymentTransactions[0].id,
+                amount: Number(sale.paymentTransactions[0].amount),
+                category: sale.paymentTransactions[0].category,
+                reference: sale.paymentTransactions[0].reference,
+                transactionDate: sale.paymentTransactions[0].transactionDate,
+                bankAccount: sale.paymentTransactions[0].bankAccount,
+              }
+            : null,
         };
       });
 

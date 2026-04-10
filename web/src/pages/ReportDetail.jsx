@@ -9,6 +9,7 @@ const PAYMENT_LABELS = {
   TRANSFER: 'Transfer',
   POS_CARD: 'POS/Card',
   PRE_ORDER: 'Pre-order',
+  MIXED: 'Mixed',
 };
 
 const SALE_TYPE_LABELS = {
@@ -74,6 +75,30 @@ function formatSignedCurrency(value) {
 
 function formatPercent(value) {
   return `${Number(value || 0).toFixed(2)}%`;
+}
+
+function receiptPaymentRows(receipt) {
+  return receipt.paymentTransactions?.length
+    ? receipt.paymentTransactions
+    : receipt.paymentTransaction
+      ? [receipt.paymentTransaction]
+      : [];
+}
+
+function receiptPaymentLabel(receipt, row) {
+  if (row?.bankAccount?.accountType === 'CASH_ON_HAND') return PAYMENT_LABELS.CASH;
+  if (row?.category === 'DIRECT_SALE_TRANSFER') return PAYMENT_LABELS.TRANSFER;
+  if (row?.category === 'POS_SETTLEMENT') return PAYMENT_LABELS.POS_CARD;
+  return PAYMENT_LABELS[receipt.paymentMethod] || receipt.paymentMethod;
+}
+
+function receiptPaymentSummary(receipt) {
+  const rows = receiptPaymentRows(receipt);
+  if (rows.length === 0) return 'Already covered before pickup';
+  if (rows.length === 1) {
+    return `${rows[0].bankAccount?.name || 'Linked account'} · ${formatCurrency(rows[0].amount)}`;
+  }
+  return `${rows.length} payment parts · ${formatCurrency(rows.reduce((sum, row) => sum + Number(row.amount || 0), 0))}`;
 }
 
 function todayStr() {
@@ -497,7 +522,7 @@ function ReceiptsReport({ data }) {
         receipt.customer?.name,
         receipt.customer?.phone,
         receipt.batch?.name,
-        receipt.paymentTransaction?.reference,
+        ...receiptPaymentRows(receipt).map((row) => row.reference),
         receipt.recordedBy?.name,
       ]
         .filter(Boolean)
@@ -514,7 +539,7 @@ function ReceiptsReport({ data }) {
 
   const directCount = data.receipts.filter((receipt) => receipt.sourceType === 'DIRECT').length;
   const bookingCount = data.receipts.filter((receipt) => receipt.sourceType === 'BOOKING').length;
-  const linkedMoneyTrailCount = data.receipts.filter((receipt) => receipt.paymentTransaction).length;
+  const linkedMoneyTrailCount = data.receipts.filter((receipt) => receiptPaymentRows(receipt).length > 0).length;
 
   useEffect(() => {
     if (selectedReceiptId && !filteredReceipts.some((receipt) => receipt.id === selectedReceiptId)) {
@@ -595,9 +620,7 @@ function ReceiptsReport({ data }) {
                     <td className="py-3 px-4 text-body text-surface-600">{SOURCE_LABELS[receipt.sourceType] || receipt.sourceType}</td>
                     <td className="py-3 px-4 text-body text-surface-600">{PAYMENT_LABELS[receipt.paymentMethod] || receipt.paymentMethod}</td>
                     <td className="py-3 px-4 text-body text-surface-600">
-                      {receipt.paymentTransaction
-                        ? `${receipt.paymentTransaction.bankAccount?.name || 'Linked account'} · ${formatCurrency(receipt.paymentTransaction.amount)}`
-                        : 'Already covered before pickup'}
+                      {receiptPaymentSummary(receipt)}
                     </td>
                     <td className="py-3 px-4 text-body text-right font-medium">{formatCurrency(receipt.totalAmount)}</td>
                     <td className="py-3 px-4 text-body text-right">
@@ -705,7 +728,7 @@ function ReceiptDetailCard({ receipt }) {
             <div class="card">
               <h2>Payment</h2>
               <p>${PAYMENT_LABELS[receipt.paymentMethod] || receipt.paymentMethod}</p>
-              <p>${receipt.paymentTransaction ? `${receipt.paymentTransaction.bankAccount?.name || 'Linked account'} · ${formatCurrency(receipt.paymentTransaction.amount)}` : 'Already covered before pickup'}</p>
+              <p>${receiptPaymentSummary(receipt)}</p>
             </div>
           </div>
           <table>
@@ -987,14 +1010,22 @@ function ReceiptDetailCard({ receipt }) {
         <div className="rounded-lg border border-surface-200 p-4">
           <p className="text-caption uppercase tracking-wide text-surface-600">Payment trail</p>
           <p className="mt-2 text-base font-semibold text-surface-900">{PAYMENT_LABELS[receipt.paymentMethod] || receipt.paymentMethod}</p>
-          <p className="mt-1 text-body text-surface-500">
-            {receipt.paymentTransaction
-              ? `${receipt.paymentTransaction.bankAccount?.name || 'Linked account'} · ${formatCurrency(receipt.paymentTransaction.amount)}`
-              : 'Already paid before pickup'}
-          </p>
-          {receipt.paymentTransaction?.reference && (
-            <p className="mt-1 text-caption text-surface-600">Ref: {receipt.paymentTransaction.reference}</p>
-          )}
+          <div className="mt-1 space-y-1">
+            {receiptPaymentRows(receipt).length > 0 ? (
+              receiptPaymentRows(receipt).map((row) => (
+                <div key={row.id}>
+                  <p className="text-body text-surface-500">
+                    {receiptPaymentLabel(receipt, row)} · {row.bankAccount?.name || 'Linked account'} · {formatCurrency(row.amount)}
+                  </p>
+                  {row.reference && (
+                    <p className="text-caption text-surface-600">Ref: {row.reference}</p>
+                  )}
+                </div>
+              ))
+            ) : (
+              <p className="text-body text-surface-500">Already paid before pickup</p>
+            )}
+          </div>
         </div>
         <div className="rounded-lg border border-surface-200 p-4">
           <p className="text-caption uppercase tracking-wide text-surface-600">Receipt summary</p>

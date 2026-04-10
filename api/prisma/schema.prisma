@@ -355,6 +355,7 @@ enum PaymentMethod {
   TRANSFER
   POS_CARD    // Card via POS machine
   PRE_ORDER   // Already paid via booking deposit
+  MIXED       // Settled with more than one payment method
 }
 
 model Sale {
@@ -382,7 +383,7 @@ model Sale {
   recordedBy User          @relation("SaleRecordedBy", fields: [recordedById], references: [id])
   limitOverrideBy User?    @relation("SaleLimitOverrideBy", fields: [limitOverrideById], references: [id])
   lineItems  SaleLineItem[]
-  paymentTransaction BankTransaction? @relation("SalePaymentTransaction")
+  paymentTransactions BankTransaction[] @relation("SalePaymentTransactions")
 
   @@map("sales")
 }
@@ -495,7 +496,7 @@ model BankTransaction {
   postedAt        DateTime?            @map("posted_at")
 
   // Optional links — depends on category
-  saleId          String?              @unique @map("sale_id")
+  saleId          String?              @map("sale_id")
   customerId      String?              @map("customer_id")
   bookingId       String?              @map("booking_id_ref") // For CUSTOMER_BOOKING category
   enteredById     String               @map("entered_by_id")
@@ -504,7 +505,7 @@ model BankTransaction {
   updatedAt       DateTime             @updatedAt @map("updated_at")
 
   bankAccount BankAccount @relation(fields: [bankAccountId], references: [id])
-  sale        Sale?       @relation("SalePaymentTransaction", fields: [saleId], references: [id])
+  sale        Sale?       @relation("SalePaymentTransactions", fields: [saleId], references: [id])
   customer    Customer?   @relation(fields: [customerId], references: [id])
   enteredBy   User        @relation("TransactionEnteredBy", fields: [enteredById], references: [id])
   statementLine BankStatementLine?
