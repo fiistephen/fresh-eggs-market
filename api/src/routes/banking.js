@@ -246,6 +246,17 @@ async function finalizePortalTransferBookingFromStatement({
       },
     });
 
+    await tx.portalCheckoutDecision.create({
+      data: {
+        portalCheckoutId: checkout.id,
+        actorId: enteredById,
+        decisionType: 'STATEMENT_CONFIRMED',
+        statusBefore: 'ADMIN_CONFIRMED',
+        statusAfter: 'PAID',
+        notes: 'Matched to bank statement line and fully confirmed.',
+      },
+    });
+
     return booking;
   });
 }

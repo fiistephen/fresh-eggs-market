@@ -936,6 +936,8 @@ function OrderDetailModal({ order, onClose }) {
    ═══════════════════════════════════════════════════════ */
 function MyOrders({ orders, loading, onOpenOrder }) {
   const [filter, setFilter] = useState('all');
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
 
   if (loading) {
     return (
@@ -968,8 +970,21 @@ function MyOrders({ orders, loading, onOpenOrder }) {
     if (filter === 'complete') return isComplete(o);
     return true;
   });
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const paginated = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   const actionCount = orders.filter(needsAction).length;
+
+  useEffect(() => {
+    setPage(1);
+  }, [filter]);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   return (
     <div className="space-y-4">
@@ -998,8 +1013,18 @@ function MyOrders({ orders, loading, onOpenOrder }) {
       {filtered.length === 0 ? (
         <p className="text-center py-8 text-body text-surface-500">No orders in this category.</p>
       ) : (
-        <div className="space-y-2">
-          {filtered.map((order) => {
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-3 text-caption text-surface-500">
+            <span>
+              Showing {Math.min((safePage - 1) * pageSize + 1, filtered.length)}–{Math.min(safePage * pageSize, filtered.length)} of {filtered.length}
+            </span>
+            {filtered.length > pageSize && (
+              <span>Page {safePage} of {totalPages}</span>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            {paginated.map((order) => {
             const status = getOrderStatus(order);
             const nextStep = getNextStep(order);
             const action = needsAction(order);
@@ -1030,7 +1055,29 @@ function MyOrders({ orders, loading, onOpenOrder }) {
                 </div>
               </button>
             );
-          })}
+            })}
+          </div>
+
+          {filtered.length > pageSize && (
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                disabled={safePage <= 1}
+              >
+                Previous
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                disabled={safePage >= totalPages}
+              >
+                Next
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>

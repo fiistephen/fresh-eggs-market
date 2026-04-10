@@ -42,7 +42,8 @@ const REPORT_TABS = [
 ];
 
 /* ── Pagination config ─────────────────────────────────── */
-const PAGE_SIZE = 25;
+const DEFAULT_TRANSACTIONS_PAGE_SIZE = 25;
+const TRANSACTIONS_PAGE_SIZE_OPTIONS = [25, 50, 100, 200, 250];
 const IMPORTS_PAGE_SIZE = 12;
 
 /* ── Main Banking page ─────────────────────────────────── */
@@ -58,6 +59,7 @@ export default function Banking() {
   const [transactions, setTransactions] = useState([]);
   const [transactionsTotal, setTransactionsTotal] = useState(0);
   const [transactionsPage, setTransactionsPage] = useState(1);
+  const [transactionsPageSize, setTransactionsPageSize] = useState(DEFAULT_TRANSACTIONS_PAGE_SIZE);
   const [imports, setImports] = useState([]);
   const [importsTotal, setImportsTotal] = useState(0);
   const [importsPage, setImportsPage] = useState(1);
@@ -71,6 +73,7 @@ export default function Banking() {
   const [customerBookingQueue, setCustomerBookingQueue] = useState([]);
   const [customerBookingBatches, setCustomerBookingBatches] = useState([]);
   const [portalTransferQueue, setPortalTransferQueue] = useState([]);
+  const [portalTransferHistory, setPortalTransferHistory] = useState([]);
   const [cashDeposits, setCashDeposits] = useState({
     undepositedCash: { count: 0, total: 0, thresholdHours: 24, transactions: [] },
     pendingDeposits: { count: 0, total: 0, thresholdHours: 24, batches: [] },
@@ -131,7 +134,7 @@ export default function Banking() {
 
   useEffect(() => {
     if (activeView === 'transactions') loadTransactions();
-  }, [activeView, transactionsPage, filters.query, filters.bankAccountId, filters.direction, filters.sourceType, filters.dateFrom, filters.dateTo]);
+  }, [activeView, transactionsPage, transactionsPageSize, filters.query, filters.bankAccountId, filters.direction, filters.sourceType, filters.dateFrom, filters.dateTo]);
 
   useEffect(() => {
     if (activeView === 'imports') loadImports();
@@ -202,8 +205,8 @@ export default function Banking() {
   async function loadTransactions(skipLoader = false) {
     if (!skipLoader) setTransactionsLoading(true);
     try {
-      const offset = (transactionsPage - 1) * PAGE_SIZE;
-      const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
+      const offset = (transactionsPage - 1) * transactionsPageSize;
+      const params = new URLSearchParams({ limit: String(transactionsPageSize), offset: String(offset) });
       if (filters.query) params.set('q', filters.query);
       if (filters.bankAccountId) params.set('bankAccountId', filters.bankAccountId);
       if (filters.direction) params.set('direction', filters.direction);
@@ -285,6 +288,7 @@ export default function Banking() {
     try {
       const data = await api.get('/portal/admin/transfer-checkouts');
       setPortalTransferQueue(data.queue || []);
+      setPortalTransferHistory(data.recentDecisions || []);
     } catch {
       setError('Failed to load portal transfer approvals');
     } finally {
@@ -340,7 +344,7 @@ export default function Banking() {
   }
 
   /* ── Pagination helpers ──────────────────────────────── */
-  const totalPages = Math.max(1, Math.ceil(transactionsTotal / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(transactionsTotal / transactionsPageSize));
   const importTotalPages = Math.max(1, Math.ceil(importsTotal / IMPORTS_PAGE_SIZE));
   const isReportView = activeView === 'reports';
   const cashDepositBadgeCount = Number(cashDeposits.undepositedCash?.count || 0) + Number(cashDeposits.pendingDeposits?.count || 0);
@@ -469,9 +473,14 @@ export default function Banking() {
           filters={filters}
           categoryMap={categoryMap}
           page={transactionsPage}
-          pageSize={PAGE_SIZE}
+          pageSize={transactionsPageSize}
+          pageSizeOptions={TRANSACTIONS_PAGE_SIZE_OPTIONS}
           totalPages={totalPages}
           onPageChange={setTransactionsPage}
+          onPageSizeChange={(nextSize) => {
+            setTransactionsPageSize(nextSize);
+            setTransactionsPage(1);
+          }}
           onFilterChange={handleFilterChange}
         />
       )}
@@ -523,6 +532,7 @@ export default function Banking() {
         <PortalTransferQueue
           loading={portalTransferLoading}
           queue={portalTransferQueue}
+          history={portalTransferHistory}
           onRefresh={() => {
             loadPortalTransferQueue();
             loadAccounts();

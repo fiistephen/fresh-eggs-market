@@ -230,8 +230,72 @@ function buildPortalBatchSummary(batch, eggTypes = []) {
   };
 }
 
+function buildStaffLabel(user) {
+  if (!user) return 'Unknown staff';
+  const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
+  return fullName || user.email || user.phone || 'Unknown staff';
+}
+
 function getCheckoutPriceType(checkoutType) {
   return checkoutType === 'BUY_NOW' ? 'RETAIL' : 'WHOLESALE';
+}
+
+async function recordPortalCheckoutDecision({
+  client = prisma,
+  portalCheckoutId,
+  actorId,
+  decisionType,
+  statusBefore = null,
+  statusAfter = null,
+  notes = null,
+}) {
+  return client.portalCheckoutDecision.create({
+    data: {
+      portalCheckoutId,
+      actorId,
+      decisionType,
+      statusBefore,
+      statusAfter,
+      notes: notes?.trim() || null,
+    },
+  });
+}
+
+function mapPortalTransferDecision(decision, eggTypes = []) {
+  return {
+    id: decision.id,
+    decisionType: decision.decisionType,
+    statusBefore: decision.statusBefore,
+    statusAfter: decision.statusAfter,
+    notes: decision.notes,
+    createdAt: decision.createdAt,
+    actor: decision.actor ? {
+      id: decision.actor.id,
+      firstName: decision.actor.firstName,
+      lastName: decision.actor.lastName,
+      label: buildStaffLabel(decision.actor),
+    } : null,
+    checkout: decision.portalCheckout ? {
+      id: decision.portalCheckout.id,
+      reference: decision.portalCheckout.reference,
+      checkoutType: decision.portalCheckout.checkoutType,
+      paymentMethod: decision.portalCheckout.paymentMethod,
+      status: decision.portalCheckout.status,
+      quantity: decision.portalCheckout.quantity,
+      amountToPay: Number(decision.portalCheckout.amountToPay),
+      orderValue: Number(decision.portalCheckout.orderValue),
+      createdAt: decision.portalCheckout.createdAt,
+      customer: decision.portalCheckout.customer,
+      batch: decision.portalCheckout.batch ? {
+        id: decision.portalCheckout.batch.id,
+        name: decision.portalCheckout.batch.name,
+        eggTypeLabel: getCustomerEggTypeLabel(eggTypes, decision.portalCheckout.batch.eggTypeKey || 'REGULAR'),
+        expectedDate: decision.portalCheckout.batch.expectedDate,
+        receivedDate: decision.portalCheckout.batch.receivedDate,
+        status: decision.portalCheckout.batch.status,
+      } : null,
+    } : null,
+  };
 }
 
 async function getCustomerFromUser(userId) {
@@ -1204,18 +1268,40 @@ export default async function portalRoutes(fastify) {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
     handler: async (request, reply) => {
       const eggTypes = await getCustomerEggTypeConfig();
-      const queue = await prisma.portalCheckout.findMany({
-        where: {
-          checkoutType: 'BUY_NOW',
-          paymentMethod: 'TRANSFER',
-          status: 'AWAITING_TRANSFER',
-        },
-        include: {
-          customer: { select: { id: true, name: true, phone: true, email: true } },
-          batch: { select: { id: true, name: true, expectedDate: true, receivedDate: true, eggTypeKey: true, status: true } },
-        },
-        orderBy: { createdAt: 'asc' },
-      });
+      const [queue, recentDecisions] = await Promise.all([
+        prisma.portalCheckout.findMany({
+          where: {
+            checkoutType: 'BUY_NOW',
+            paymentMethod: 'TRANSFER',
+            status: 'AWAITING_TRANSFER',
+          },
+          include: {
+            customer: { select: { id: true, name: true, phone: true, email: true } },
+            batch: { select: { id: true, name: true, expectedDate: true, receivedDate: true, eggTypeKey: true, status: true } },
+          },
+          orderBy: { createdAt: 'asc' },
+        }),
+        prisma.portalCheckoutDecision.findMany({
+          where: {
+            decisionType: { in: ['APPROVED', 'REJECTED'] },
+            portalCheckout: {
+              checkoutType: 'BUY_NOW',
+              paymentMethod: 'TRANSFER',
+            },
+          },
+          include: {
+            actor: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+            portalCheckout: {
+              include: {
+                customer: { select: { id: true, name: true, phone: true, email: true } },
+                batch: { select: { id: true, name: true, expectedDate: true, receivedDate: true, eggTypeKey: true, status: true } },
+              },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 20,
+        }),
+      ]);
 
       return reply.send({
         queue: queue.map((checkout) => ({
@@ -1244,6 +1330,7 @@ export default async function portalRoutes(fastify) {
           updatedAt: checkout.updatedAt,
           notes: checkout.notes,
         })),
+        recentDecisions: recentDecisions.map((decision) => mapPortalTransferDecision(decision, eggTypes)),
       });
     },
   });
@@ -1351,6 +1438,13 @@ export default async function portalRoutes(fastify) {
           adminConfirmedById: request.user.sub,
         },
       });
+      await recordPortalCheckoutDecision({
+        portalCheckoutId: checkout.id,
+        actorId: request.user.sub,
+        decisionType: 'MONEY_SEEN',
+        statusBefore: checkout.status,
+        statusAfter: 'ADMIN_CONFIRMED',
+      });
 
       return reply.send({
         confirmed: true,
@@ -1373,17 +1467,31 @@ export default async function portalRoutes(fastify) {
         return reply.code(400).send({ error: 'This booking transfer can no longer be rejected from the pending queue.' });
       }
 
-      await prisma.portalCheckout.update({
-        where: { id: checkout.id },
-        data: {
-          status: 'CANCELLED',
-          adminConfirmedAt: null,
-          adminConfirmedById: null,
-          notes: reason?.trim()
-            ? `${checkout.notes ? `${checkout.notes}\n` : ''}Rejected: ${reason.trim()}`
-            : checkout.notes,
-        },
-      });
+      const rejectionNotes = reason?.trim()
+        ? `${checkout.notes ? `${checkout.notes}\n` : ''}Rejected: ${reason.trim()}`
+        : checkout.notes;
+
+      await prisma.$transaction([
+        prisma.portalCheckout.update({
+          where: { id: checkout.id },
+          data: {
+            status: 'CANCELLED',
+            adminConfirmedAt: null,
+            adminConfirmedById: null,
+            notes: rejectionNotes,
+          },
+        }),
+        prisma.portalCheckoutDecision.create({
+          data: {
+            portalCheckoutId: checkout.id,
+            actorId: request.user.sub,
+            decisionType: 'REJECTED',
+            statusBefore: checkout.status,
+            statusAfter: 'CANCELLED',
+            notes: reason?.trim() || null,
+          },
+        }),
+      ]);
 
       return reply.send({
         rejected: true,
@@ -1406,20 +1514,38 @@ export default async function portalRoutes(fastify) {
       }
 
       if (checkout.checkoutType === 'BOOK_UPCOMING') {
-        await prisma.portalCheckout.update({
-          where: { id: checkout.id },
-          data: {
-            status: 'ADMIN_CONFIRMED',
-            adminConfirmedAt: new Date(),
-            adminConfirmedById: request.user.sub,
-          },
-        });
+        await prisma.$transaction([
+          prisma.portalCheckout.update({
+            where: { id: checkout.id },
+            data: {
+              status: 'ADMIN_CONFIRMED',
+              adminConfirmedAt: new Date(),
+              adminConfirmedById: request.user.sub,
+            },
+          }),
+          prisma.portalCheckoutDecision.create({
+            data: {
+              portalCheckoutId: checkout.id,
+              actorId: request.user.sub,
+              decisionType: 'MONEY_SEEN',
+              statusBefore: checkout.status,
+              statusAfter: 'ADMIN_CONFIRMED',
+            },
+          }),
+        ]);
         return reply.send({
           approved: true,
           message: 'Transfer marked as seen. This booking still needs a matching bank statement line for full confirmation.',
         });
       } else {
         await finalizeBuyNowCheckout(checkout, request.user.sub);
+        await recordPortalCheckoutDecision({
+          portalCheckoutId: checkout.id,
+          actorId: request.user.sub,
+          decisionType: 'APPROVED',
+          statusBefore: checkout.status,
+          statusAfter: 'PAID',
+        });
       }
 
       return reply.send({
@@ -1445,17 +1571,31 @@ export default async function portalRoutes(fastify) {
         return reply.code(400).send({ error: 'This transfer hold is no longer waiting for confirmation.' });
       }
 
-      await prisma.portalCheckout.update({
-        where: { id: checkout.id },
-        data: {
-          status: 'CANCELLED',
-          adminConfirmedAt: null,
-          adminConfirmedById: null,
-          notes: reason?.trim()
-            ? `${checkout.notes ? `${checkout.notes}\n` : ''}Rejected: ${reason.trim()}`
-            : checkout.notes,
-        },
-      });
+      const rejectionNotes = reason?.trim()
+        ? `${checkout.notes ? `${checkout.notes}\n` : ''}Rejected: ${reason.trim()}`
+        : checkout.notes;
+
+      await prisma.$transaction([
+        prisma.portalCheckout.update({
+          where: { id: checkout.id },
+          data: {
+            status: 'CANCELLED',
+            adminConfirmedAt: null,
+            adminConfirmedById: null,
+            notes: rejectionNotes,
+          },
+        }),
+        prisma.portalCheckoutDecision.create({
+          data: {
+            portalCheckoutId: checkout.id,
+            actorId: request.user.sub,
+            decisionType: 'REJECTED',
+            statusBefore: checkout.status,
+            statusAfter: 'CANCELLED',
+            notes: reason?.trim() || null,
+          },
+        }),
+      ]);
 
       return reply.send({
         rejected: true,

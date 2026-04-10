@@ -2,7 +2,21 @@ import { useState } from 'react';
 import { DIRECTION_COLORS, SOURCE_LABELS, fmtMoney, fmtDate, accountLabel, displayAccountName, categoryLabel } from './shared/constants';
 import { EmptyState } from './shared/ui';
 
-export default function TransactionsView({ accounts, transactions, total, loading, filters, categoryMap, page, pageSize, totalPages, onPageChange, onFilterChange }) {
+export default function TransactionsView({
+  accounts,
+  transactions,
+  total,
+  loading,
+  filters,
+  categoryMap,
+  page,
+  pageSize,
+  pageSizeOptions = [],
+  totalPages,
+  onPageChange,
+  onPageSizeChange,
+  onFilterChange,
+}) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
 
@@ -191,9 +205,23 @@ export default function TransactionsView({ accounts, transactions, total, loadin
         {/* ── Pagination ──────────────────────────────────── */}
         {total > pageSize && (
           <div className="flex items-center justify-between border-t border-surface-100 px-4 py-3 bg-surface-50">
-            <p className="text-xs text-surface-500">
-              Showing {rangeStart}–{rangeEnd} of {total}
-            </p>
+            <div className="flex items-center gap-3">
+              <p className="text-xs text-surface-500">
+                Showing {rangeStart}–{rangeEnd} of {total}
+              </p>
+              <label className="flex items-center gap-2 text-xs text-surface-500">
+                <span>Rows</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => onPageSizeChange?.(Number(e.target.value))}
+                  className="rounded-md border border-surface-300 bg-surface-0 px-2 py-1 text-xs text-surface-700 outline-none focus:ring-2 focus:ring-brand-500 duration-fast"
+                >
+                  {pageSizeOptions.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
             <div className="flex items-center gap-1">
               <button
                 onClick={() => onPageChange(page - 1)}
@@ -213,6 +241,23 @@ export default function TransactionsView({ accounts, transactions, total, loadin
                 Next
               </button>
             </div>
+          </div>
+        )}
+
+        {total > 0 && total <= pageSize && pageSizeOptions.length > 0 && (
+          <div className="flex justify-end border-t border-surface-100 px-4 py-3 bg-surface-50">
+            <label className="flex items-center gap-2 text-xs text-surface-500">
+              <span>Rows</span>
+              <select
+                value={pageSize}
+                onChange={(e) => onPageSizeChange?.(Number(e.target.value))}
+                className="rounded-md border border-surface-300 bg-surface-0 px-2 py-1 text-xs text-surface-700 outline-none focus:ring-2 focus:ring-brand-500 duration-fast"
+              >
+                {pageSizeOptions.map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
+            </label>
           </div>
         )}
       </div>

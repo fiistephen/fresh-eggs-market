@@ -44,6 +44,7 @@ model User {
   cashDepositBatchesCreated CashDepositBatch[] @relation("CashDepositBatchCreatedBy")
   cashDepositBatchesConfirmed CashDepositBatch[] @relation("CashDepositBatchConfirmedBy")
   portalCheckoutsAdminConfirmed PortalCheckout[] @relation("PortalCheckoutAdminConfirmedBy")
+  portalCheckoutDecisions PortalCheckoutDecision[]
 
   @@map("users")
 }
@@ -273,6 +274,13 @@ enum PortalCheckoutStatus {
   CANCELLED
 }
 
+enum PortalCheckoutDecisionType {
+  APPROVED
+  REJECTED
+  MONEY_SEEN
+  STATEMENT_CONFIRMED
+}
+
 model PortalCheckout {
   id                   String                   @id @default(cuid())
   customerId           String                   @map("customer_id")
@@ -310,8 +318,27 @@ model PortalCheckout {
   adminConfirmedBy     User?                    @relation("PortalCheckoutAdminConfirmedBy", fields: [adminConfirmedById], references: [id])
   selectedStatementLine BankStatementLine?      @relation("BankStatementLineSelectedPortalCheckout")
   confirmationStatementLine BankStatementLine?  @relation("PortalCheckoutConfirmedStatementLine", fields: [confirmationStatementLineId], references: [id])
+  decisions            PortalCheckoutDecision[]
 
   @@map("portal_checkouts")
+}
+
+model PortalCheckoutDecision {
+  id           String                     @id @default(cuid())
+  portalCheckoutId String                 @map("portal_checkout_id")
+  actorId      String                     @map("actor_id")
+  decisionType PortalCheckoutDecisionType @map("decision_type")
+  statusBefore PortalCheckoutStatus?      @map("status_before")
+  statusAfter  PortalCheckoutStatus?      @map("status_after")
+  notes        String?
+  createdAt    DateTime                   @default(now()) @map("created_at")
+
+  portalCheckout PortalCheckout @relation(fields: [portalCheckoutId], references: [id], onDelete: Cascade)
+  actor          User           @relation(fields: [actorId], references: [id])
+
+  @@index([portalCheckoutId, createdAt])
+  @@index([actorId, createdAt])
+  @@map("portal_checkout_decisions")
 }
 
 // ─── SALES ─────────────────────────────────────────────────────
