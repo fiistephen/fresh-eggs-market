@@ -1271,7 +1271,6 @@ export default async function portalRoutes(fastify) {
       const [queue, recentDecisions] = await Promise.all([
         prisma.portalCheckout.findMany({
           where: {
-            checkoutType: 'BUY_NOW',
             paymentMethod: 'TRANSFER',
             status: 'AWAITING_TRANSFER',
           },
@@ -1285,7 +1284,6 @@ export default async function portalRoutes(fastify) {
           where: {
             decisionType: { in: ['APPROVED', 'REJECTED'] },
             portalCheckout: {
-              checkoutType: 'BUY_NOW',
               paymentMethod: 'TRANSFER',
             },
           },

@@ -65,7 +65,7 @@ export default function PortalTransferQueue({ loading, queue, history = [], onRe
                   </p>
                   <p className="mt-2 text-body text-surface-600">
                     {checkout.checkoutType === 'BOOK_UPCOMING'
-                      ? 'Approve this transfer to confirm the booking. Reject it to return crates to available stock.'
+                      ? 'Mark this as money seen to keep the booking hold. Final confirmation still happens when the bank statement line is linked. Reject it to return crates to available stock.'
                       : 'Approve this transfer to make the order ready for pickup. Reject it to release crates.'}
                   </p>
                 </div>
@@ -82,7 +82,7 @@ export default function PortalTransferQueue({ loading, queue, history = [], onRe
                   {workingId === checkout.id ? 'Working…' : 'Reject transfer'}
                 </button>
                 <button type="button" onClick={() => approve(checkout.id)} disabled={workingId === checkout.id} className="rounded-md bg-brand-600 px-4 py-2 text-body-medium font-medium text-surface-0 transition-colors duration-fast hover:bg-brand-700 disabled:opacity-50">
-                  {workingId === checkout.id ? 'Working…' : 'Approve transfer'}
+                  {workingId === checkout.id ? 'Working…' : checkout.checkoutType === 'BOOK_UPCOMING' ? 'Confirm money seen' : 'Approve transfer'}
                 </button>
               </div>
             </div>

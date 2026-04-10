@@ -52,6 +52,21 @@ export default function Bookings() {
     loadPortalBookingQueue();
   }, []);
 
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      loadPortalBookingQueue();
+    }, 30000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    function handleFocus() {
+      loadPortalBookingQueue();
+    }
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, []);
+
   async function loadBookings() {
     setLoading(true);
     setError('');
@@ -151,6 +166,7 @@ export default function Bookings() {
         workingId={workingPortalCheckoutId}
         onConfirm={confirmPortalTransfer}
         onReject={rejectPortalTransfer}
+        onRefresh={loadPortalBookingQueue}
       />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -301,6 +317,7 @@ function PortalBookingReviewSection({
   workingId,
   onConfirm,
   onReject,
+  onRefresh,
 }) {
   if (loading) {
     return (
@@ -331,9 +348,14 @@ function PortalBookingReviewSection({
 
       {transferQueue?.length ? (
         <Card className="p-4 space-y-3">
-          <div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
             <h3 className="text-heading font-semibold text-surface-900">Portal transfer bookings waiting for action</h3>
             <p className="mt-2 text-body text-surface-500">Use this to mark “money seen” first. The final financial confirmation still happens when the statement line is linked in Banking.</p>
+            </div>
+            <Button variant="secondary" size="sm" onClick={onRefresh}>
+              Refresh
+            </Button>
           </div>
 
           {transferQueue.map((checkout) => {
