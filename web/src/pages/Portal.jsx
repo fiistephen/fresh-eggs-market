@@ -938,6 +938,30 @@ function MyOrders({ orders, loading, onOpenOrder }) {
   const [filter, setFilter] = useState('all');
   const [page, setPage] = useState(1);
   const pageSize = 10;
+  const safeOrders = orders || [];
+  const needsAction = (o) => ['AWAITING_PAYMENT', 'AWAITING_TRANSFER'].includes(o.status);
+  const isActive = (o) => ['CONFIRMED', 'PAID', 'APPROVED_FOR_PICKUP', 'ADMIN_CONFIRMED'].includes(o.status) || (o.status === 'CONFIRMED' && o.batchArrived);
+  const isComplete = (o) => ['PICKED_UP', 'CANCELLED', 'FAILED'].includes(o.status);
+  const filtered = safeOrders.filter((o) => {
+    if (filter === 'action') return needsAction(o);
+    if (filter === 'active') return isActive(o);
+    if (filter === 'complete') return isComplete(o);
+    return true;
+  });
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const paginated = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const actionCount = safeOrders.filter(needsAction).length;
+
+  useEffect(() => {
+    setPage(1);
+  }, [filter]);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   if (loading) {
     return (
@@ -959,32 +983,6 @@ function MyOrders({ orders, loading, onOpenOrder }) {
       </div>
     );
   }
-
-  const needsAction = (o) => ['AWAITING_PAYMENT', 'AWAITING_TRANSFER'].includes(o.status);
-  const isActive = (o) => ['CONFIRMED', 'PAID', 'APPROVED_FOR_PICKUP', 'ADMIN_CONFIRMED'].includes(o.status) || (o.status === 'CONFIRMED' && o.batchArrived);
-  const isComplete = (o) => ['PICKED_UP', 'CANCELLED', 'FAILED'].includes(o.status);
-
-  const filtered = orders.filter((o) => {
-    if (filter === 'action') return needsAction(o);
-    if (filter === 'active') return isActive(o);
-    if (filter === 'complete') return isComplete(o);
-    return true;
-  });
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const safePage = Math.min(page, totalPages);
-  const paginated = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
-
-  const actionCount = orders.filter(needsAction).length;
-
-  useEffect(() => {
-    setPage(1);
-  }, [filter]);
-
-  useEffect(() => {
-    if (page > totalPages) {
-      setPage(totalPages);
-    }
-  }, [page, totalPages]);
 
   return (
     <div className="space-y-4">
