@@ -75,6 +75,7 @@ export async function getCustomerTrackedOrderCount(customerId) {
           },
           {
             checkoutType: 'BUY_NOW',
+            bookingId: null,
             portalOrderRequestId: null,
           },
         ],

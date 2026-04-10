@@ -464,9 +464,9 @@ async function finalizeUpcomingBookingCheckout(checkout, enteredById) {
 }
 
 async function finalizeBuyNowCheckout(checkout) {
-  if (checkout.portalOrderRequestId) {
-    return prisma.portalOrderRequest.findUnique({
-      where: { id: checkout.portalOrderRequestId },
+  if (checkout.bookingId) {
+    return prisma.booking.findUnique({
+      where: { id: checkout.bookingId },
       include: {
         batch: { select: { id: true, name: true, expectedDate: true, receivedDate: true, eggTypeKey: true, status: true } },
       },
@@ -475,22 +475,16 @@ async function finalizeBuyNowCheckout(checkout) {
 
   const pickupWindow = buildPickupWindow(new Date());
   return prisma.$transaction(async (tx) => {
-    const order = await tx.portalOrderRequest.create({
+    const booking = await tx.booking.create({
       data: {
         customerId: checkout.customerId,
         batchId: checkout.batchId,
-        status: 'APPROVED_FOR_PICKUP',
-        paymentMethod: checkout.paymentMethod,
-        paymentStatus: 'PAID',
         quantity: checkout.quantity,
-        priceType: checkout.priceType || 'RETAIL',
-        unitPrice: checkout.unitPrice || 0,
-        estimatedTotal: checkout.orderValue,
         amountPaid: checkout.amountToPay,
-        paymentReference: checkout.reference,
-        pickupWindowStart: pickupWindow.start,
-        pickupWindowEnd: pickupWindow.end,
-        notes: checkout.notes || 'Portal buy-now payment confirmed.',
+        orderValue: checkout.orderValue,
+        status: 'CONFIRMED',
+        channel: 'website',
+        notes: checkout.notes || `Portal buy-now payment confirmed (${checkout.paymentMethod.toLowerCase()}).`,
       },
       include: {
         batch: { select: { id: true, name: true, expectedDate: true, receivedDate: true, eggTypeKey: true, status: true } },
@@ -501,14 +495,14 @@ async function finalizeBuyNowCheckout(checkout) {
       where: { id: checkout.id },
       data: {
         status: 'PAID',
-        portalOrderRequestId: order.id,
+        bookingId: booking.id,
         verifiedAt: new Date(),
         pickupWindowStart: pickupWindow.start,
         pickupWindowEnd: pickupWindow.end,
       },
     });
 
-    return order;
+    return booking;
   });
 }
 
@@ -523,8 +517,13 @@ async function getPortalOrdersForCustomer(customerId) {
           select: {
             id: true,
             reference: true,
+            checkoutType: true,
             paymentMethod: true,
             status: true,
+            priceType: true,
+            unitPrice: true,
+            pickupWindowStart: true,
+            pickupWindowEnd: true,
             verifiedAt: true,
           },
         },
@@ -553,8 +552,8 @@ async function getPortalOrdersForCustomer(customerId) {
 
   const bookingItems = bookings.map((booking) => ({
     id: booking.id,
-    kind: 'BOOKING',
-    source: 'BOOKING',
+    kind: booking.portalCheckout?.checkoutType === 'BUY_NOW' ? 'BUY_NOW' : 'BOOKING',
+    source: booking.portalCheckout?.checkoutType === 'BUY_NOW' ? 'BUY_NOW_BOOKING' : 'BOOKING',
     reference: booking.portalCheckout?.reference || booking.id,
     batchId: booking.batchId,
     batch: buildPortalBatchSummary(booking.batch, eggTypes),
@@ -570,11 +569,15 @@ async function getPortalOrdersForCustomer(customerId) {
     paymentPercent: Number(booking.orderValue) > 0
       ? Math.round((Number(booking.amountPaid) / Number(booking.orderValue)) * 100)
       : 0,
-    status: booking.status,
+    status: booking.portalCheckout?.checkoutType === 'BUY_NOW' && booking.status === 'CONFIRMED'
+      ? 'APPROVED_FOR_PICKUP'
+      : booking.status,
     paymentMethod: booking.portalCheckout?.paymentMethod || null,
     paymentStatus: 'PAID',
-    pickupWindowStart: null,
-    pickupWindowEnd: null,
+    priceType: booking.portalCheckout?.priceType || null,
+    unitPrice: booking.portalCheckout?.unitPrice != null ? Number(booking.portalCheckout.unitPrice) : null,
+    pickupWindowStart: booking.portalCheckout?.pickupWindowStart || null,
+    pickupWindowEnd: booking.portalCheckout?.pickupWindowEnd || null,
     notes: booking.notes,
     createdAt: booking.createdAt,
     updatedAt: booking.updatedAt,
