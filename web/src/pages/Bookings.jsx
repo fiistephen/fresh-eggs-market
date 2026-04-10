@@ -48,6 +48,131 @@ function hangingAgeLabel(ageInDays) {
   return 'Today';
 }
 
+function paymentDateScore(payment) {
+  if (!payment?.transactionDate) return 9999;
+  return Math.max(0, Math.floor((Date.now() - new Date(payment.transactionDate).getTime()) / (1000 * 60 * 60 * 24)));
+}
+
+function buildBestAllocationSuggestion(payments, targetAmount) {
+  const target = Number(targetAmount || 0);
+  if (target <= 0) return null;
+
+  const usable = [...payments]
+    .filter((payment) => Number(payment.availableAmount || 0) > 0.009)
+    .sort((a, b) => new Date(b.transactionDate || 0).getTime() - new Date(a.transactionDate || 0).getTime())
+    .slice(0, 16);
+
+  if (usable.length === 0) return null;
+
+  const candidates = [];
+
+  usable.forEach((payment, index) => {
+    const total = Number(payment.availableAmount || 0);
+    const difference = total - target;
+    const statusRank = difference === 0 ? 0 : difference > 0 ? 1 : 2;
+    const score = statusRank * 1000000 + Math.abs(difference) * 100 + paymentDateScore(payment) + index / 100;
+    candidates.push({
+      ids: [payment.id],
+      total,
+      difference,
+      score,
+      payments: [payment],
+    });
+  });
+
+  for (let i = 0; i < usable.length; i += 1) {
+    for (let j = i + 1; j < usable.length; j += 1) {
+      const first = usable[i];
+      const second = usable[j];
+      const total = Number(first.availableAmount || 0) + Number(second.availableAmount || 0);
+      const difference = total - target;
+      const statusRank = difference === 0 ? 0 : difference > 0 ? 1 : 2;
+      const score = statusRank * 1000000
+        + Math.abs(difference) * 100
+        + ((paymentDateScore(first) + paymentDateScore(second)) / 2)
+        + (i + j) / 100;
+      candidates.push({
+        ids: [first.id, second.id],
+        total,
+        difference,
+        score,
+        payments: [first, second],
+      });
+    }
+  }
+
+  const best = candidates.sort((a, b) => a.score - b.score)[0];
+  if (!best) return null;
+
+  let label = 'Suggested match';
+  if (best.difference === 0) {
+    label = best.ids.length === 1 ? 'Exact single-deposit match' : 'Exact combined match';
+  } else if (best.difference > 0) {
+    label = 'Best full-cover match';
+  } else {
+    label = 'Closest available match';
+  }
+
+  return {
+    label,
+    ids: best.ids,
+    paymentCount: best.ids.length,
+    totalAvailable: best.total,
+    difference: best.difference,
+    payments: best.payments,
+  };
+}
+
+function applyAllocationSuggestionToDrafts(payments, suggestion, targetAmount, setAllocationDrafts) {
+  if (!suggestion) return;
+  let remaining = Number(targetAmount || 0);
+  const next = {};
+
+  for (const paymentId of suggestion.ids) {
+    if (remaining <= 0) break;
+    const payment = payments.find((entry) => entry.id === paymentId);
+    if (!payment) continue;
+    const amount = Math.min(Number(payment.availableAmount || 0), remaining);
+    if (amount > 0) {
+      next[payment.id] = amount.toFixed(2);
+      remaining -= amount;
+    }
+  }
+
+  setAllocationDrafts(next);
+}
+
+function SuggestionCard({ title, suggestion, targetAmount, onApply }) {
+  if (!suggestion) return null;
+
+  return (
+    <Card variant="outlined" className="p-4 bg-brand-50/50 border-brand-200">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-overline text-brand-700">{title}</p>
+          <p className="mt-2 text-body-medium font-semibold text-surface-900">{suggestion.label}</p>
+          <p className="mt-2 text-body text-surface-600">
+            {suggestion.paymentCount === 1 ? 'Uses 1 deposit' : `Uses ${suggestion.paymentCount} deposits`} ·
+            {' '}up to {formatCurrency(suggestion.totalAvailable)}
+          </p>
+          <p className="mt-2 text-caption text-surface-600">
+            {suggestion.difference === 0
+              ? `This matches ${formatCurrency(targetAmount)} exactly.`
+              : suggestion.difference > 0
+                ? `This covers ${formatCurrency(targetAmount)} with ${formatCurrency(suggestion.difference)} left unused.`
+                : `This gets you to ${formatCurrency(suggestion.totalAvailable)}, leaving ${formatCurrency(Math.abs(suggestion.difference))} still unpaid.`}
+          </p>
+        </div>
+        <div className="sm:text-right">
+          <Button type="button" variant="secondary" size="sm" onClick={onApply}>
+            Use suggestion
+          </Button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 export default function Bookings() {
   const { user } = useAuth();
   const [bookings, setBookings] = useState([]);
@@ -802,6 +927,14 @@ function CreateBookingModal({ initialCustomer = null, initialDepositId = '', onC
   const balance = Math.max(0, orderValue - totalAllocated);
   const canContinueToFunds = selectedBatch && quantity && Number(quantity) > 0;
   const canSubmit = totalAllocated >= minimumPayment && totalAllocated <= orderValue && !submitting;
+  const minimumSuggestion = useMemo(
+    () => buildBestAllocationSuggestion(funds, minimumPayment),
+    [funds, minimumPayment],
+  );
+  const fullBookingSuggestion = useMemo(
+    () => buildBestAllocationSuggestion(funds, orderValue),
+    [funds, orderValue],
+  );
 
   function updateAllocation(paymentId, value) {
     setAllocationDrafts((current) => ({
@@ -1107,6 +1240,23 @@ function CreateBookingModal({ initialCustomer = null, initialDepositId = '', onC
                 </div>
               </div>
 
+              {(minimumSuggestion || fullBookingSuggestion) && (
+                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                  <SuggestionCard
+                    title="Suggested for minimum"
+                    suggestion={minimumSuggestion}
+                    targetAmount={minimumPayment}
+                    onApply={() => applyAllocationSuggestionToDrafts(funds, minimumSuggestion, minimumPayment, setAllocationDrafts)}
+                  />
+                  <SuggestionCard
+                    title="Suggested for full booking"
+                    suggestion={fullBookingSuggestion}
+                    targetAmount={orderValue}
+                    onApply={() => applyAllocationSuggestionToDrafts(funds, fullBookingSuggestion, orderValue, setAllocationDrafts)}
+                  />
+                </div>
+              )}
+
               {loadingFunds ? (
                 <p className="text-body text-surface-500">Loading customer payments…</p>
               ) : funds.length === 0 ? (
@@ -1267,9 +1417,8 @@ function ManageBookingPaymentsModal({ booking, onClose, onSaved }) {
       .filter((allocation) => allocation.bankTransaction?.id)
       .map((allocation) => ({
         ...allocation.bankTransaction,
-        availableAmount: Number(
-          funds.find((payment) => payment.id === allocation.bankTransaction?.id)?.availableAmount ?? allocation.amount
-        ),
+        availableAmount: Number(funds.find((payment) => payment.id === allocation.bankTransaction?.id)?.availableAmount || 0)
+          + Number(allocation.amount),
         allocatedAmount: Number(allocation.amount),
         currentAllocation: Number(allocation.amount),
         isExistingAllocation: true,
@@ -1284,6 +1433,14 @@ function ManageBookingPaymentsModal({ booking, onClose, onSaved }) {
   const totalAllocated = Object.values(allocationDrafts).reduce((sum, value) => sum + Number(value || 0), 0);
   const remaining = Math.max(0, Number(booking.orderValue) - totalAllocated);
   const minimumPayment = Number(booking.minimumPayment || 0);
+  const minimumSuggestion = useMemo(
+    () => buildBestAllocationSuggestion(paymentRows, minimumPayment),
+    [paymentRows, minimumPayment],
+  );
+  const fullBookingSuggestion = useMemo(
+    () => buildBestAllocationSuggestion(paymentRows, Number(booking.orderValue)),
+    [paymentRows, booking.orderValue],
+  );
 
   function updateAllocation(paymentId, value) {
     setAllocationDrafts((current) => ({
@@ -1330,6 +1487,23 @@ function ManageBookingPaymentsModal({ booking, onClose, onSaved }) {
             <BookingStat label="Minimum payment" value={formatCurrency(minimumPayment)} />
           </div>
         </Card>
+
+        {(minimumSuggestion || fullBookingSuggestion) && (
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <SuggestionCard
+              title="Suggested for minimum"
+              suggestion={minimumSuggestion}
+              targetAmount={minimumPayment}
+              onApply={() => applyAllocationSuggestionToDrafts(paymentRows, minimumSuggestion, minimumPayment, setAllocationDrafts)}
+            />
+            <SuggestionCard
+              title="Suggested for full booking"
+              suggestion={fullBookingSuggestion}
+              targetAmount={Number(booking.orderValue)}
+              onApply={() => applyAllocationSuggestionToDrafts(paymentRows, fullBookingSuggestion, Number(booking.orderValue), setAllocationDrafts)}
+            />
+          </div>
+        )}
 
         {loadingFunds ? (
           <p className="text-body text-surface-500">Loading available deposits…</p>
