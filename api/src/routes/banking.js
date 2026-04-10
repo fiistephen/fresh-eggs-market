@@ -544,6 +544,17 @@ async function getCashDepositWorkspace(policyInput) {
             notes: true,
           },
         },
+        transactions: {
+          include: {
+            bankTransaction: {
+              include: {
+                customer: { select: { id: true, name: true, phone: true } },
+                sale: { select: { id: true, receiptNumber: true, saleDate: true } },
+              },
+            },
+          },
+          orderBy: { createdAt: 'asc' },
+        },
       },
       orderBy: [{ confirmedAt: 'desc' }, { createdAt: 'desc' }],
       take: 10,
@@ -586,6 +597,11 @@ async function getCashDepositWorkspace(policyInput) {
     confirmedRecently: confirmedRecently.map((batch) => ({
       ...batch,
       amount: Number(batch.amount),
+      transactions: batch.transactions.map((entry) => ({
+        ...entry,
+        amountIncluded: Number(entry.amountIncluded),
+        bankTransaction: entry.bankTransaction ? enrichTransaction(entry.bankTransaction) : null,
+      })),
     })),
   };
 }
