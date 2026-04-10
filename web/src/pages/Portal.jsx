@@ -806,7 +806,7 @@ function getOrderStatus(order) {
   if (order.kind === 'BOOKING') {
     if (order.source === 'BOOKING_CHECKOUT') {
       if (order.status === 'AWAITING_PAYMENT') return { label: 'Awaiting card payment', tone: 'warning' };
-      if (order.status === 'AWAITING_TRANSFER') return { label: 'Awaiting transfer', tone: 'info' };
+      if (order.status === 'AWAITING_TRANSFER') return { label: 'Awaiting confirmation', tone: 'info' };
       if (order.status === 'ADMIN_CONFIRMED') return { label: 'Transfer seen — confirming', tone: 'warning' };
       if (order.status === 'FAILED') return { label: 'Payment failed', tone: 'error' };
       if (order.status === 'PAID') return { label: 'Confirmed', tone: 'success' };
@@ -823,7 +823,7 @@ function getOrderStatus(order) {
   if (order.kind === 'BUY_NOW') {
     if (order.source === 'BUY_NOW_CHECKOUT') {
       if (order.status === 'AWAITING_PAYMENT') return { label: 'Awaiting card payment', tone: 'warning' };
-      if (order.status === 'AWAITING_TRANSFER') return { label: 'Awaiting transfer', tone: 'info' };
+      if (order.status === 'AWAITING_TRANSFER') return { label: 'Awaiting confirmation', tone: 'info' };
       if (order.status === 'FAILED') return { label: 'Payment failed', tone: 'error' };
       if (order.status === 'CANCELLED' && order.paymentMethod === 'TRANSFER') return { label: 'Transfer declined', tone: 'error' };
       if (order.status === 'CANCELLED') return { label: 'Cancelled', tone: 'error' };
@@ -840,7 +840,9 @@ function getNextStep(order) {
   if (order.kind === 'BOOKING') {
     if (order.source === 'BOOKING_CHECKOUT') {
       if (order.status === 'AWAITING_PAYMENT') return 'Complete your card payment to confirm the booking.';
-      if (order.status === 'AWAITING_TRANSFER') return `Transfer ${fmtMoney(order.amountToPay || order.orderValue)} to complete your booking.`;
+      if (order.status === 'AWAITING_TRANSFER') {
+        return 'Your transfer is pending admin confirmation. If you have not completed this transfer, use the details below.';
+      }
       if (order.status === 'ADMIN_CONFIRMED') return 'Your transfer has been seen. Full confirmation is in progress.';
       if (order.status === 'FAILED') return 'Payment was not completed. You can place a new order.';
       if (order.status === 'CANCELLED' && order.paymentMethod === 'TRANSFER') {
@@ -856,7 +858,9 @@ function getNextStep(order) {
   if (order.kind === 'BUY_NOW') {
     if (order.source === 'BUY_NOW_CHECKOUT') {
       if (order.status === 'AWAITING_PAYMENT') return 'Complete your card payment to confirm this order.';
-      if (order.status === 'AWAITING_TRANSFER') return `Transfer ${fmtMoney(order.amountToPay || order.orderValue)} to confirm this order.`;
+      if (order.status === 'AWAITING_TRANSFER') {
+        return 'Your transfer is pending admin confirmation. If you have not completed this transfer, use the details below.';
+      }
       if (order.status === 'FAILED') return 'Payment was not completed. You can place a new order.';
       if (order.status === 'CANCELLED' && order.paymentMethod === 'TRANSFER') {
         return 'Your transfer order was declined because your payment could not be confirmed. If you have proof of payment, please dispute it with evidence.';
