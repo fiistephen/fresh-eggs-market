@@ -18,6 +18,31 @@ const DIRECT_PAYMENT_TRAIL_HINTS = {
   POS_CARD: 'This sale will add a POS settlement record to Customer Deposit Account automatically.',
 };
 
+function bookingSourceMeta(booking) {
+  if (booking?.portalCheckout?.checkoutType === 'BUY_NOW') {
+    return {
+      label: 'Portal buy now',
+      description: 'Customer already paid online and is now collecting this order.',
+      color: 'info',
+      cta: 'Complete this pickup',
+    };
+  }
+  if (booking?.portalCheckout?.checkoutType === 'BOOK_UPCOMING') {
+    return {
+      label: 'Portal booking',
+      description: 'Customer booked this batch through the portal.',
+      color: 'brand',
+      cta: 'Use this booking',
+    };
+  }
+  return {
+    label: 'Manual booking',
+    description: 'Customer already has a booking recorded by staff.',
+    color: 'neutral',
+    cta: 'Use this booking',
+  };
+}
+
 function formatCurrency(n) {
   if (n == null) return '—';
   return new Intl.NumberFormat('en-NG', {
@@ -485,7 +510,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
     setSaleScopeLabel('');
     setWorkflow('');
     setLineItems([]);
-    setPaymentMethod('CASH');
+    setPaymentMethod('');
     setLimitOverrideNote('');
     setError('');
     setStep(2);
@@ -545,7 +570,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
     setSelectedBooking(null);
     setSelectedBatch(batch);
     setSaleScopeLabel(batch.name);
-    setPaymentMethod('CASH');
+    setPaymentMethod('');
     setLimitOverrideNote('');
     initializeLineItems(batch);
     setError('');
@@ -557,7 +582,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
     setSelectedBooking(null);
     setSelectedBatch(null);
     setSaleScopeLabel('Multiple batches');
-    setPaymentMethod('CASH');
+    setPaymentMethod('');
     setLimitOverrideNote('');
     initializeLineItemsFromRows(customerWorkspace.mixedDirectSaleStock || []);
     setError('');
@@ -588,10 +613,11 @@ function RecordSaleModal({ onClose, onRecorded }) {
   const orderLimitProfile = customerWorkspace.customer?.orderLimitProfile || null;
   const currentPerOrderLimit = Number(orderLimitProfile?.currentPerOrderLimit || 0);
   const needsLimitOverride = workflow === 'DIRECT' && currentPerOrderLimit > 0 && totalQty > currentPerOrderLimit;
+  const isDirectPaymentChosen = workflow !== 'DIRECT' || Boolean(paymentMethod);
   const canSubmit =
     workflow === 'BOOKING'
       ? !!selectedBooking && selectedBooking.isFullyPaid && isBookingQuantityReady
-      : totalQty > 0 && (!needsLimitOverride || limitOverrideNote.trim().length > 0);
+      : totalQty > 0 && isDirectPaymentChosen && (!needsLimitOverride || limitOverrideNote.trim().length > 0);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -671,7 +697,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
               size="md"
             />
             <p className="text-caption text-surface-600 mt-2">
-              Start here so the app can show existing bookings before you record a new sale.
+              Start with the customer so the app can surface any existing booking or portal order before you create a new sale.
             </p>
           </div>
 
@@ -831,9 +857,9 @@ function RecordSaleModal({ onClose, onRecorded }) {
             <>
               <section className="space-y-3">
                 <div>
-                  <h3 className="text-heading text-surface-900">1. Complete a paid booking</h3>
+                  <h3 className="text-heading text-surface-900">1. Fulfil an existing booking or portal order</h3>
                   <p className="text-body text-surface-600 mt-1">
-                    Use this when the customer already booked eggs and the payment is complete.
+                    Use this when the customer already paid and is now collecting eggs.
                   </p>
                 </div>
 
@@ -843,7 +869,9 @@ function RecordSaleModal({ onClose, onRecorded }) {
                   </Card>
                 ) : (
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                    {customerWorkspace.bookings.map((booking) => (
+                    {customerWorkspace.bookings.map((booking) => {
+                      const sourceMeta = bookingSourceMeta(booking);
+                      return (
                       <Card key={booking.id} variant="outlined" padding="comfortable">
                         <div className="flex items-start justify-between gap-3">
                           <div>
@@ -852,6 +880,13 @@ function RecordSaleModal({ onClose, onRecorded }) {
                             <p className="text-body text-surface-600 mt-1">
                               {booking.quantity} crates{booking.batchEggCode?.code ? ` of ${booking.batchEggCode.code}` : ''} booked on {formatDate(booking.createdAt)}
                             </p>
+                            <div className="mt-2 flex items-center gap-2 flex-wrap">
+                              <Badge color={sourceMeta.color} dot>{sourceMeta.label}</Badge>
+                              {booking.portalCheckout?.reference && (
+                                <span className="text-caption text-surface-500 font-mono">{booking.portalCheckout.reference}</span>
+                              )}
+                            </div>
+                            <p className="text-caption text-surface-500 mt-2">{sourceMeta.description}</p>
                           </div>
                           <Badge
                             color={booking.isFullyPaid ? 'success' : 'warning'}
@@ -887,19 +922,19 @@ function RecordSaleModal({ onClose, onRecorded }) {
                           size="md"
                           className="w-full mt-4"
                         >
-                          {booking.isFullyPaid ? 'Use this booking' : 'Record payment first'}
+                          {booking.isFullyPaid ? sourceMeta.cta : 'Record payment first'}
                         </Button>
                       </Card>
-                    ))}
+                    );})}
                   </div>
                 )}
               </section>
 
               <section className="space-y-3">
                 <div>
-                  <h3 className="text-heading text-surface-900">2. Record a direct sale</h3>
+                  <h3 className="text-heading text-surface-900">2. Create a new direct sale</h3>
                   <p className="text-body text-surface-600 mt-1">
-                    Use this for walk-in sales or any sale that is not tied to an existing booking.
+                    Use this only when the customer is not collecting from an existing booking or portal order.
                   </p>
                 </div>
 
@@ -978,7 +1013,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
             </Card>
             <Card variant="outlined" padding="compact" className="bg-surface-50">
               <p className="text-body text-surface-600">Sale path</p>
-              <p className="text-body-medium font-semibold text-surface-900 mt-1">{workflow === 'BOOKING' ? 'Booking pickup' : 'Direct sale'}</p>
+              <p className="text-body-medium font-semibold text-surface-900 mt-1">{workflow === 'BOOKING' ? 'Booking or portal pickup' : 'New direct sale'}</p>
             </Card>
             <Card variant="outlined" padding="compact" className="bg-surface-50">
               <p className="text-body text-surface-600">Batch</p>
@@ -1005,7 +1040,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
             <Card variant="outlined" padding="comfortable" className="border-info-200 bg-info-50">
               <p className="text-heading text-info-900">Record a direct sale</p>
               <p className="text-body text-info-800 mt-1">
-                Enter what the customer bought and choose how they paid.
+                Enter what the customer bought, then choose exactly how they paid before saving.
               </p>
             </Card>
           )}
@@ -1130,9 +1165,18 @@ function RecordSaleModal({ onClose, onRecorded }) {
                     </Button>
                   ))}
               </div>
+              {!paymentMethod && (
+                <p className="text-caption text-warning-700 mt-3">
+                  Choose the payment method before you save this sale.
+                </p>
+              )}
               <Card variant="outlined" padding="comfortable" className="mt-3 bg-surface-50">
                 <p className="text-body-medium font-semibold text-surface-900">What happens when you save</p>
-                <p className="text-body text-surface-700 mt-1">{DIRECT_PAYMENT_TRAIL_HINTS[paymentMethod]}</p>
+                <p className="text-body text-surface-700 mt-1">
+                  {paymentMethod
+                    ? DIRECT_PAYMENT_TRAIL_HINTS[paymentMethod]
+                    : 'Pick a payment method first so the app knows where this money should land.'}
+                </p>
                 <p className="text-caption text-surface-600 mt-2">
                   You do not need to enter this same direct sale again in Banking.
                 </p>

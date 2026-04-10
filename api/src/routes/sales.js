@@ -164,6 +164,16 @@ function mapBookingForWorkspace(booking, eggTypes = []) {
     isFullyPaid: balance <= 0.009,
     createdAt: booking.createdAt,
     notes: booking.notes,
+    portalCheckout: booking.portalCheckout
+      ? {
+          id: booking.portalCheckout.id,
+          reference: booking.portalCheckout.reference,
+          checkoutType: booking.portalCheckout.checkoutType,
+          paymentMethod: booking.portalCheckout.paymentMethod,
+          status: booking.portalCheckout.status,
+          createdAt: booking.portalCheckout.createdAt,
+        }
+      : null,
     batch: booking.batch ? mapBatchForSale(booking.batch, eggTypes) : null,
     batchEggCodeId: booking.batchEggCodeId || null,
     batchEggCode: booking.batchEggCode
@@ -403,8 +413,18 @@ export default async function salesRoutes(fastify) {
                 retailPrice: true,
               },
             },
+            portalCheckout: {
+              select: {
+                id: true,
+                reference: true,
+                checkoutType: true,
+                paymentMethod: true,
+                status: true,
+                createdAt: true,
+              },
+            },
           },
-          orderBy: [{ createdAt: 'asc' }],
+          orderBy: [{ createdAt: 'desc' }],
         }),
         prisma.batch.findMany({
           where: { status: 'RECEIVED' },
