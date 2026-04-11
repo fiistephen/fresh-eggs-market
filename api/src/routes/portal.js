@@ -513,6 +513,15 @@ async function getPortalOrdersForCustomer(customerId) {
       where: { customerId },
       include: {
         batch: { select: { id: true, name: true, expectedDate: true, receivedDate: true, eggTypeKey: true, status: true } },
+        sale: {
+          select: {
+            id: true,
+            receiptNumber: true,
+            saleDate: true,
+            totalAmount: true,
+            paymentMethod: true,
+          },
+        },
         portalCheckout: {
           select: {
             id: true,
@@ -581,6 +590,11 @@ async function getPortalOrdersForCustomer(customerId) {
     notes: booking.notes,
     createdAt: booking.createdAt,
     updatedAt: booking.updatedAt,
+    saleId: booking.sale?.id || null,
+    receiptNumber: booking.sale?.receiptNumber || null,
+    pickedUpAt: booking.sale?.saleDate || null,
+    saleAmount: booking.sale?.totalAmount != null ? Number(booking.sale.totalAmount) : null,
+    salePaymentMethod: booking.sale?.paymentMethod || null,
   }));
 
   const requestItems = requests.map((request) => ({

@@ -848,11 +848,19 @@ function getNextStep(order) {
       if (order.status === 'CANCELLED' && order.paymentMethod === 'TRANSFER') {
         return 'Your transfer booking was declined because your payment could not be confirmed. If you have proof of payment, please dispute it with evidence.';
       }
-      if (order.status === 'PICKED_UP') return 'Order complete.';
+      if (order.status === 'PICKED_UP') {
+        return order.receiptNumber
+          ? `Order complete. Receipt ${order.receiptNumber} was issued at pickup.`
+          : 'Order complete.';
+      }
     } else {
       if (order.status === 'CONFIRMED' && order.batchArrived) return 'Your batch has arrived. Come for pickup!';
       if (order.status === 'CONFIRMED') return `Batch expected on ${fmtDate(order.batch?.expectedDate)}.`;
-      if (order.status === 'PICKED_UP') return 'Order complete.';
+      if (order.status === 'PICKED_UP') {
+        return order.receiptNumber
+          ? `Order complete. Receipt ${order.receiptNumber} was issued at pickup.`
+          : 'Order complete.';
+      }
     }
   }
   if (order.kind === 'BUY_NOW') {
@@ -867,7 +875,11 @@ function getNextStep(order) {
       }
     }
     if (order.status === 'APPROVED_FOR_PICKUP') return 'Your eggs are ready! Pick up within 3 days.';
-    if (order.status === 'PICKED_UP') return 'Order complete.';
+    if (order.status === 'PICKED_UP') {
+      return order.receiptNumber
+        ? `Order complete. Receipt ${order.receiptNumber} was issued at pickup.`
+        : 'Order complete.';
+    }
   }
   return 'Your order is being processed.';
 }
@@ -935,10 +947,22 @@ function OrderDetailModal({ order, onClose }) {
           <div className="p-4 grid grid-cols-2 gap-3">
             <Metric label="Order date" value={fmtDateTime(order.createdAt)} />
             <Metric label="Reference" value={order.reference || '—'} />
+            {order.pickedUpAt && <Metric label="Picked up on" value={fmtDateTime(order.pickedUpAt)} />}
+            {order.receiptNumber && <Metric label="Receipt" value={order.receiptNumber} />}
             {order.pickupWindowStart && <Metric label="Pickup from" value={fmtDateTime(order.pickupWindowStart)} />}
             {order.pickupWindowEnd && <Metric label="Pickup until" value={fmtDateTime(order.pickupWindowEnd)} />}
           </div>
         </div>
+
+        {order.status === 'PICKED_UP' && (
+          <div className="rounded-lg border border-success-200 bg-success-50 p-4 space-y-2 text-body">
+            <p className="font-semibold text-success-800">Pickup completed</p>
+            <p className="text-success-700">
+              This order has already been picked up successfully.
+              {order.receiptNumber ? ` Receipt ${order.receiptNumber} was issued at pickup.` : ''}
+            </p>
+          </div>
+        )}
 
         {order.notes && (
           <div className="p-3 rounded-md bg-surface-50 border border-surface-100">

@@ -58,6 +58,54 @@ function bookingPaymentTruthMeta(booking) {
   return { label: 'No payment linked', tone: 'default' };
 }
 
+function bookingLifecycleEvents(booking) {
+  const events = [
+    {
+      label: 'Booking created',
+      value: formatDate(booking.createdAt),
+      tone: 'neutral',
+    },
+  ];
+
+  if (booking.portalCheckout?.createdAt) {
+    events.push({
+      label: 'Portal checkout started',
+      value: formatDate(booking.portalCheckout.createdAt),
+      tone: 'neutral',
+    });
+  }
+  if (booking.portalCheckout?.adminConfirmedAt) {
+    events.push({
+      label: 'Staff saw transfer',
+      value: formatDate(booking.portalCheckout.adminConfirmedAt),
+      tone: 'warning',
+    });
+  }
+  if (booking.portalCheckout?.verifiedAt) {
+    events.push({
+      label: booking.portalCheckout.confirmationStatementLineId ? 'Statement confirmed' : 'Payment confirmed',
+      value: formatDate(booking.portalCheckout.verifiedAt),
+      tone: 'success',
+    });
+  }
+  if (booking.batchArrived) {
+    events.push({
+      label: 'Batch arrived',
+      value: formatDate(booking.batchArrivalDate || booking.batch?.receivedDate),
+      tone: 'success',
+    });
+  }
+  if (booking.sale?.saleDate) {
+    events.push({
+      label: 'Pickup completed',
+      value: formatDate(booking.sale.saleDate),
+      tone: 'success',
+    });
+  }
+
+  return events;
+}
+
 function hangingAgeLabel(ageInDays) {
   if (ageInDays >= 90) return '90+ days hanging';
   if (ageInDays >= 30) return '30+ days hanging';
@@ -213,6 +261,7 @@ export default function Bookings() {
   const [showCreate, setShowCreate] = useState(null);
   const [managePaymentsBooking, setManagePaymentsBooking] = useState(null);
   const [showCancel, setShowCancel] = useState(null);
+  const [detailBooking, setDetailBooking] = useState(null);
   const [error, setError] = useState('');
 
   const canCreate = ['ADMIN', 'MANAGER'].includes(user?.role);
@@ -519,6 +568,12 @@ export default function Bookings() {
                   {(canCreate || canCancel) && (
                     <td className="px-4 py-3 text-center">
                       <div className="flex flex-col items-center gap-2">
+                        <button
+                          onClick={() => setDetailBooking(booking)}
+                          className="text-caption font-medium text-surface-600 hover:text-surface-800 transition-colors duration-fast"
+                        >
+                          View details
+                        </button>
                         {canCreate && booking.status === 'CONFIRMED' && booking.portalCheckout?.paymentMethod !== 'CARD' && (
                           <button
                             onClick={() => setManagePaymentsBooking(booking)}
@@ -607,6 +662,21 @@ export default function Bookings() {
             setShowCancel(null);
             loadBookings();
           }}
+        />
+      )}
+
+      {detailBooking && (
+        <BookingDetailModal
+          booking={detailBooking}
+          onClose={() => setDetailBooking(null)}
+          onManagePayments={
+            canCreate && detailBooking.status === 'CONFIRMED' && detailBooking.portalCheckout?.paymentMethod !== 'CARD'
+              ? () => {
+                  setDetailBooking(null);
+                  setManagePaymentsBooking(detailBooking);
+                }
+              : null
+          }
         />
       )}
     </div>
@@ -1514,6 +1584,136 @@ function StepPill({ active, complete, label }) {
     >
       {label}
     </Badge>
+  );
+}
+
+function BookingDetailModal({ booking, onClose, onManagePayments }) {
+  const lifecycle = bookingLifecycleEvents(booking);
+  const sourceMeta = bookingSourceMeta(booking);
+  const paymentMeta = bookingPaymentTruthMeta(booking);
+
+  return (
+    <Modal open={true} onClose={onClose} title="Booking details" size="lg" footer={false}>
+      <div className="space-y-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-caption text-surface-500">Booking</p>
+            <h3 className="text-title font-semibold text-surface-900">{booking.batch?.name || 'Batch'}</h3>
+            <p className="text-body text-surface-600 mt-1">{booking.customer?.name || 'Customer'}{booking.customer?.phone ? ` · ${booking.customer.phone}` : ''}</p>
+          </div>
+          <div className="flex flex-wrap gap-2 justify-end">
+            <Badge color={sourceMeta.tone}>{sourceMeta.label}</Badge>
+            <Badge color={paymentMeta.tone}>{paymentMeta.label}</Badge>
+            <Badge color={BOOKING_STATUS_BADGES[booking.status] || 'neutral'}>{booking.status.replace('_', ' ')}</Badge>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <MetricCard label="Quantity" value={`${booking.quantity} crates`} />
+          <MetricCard label="Booking value" value={formatCurrency(booking.orderValue)} />
+          <MetricCard label="Applied" value={formatCurrency(booking.amountPaid)} />
+          <MetricCard label="Balance" value={formatCurrency(booking.balance)} tone={booking.balance > 0 ? 'warning' : 'success'} />
+        </div>
+
+        <Card className="p-4 bg-surface-50">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <p className="text-overline text-surface-600">Batch</p>
+              <p className="mt-2 text-body-medium font-semibold text-surface-900">{booking.batch?.name || '—'}</p>
+              <p className="mt-1 text-body text-surface-600">{booking.batch?.eggTypeLabel || 'Regular Size Eggs'}</p>
+              <p className="mt-1 text-caption text-surface-500">
+                Expected {formatDate(booking.batch?.expectedDate)}{booking.batchEggCode?.code ? ` · ${booking.batchEggCode.code}` : ''}
+              </p>
+            </div>
+            <div>
+              <p className="text-overline text-surface-600">Payment truth</p>
+              <p className="mt-2 text-body-medium font-semibold text-surface-900">{paymentMeta.label}</p>
+              <p className="mt-1 text-caption text-surface-500">{booking.portalCheckout?.reference || booking.id}</p>
+              {booking.portalCheckout?.paymentMethod ? (
+                <p className="mt-1 text-caption text-surface-500">Paid by {booking.portalCheckout.paymentMethod === 'CARD' ? 'Card' : 'Transfer'}</p>
+              ) : null}
+            </div>
+          </div>
+        </Card>
+
+        {lifecycle.length > 0 && (
+          <Card className="p-4">
+            <p className="text-overline text-surface-600 mb-3">Lifecycle</p>
+            <div className="space-y-3">
+              {lifecycle.map((event) => (
+                <div key={`${event.label}-${event.value}`} className="flex items-start justify-between gap-3 border-b border-surface-100 pb-3 last:border-b-0 last:pb-0">
+                  <div>
+                    <p className="text-body-medium font-semibold text-surface-900">{event.label}</p>
+                    <p className="text-caption text-surface-500 mt-1">{event.value}</p>
+                  </div>
+                  <Badge color={event.tone}>{event.label}</Badge>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
+        {booking.allocations?.length > 0 && (
+          <Card className="p-4">
+            <p className="text-overline text-surface-600 mb-3">Payments applied</p>
+            <div className="space-y-3">
+              {booking.allocations.map((allocation) => (
+                <div key={allocation.id} className="flex flex-col gap-2 border-b border-surface-100 pb-3 last:border-b-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-body-medium font-semibold text-surface-900">
+                      {allocation.bankTransaction?.description || allocation.bankTransaction?.reference || 'Customer deposit'}
+                    </p>
+                    <p className="text-caption text-surface-500 mt-1">
+                      {formatDate(allocation.bankTransaction?.transactionDate)} · {allocation.bankTransaction?.bankAccount?.name || 'Account'}
+                    </p>
+                  </div>
+                  <p className="text-body-medium font-semibold text-surface-900">{formatCurrency(allocation.amount)}</p>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
+        {booking.sale && (
+          <Card className="p-4 bg-success-50 border border-success-200">
+            <p className="text-overline text-success-800">Fulfilment result</p>
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <MetricCard label="Receipt" value={booking.sale.receiptNumber || '—'} />
+              <MetricCard label="Picked up on" value={formatDate(booking.sale.saleDate)} />
+              <MetricCard label="Sale total" value={formatCurrency(booking.sale.totalAmount)} />
+              <MetricCard label="Payment method" value={booking.sale.paymentMethod ? booking.sale.paymentMethod.replace('_', ' ') : '—'} />
+            </div>
+          </Card>
+        )}
+
+        {booking.notes && (
+          <Card className="p-4 bg-surface-50">
+            <p className="text-overline text-surface-600">Notes</p>
+            <p className="mt-2 text-body text-surface-700 whitespace-pre-wrap">{booking.notes}</p>
+          </Card>
+        )}
+
+        <div className="flex justify-end gap-3">
+          {onManagePayments && (
+            <Button variant="secondary" size="md" onClick={onManagePayments}>
+              Manage payments
+            </Button>
+          )}
+          <Button variant="primary" size="md" onClick={onClose}>
+            Close
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function MetricCard({ label, value, tone = 'default' }) {
+  return (
+    <div className="rounded-lg border border-surface-200 bg-white p-3">
+      <p className="text-overline text-surface-500">{label}</p>
+      <p className={`mt-2 text-body-medium font-semibold ${tone === 'warning' ? 'text-warning-700' : tone === 'success' ? 'text-success-700' : 'text-surface-900'}`}>{value}</p>
+    </div>
   );
 }
 

@@ -68,6 +68,11 @@ function enrichBooking(booking, eggTypes = [], policy = { bookingMinimumPaymentP
       },
     }),
     batchEggCode: booking.batchEggCode ? mapBatchEggCode(booking.batchEggCode, booking.batch) : null,
+    sale: booking.sale ? {
+      ...booking.sale,
+      totalAmount: Number(booking.sale.totalAmount),
+      totalCost: Number(booking.sale.totalCost),
+    } : null,
   };
 }
 
