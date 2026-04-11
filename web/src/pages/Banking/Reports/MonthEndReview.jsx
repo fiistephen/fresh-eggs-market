@@ -35,12 +35,15 @@ function StatCard({ label, value, subtext, tone = 'default' }) {
   );
 }
 
-function SectionCard({ title, subtitle, children }) {
+function SectionCard({ title, subtitle, children, action = null }) {
   return (
     <div className="rounded-xl border border-surface-200 bg-surface-0">
-      <div className="border-b border-surface-100 px-5 py-4">
-        <h3 className="text-title text-surface-900">{title}</h3>
-        {subtitle ? <p className="mt-1 text-body text-surface-500">{subtitle}</p> : null}
+      <div className="flex flex-col gap-3 border-b border-surface-100 px-5 py-4 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h3 className="text-title text-surface-900">{title}</h3>
+          {subtitle ? <p className="mt-1 text-body text-surface-500">{subtitle}</p> : null}
+        </div>
+        {action}
       </div>
       <div className="p-5">{children}</div>
     </div>
@@ -152,11 +155,91 @@ function MonthEndBalanceModal({ account, month, onClose, onSaved }) {
   );
 }
 
+function CloseMonthModal({ month, review, onClose, onClosed }) {
+  const [notes, setNotes] = useState(`Month reviewed and closed for ${review.label}.`);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    setSubmitting(true);
+    setError('');
+    try {
+      await api.post('/banking/month-closes', {
+        month,
+        notes: notes.trim() || undefined,
+      });
+      onClosed();
+    } catch (err) {
+      setError(err.error || 'Failed to close month');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <ModalShell title={`Close ${review.label}`} onClose={onClose} maxWidth="max-w-2xl">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {error ? <div className="rounded-lg border border-error-100 bg-error-50 px-3 py-2 text-body text-error-700">{error}</div> : null}
+
+        <div className="rounded-lg border border-brand-100 bg-brand-50 px-4 py-3 text-body text-brand-700">
+          Closing this month stores the current balance picture and unresolved review counts as the formal month-end record. It does not erase hanging deposits or operational alerts.
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="rounded-lg bg-surface-50 px-4 py-3">
+            <p className="text-overline text-surface-500">Accounts missing balance</p>
+            <p className="mt-1 text-body-medium font-semibold text-surface-900">{review.accountsMissingMonthEndBalance}</p>
+          </div>
+          <div className="rounded-lg bg-surface-50 px-4 py-3">
+            <p className="text-overline text-surface-500">Unresolved review items</p>
+            <p className="mt-1 text-body-medium font-semibold text-surface-900">
+              {Number(review.unresolved?.hangingDeposits?.count || 0)
+                + Number(review.unresolved?.pendingTransferConfirmations?.count || 0)
+                + Number(review.unresolved?.undepositedCash?.count || 0)
+                + Number(review.unresolved?.pendingCashDeposits?.count || 0)
+                + Number(review.unresolved?.pendingApprovals?.count || 0)}
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="rounded-lg border border-surface-100 px-4 py-3">
+            <p className="text-overline text-surface-500">Hanging deposits</p>
+            <p className="mt-1 text-body-medium font-semibold text-warning-700">{fmtMoney(review.unresolved?.hangingDeposits?.total || 0)}</p>
+          </div>
+          <div className="rounded-lg border border-surface-100 px-4 py-3">
+            <p className="text-overline text-surface-500">Pending transfer confirmations</p>
+            <p className="mt-1 text-body-medium font-semibold text-warning-700">{fmtMoney(review.unresolved?.pendingTransferConfirmations?.total || 0)}</p>
+          </div>
+          <div className="rounded-lg border border-surface-100 px-4 py-3">
+            <p className="text-overline text-surface-500">Cash not yet banked</p>
+            <p className="mt-1 text-body-medium font-semibold text-warning-700">{fmtMoney(review.unresolved?.undepositedCash?.total || 0)}</p>
+          </div>
+        </div>
+
+        <Field label="Manager close note (optional)">
+          <textarea
+            rows={3}
+            value={notes}
+            onChange={(event) => setNotes(event.target.value)}
+            className="w-full rounded-md border border-surface-200 px-3 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500"
+            placeholder="What was reviewed before closing this month?"
+          />
+        </Field>
+
+        <ModalActions onClose={onClose} submitting={submitting} submitLabel={submitting ? 'Closing…' : 'Close month'} />
+      </form>
+    </ModalShell>
+  );
+}
+
 export default function MonthEndReview() {
   const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedAccount, setSelectedAccount] = useState(null);
+  const [showCloseModal, setShowCloseModal] = useState(false);
   const [notice, setNotice] = useState('');
 
   const loadReview = useCallback(() => {
@@ -206,6 +289,9 @@ export default function MonthEndReview() {
 
   const accounts = data.accounts || [];
   const unresolved = data.unresolved || {};
+  const monthClose = data.monthClose;
+  const recentMonthCloses = data.recentMonthCloses || [];
+  const canCloseMonth = !monthClose && Number(data.accountsMissingMonthEndBalance || 0) === 0;
 
   return (
     <>
@@ -217,23 +303,44 @@ export default function MonthEndReview() {
               Review balances and unresolved items before the manager closes {data.label}. Long-hanging customer deposits can stay open; the goal here is visibility.
             </p>
           </div>
-          <div>
-            <label className="mb-2 block text-overline text-surface-500">Review month</label>
-            <input
-              type="month"
-              value={month}
-              onChange={(event) => {
-                setMonth(event.target.value);
-                setNotice('');
-              }}
-              className="rounded-lg border border-surface-300 bg-surface-0 px-3 py-2 text-body text-surface-800"
-            />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div>
+              <label className="mb-2 block text-overline text-surface-500">Review month</label>
+              <input
+                type="month"
+                value={month}
+                onChange={(event) => {
+                  setMonth(event.target.value);
+                  setNotice('');
+                }}
+                className="rounded-lg border border-surface-300 bg-surface-0 px-3 py-2 text-body text-surface-800"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowCloseModal(true)}
+              disabled={!canCloseMonth}
+              className="rounded-lg bg-brand-500 px-4 py-2.5 text-body-medium text-surface-900 transition-colors duration-fast hover:bg-brand-400 disabled:cursor-not-allowed disabled:bg-surface-200 disabled:text-surface-500"
+            >
+              {monthClose ? 'Month already closed' : 'Close month'}
+            </button>
           </div>
         </div>
 
         {notice ? (
           <div className="rounded-lg border border-success-100 bg-success-50 px-4 py-3 text-body text-success-700">
             {notice}
+          </div>
+        ) : null}
+
+        {monthClose ? (
+          <div className="rounded-lg border border-brand-100 bg-brand-50 px-4 py-4 text-body text-brand-700">
+            <p className="font-semibold">{data.label} was closed on {fmtDate(monthClose.closedAt, true)}.</p>
+            <p className="mt-1 opacity-80">Closed by {monthClose.closedBy?.firstName || '—'} {monthClose.closedBy?.lastName || ''}.{monthClose.notes ? ` Note: ${monthClose.notes}` : ''}</p>
+          </div>
+        ) : Number(data.accountsMissingMonthEndBalance || 0) > 0 ? (
+          <div className="rounded-lg border border-warning-100 bg-warning-50 px-4 py-4 text-body text-warning-700">
+            Enter a month-end balance for all active accounts before you close {data.label}.
           </div>
         ) : null}
 
@@ -437,6 +544,39 @@ export default function MonthEndReview() {
             </div>
           )}
         </SectionCard>
+
+        <SectionCard title="Recent close history" subtitle="Each close stores the month-end note and unresolved snapshot that management reviewed at that time.">
+          {recentMonthCloses.length === 0 ? (
+            <EmptyMini title="No months have been formally closed yet." />
+          ) : (
+            <div className="overflow-x-auto custom-scrollbar">
+              <table className="w-full min-w-[900px]">
+                <thead>
+                  <tr className="border-b border-surface-100">
+                    <th className="px-4 py-3 text-left text-overline text-surface-500">Month</th>
+                    <th className="px-4 py-3 text-left text-overline text-surface-500">Closed by</th>
+                    <th className="px-4 py-3 text-left text-overline text-surface-500">Closed on</th>
+                    <th className="px-4 py-3 text-right text-overline text-surface-500">Hanging deposits</th>
+                    <th className="px-4 py-3 text-right text-overline text-surface-500">Cash not banked</th>
+                    <th className="px-4 py-3 text-left text-overline text-surface-500">Note</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentMonthCloses.map((close) => (
+                    <tr key={close.id} className="border-b border-surface-50">
+                      <td className="px-4 py-3 text-body-medium font-medium text-surface-900">{close.monthKey}</td>
+                      <td className="px-4 py-3 text-body text-surface-700">{close.closedBy?.firstName || '—'} {close.closedBy?.lastName || ''}</td>
+                      <td className="px-4 py-3 text-body text-surface-500">{fmtDate(close.closedAt, true)}</td>
+                      <td className="px-4 py-3 text-right text-body text-warning-700">{fmtMoney(close.unresolvedSnapshot?.hangingDeposits?.total || 0)}</td>
+                      <td className="px-4 py-3 text-right text-body text-warning-700">{fmtMoney(close.unresolvedSnapshot?.undepositedCash?.total || 0)}</td>
+                      <td className="px-4 py-3 text-body text-surface-500">{close.notes || 'No note supplied'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </SectionCard>
       </div>
 
       {selectedAccount ? (
@@ -445,8 +585,22 @@ export default function MonthEndReview() {
           month={month}
           onClose={() => setSelectedAccount(null)}
           onSaved={() => {
+            const accountName = displayAccountName(selectedAccount);
             setSelectedAccount(null);
-            setNotice(`Month-end balance saved for ${displayAccountName(selectedAccount)}.`);
+            setNotice(`Month-end balance saved for ${accountName}.`);
+            loadReview();
+          }}
+        />
+      ) : null}
+
+      {showCloseModal ? (
+        <CloseMonthModal
+          month={month}
+          review={data}
+          onClose={() => setShowCloseModal(false)}
+          onClosed={() => {
+            setShowCloseModal(false);
+            setNotice(`${data.label} has been formally closed.`);
             loadReview();
           }}
         />

@@ -60,6 +60,15 @@ function enrichReconciliation(rec) {
   };
 }
 
+function enrichMonthClose(close) {
+  if (!close) return null;
+  return {
+    ...close,
+    unresolvedSnapshot: close.unresolvedSnapshot || {},
+    accountSnapshot: close.accountSnapshot || [],
+  };
+}
+
 function buildImportCounts(lines = []) {
   return {
     total: lines.length,
@@ -697,6 +706,180 @@ async function getCashDepositMatchCandidates({ amount, transactionDate, bankAcco
         || a.amountDifference - b.amountDifference
         || a.dateDifferenceDays - b.dateDifferenceDays;
     });
+}
+
+
+async function buildMonthEndReviewData(monthKey) {
+  const { start, nextStart, end, label } = getMonthWindow(monthKey);
+
+  const [accountsRaw, hangingDepositTransactions, pendingPortalTransfers, pendingCashDeposits, pendingApprovals, undepositedCash] = await Promise.all([
+    prisma.bankAccount.findMany({
+      where: { isActive: true },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+    }),
+    prisma.bankTransaction.findMany({
+      where: {
+        direction: 'INFLOW',
+        category: { in: CUSTOMER_DEPOSIT_QUEUE_CATEGORIES },
+        customerId: { not: null },
+        transactionDate: { lt: nextStart },
+      },
+      include: {
+        customer: { select: { id: true, name: true, phone: true } },
+        bankAccount: { select: { id: true, name: true, accountType: true, lastFour: true, isVirtual: true, supportsStatementImport: true } },
+        enteredBy: { select: { firstName: true, lastName: true } },
+      },
+      orderBy: [{ transactionDate: 'asc' }, { createdAt: 'asc' }],
+    }),
+    prisma.portalCheckout.findMany({
+      where: {
+        paymentMethod: 'TRANSFER',
+        status: { in: ['AWAITING_TRANSFER', 'ADMIN_CONFIRMED'] },
+        confirmationStatementLineId: null,
+        createdAt: { lt: nextStart },
+      },
+      include: {
+        customer: { select: { id: true, name: true, phone: true } },
+        batch: { select: { id: true, name: true, eggTypeKey: true } },
+        adminConfirmedBy: { select: { firstName: true, lastName: true } },
+      },
+      orderBy: [{ createdAt: 'desc' }],
+    }),
+    prisma.cashDepositBatch.findMany({
+      where: {
+        depositDate: { lt: nextStart },
+        status: { in: ['PENDING_CONFIRMATION', 'OVERDUE'] },
+      },
+      include: {
+        createdBy: { select: { firstName: true, lastName: true } },
+        transactions: { select: { id: true } },
+      },
+      orderBy: [{ depositDate: 'desc' }, { createdAt: 'desc' }],
+    }),
+    prisma.approvalRequest.findMany({
+      where: {
+        status: 'PENDING',
+        createdAt: { lt: nextStart },
+      },
+      include: {
+        requestedBy: { select: { firstName: true, lastName: true } },
+      },
+      orderBy: [{ createdAt: 'desc' }],
+    }),
+    getAvailableCashSaleTransactions({ upToDate: end }),
+  ]);
+
+  const hangingAllocationMap = hangingDepositTransactions.length > 0
+    ? new Map(
+        (await prisma.bookingPaymentAllocation.groupBy({
+          by: ['bankTransactionId'],
+          where: {
+            bankTransactionId: { in: hangingDepositTransactions.map((transaction) => transaction.id) },
+            createdAt: { lt: nextStart },
+          },
+          _sum: { amount: true },
+        })).map((entry) => [entry.bankTransactionId, Number(entry._sum.amount || 0)]),
+      )
+    : new Map();
+
+  const hangingDeposits = hangingDepositTransactions
+    .map((transaction) => {
+      const allocatedAmount = hangingAllocationMap.get(transaction.id) || 0;
+      const availableAmount = Math.max(0, Number(transaction.amount) - allocatedAmount);
+      return {
+        ...enrichTransaction(transaction),
+        allocatedAmount,
+        availableAmount,
+      };
+    })
+    .filter((transaction) => transaction.availableAmount > 0.009);
+
+  const accounts = await Promise.all(accountsRaw.map(async (account) => {
+    const [inflows, outflows, transactionCount, latestReconciliation, monthEndReconciliation] = await Promise.all([
+      prisma.bankTransaction.aggregate({
+        where: { bankAccountId: account.id, direction: 'INFLOW', transactionDate: { lt: nextStart } },
+        _sum: { amount: true },
+      }),
+      prisma.bankTransaction.aggregate({
+        where: { bankAccountId: account.id, direction: 'OUTFLOW', transactionDate: { lt: nextStart } },
+        _sum: { amount: true },
+      }),
+      prisma.bankTransaction.count({
+        where: { bankAccountId: account.id, transactionDate: { lt: nextStart } },
+      }),
+      prisma.bankReconciliation.findFirst({
+        where: { bankAccountId: account.id, statementDate: { lt: nextStart } },
+        orderBy: [{ statementDate: 'desc' }, { createdAt: 'desc' }],
+        include: {
+          reconciledBy: { select: { firstName: true, lastName: true } },
+        },
+      }),
+      prisma.bankReconciliation.findFirst({
+        where: { bankAccountId: account.id, statementDate: { gte: start, lt: nextStart } },
+        orderBy: [{ statementDate: 'desc' }, { createdAt: 'desc' }],
+        include: {
+          reconciledBy: { select: { firstName: true, lastName: true } },
+        },
+      }),
+    ]);
+
+    return {
+      ...account,
+      totalInflows: Number(inflows._sum.amount || 0),
+      totalOutflows: Number(outflows._sum.amount || 0),
+      systemBalance: Number(inflows._sum.amount || 0) - Number(outflows._sum.amount || 0),
+      transactionCount,
+      latestReconciliation: latestReconciliation ? enrichReconciliation(latestReconciliation) : null,
+      monthEndReconciliation: monthEndReconciliation ? enrichReconciliation(monthEndReconciliation) : null,
+    };
+  }));
+
+  const pendingTransferItems = pendingPortalTransfers.map((checkout) => ({
+    ...checkout,
+    unitPrice: Number(checkout.unitPrice || 0),
+    orderValue: Number(checkout.orderValue || 0),
+    amountToPay: Number(checkout.amountToPay || 0),
+    balanceAfterPayment: Number(checkout.balanceAfterPayment || 0),
+  }));
+
+  const pendingCashDepositItems = pendingCashDeposits.map((batch) => ({
+    ...batch,
+    amount: Number(batch.amount),
+  }));
+
+  return {
+    month: monthKey,
+    label,
+    window: { start, end },
+    accounts,
+    accountsMissingMonthEndBalance: accounts.filter((account) => !account.monthEndReconciliation).length,
+    unresolved: {
+      hangingDeposits: {
+        count: hangingDeposits.length,
+        total: hangingDeposits.reduce((sum, transaction) => sum + Number(transaction.availableAmount || 0), 0),
+        items: hangingDeposits,
+      },
+      pendingTransferConfirmations: {
+        count: pendingTransferItems.length,
+        total: pendingTransferItems.reduce((sum, checkout) => sum + Number(checkout.amountToPay || 0), 0),
+        items: pendingTransferItems,
+      },
+      undepositedCash: {
+        count: undepositedCash.length,
+        total: undepositedCash.reduce((sum, transaction) => sum + Number(transaction.availableAmount || 0), 0),
+        items: undepositedCash,
+      },
+      pendingCashDeposits: {
+        count: pendingCashDepositItems.length,
+        total: pendingCashDepositItems.reduce((sum, batch) => sum + Number(batch.amount || 0), 0),
+        items: pendingCashDepositItems,
+      },
+      pendingApprovals: {
+        count: pendingApprovals.length,
+        items: pendingApprovals,
+      },
+    },
+  };
 }
 
 export default async function bankingRoutes(fastify) {
@@ -2684,184 +2867,102 @@ export default async function bankingRoutes(fastify) {
       const fallbackMonth = new Date().toISOString().slice(0, 7);
       const monthKey = /^\d{4}-\d{2}$/.test(queryMonth) ? queryMonth : fallbackMonth;
 
-      let monthWindow;
       try {
-        monthWindow = getMonthWindow(monthKey);
-      } catch {
-        return reply.code(400).send({ error: 'Month must be in YYYY-MM format.' });
-      }
-
-      const { start, nextStart, end, label } = monthWindow;
-
-      const [accountsRaw, hangingDepositTransactions, pendingPortalTransfers, pendingCashDeposits, pendingApprovals, undepositedCash] = await Promise.all([
-        prisma.bankAccount.findMany({
-          where: { isActive: true },
-          orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
-        }),
-        prisma.bankTransaction.findMany({
-          where: {
-            direction: 'INFLOW',
-            category: { in: CUSTOMER_DEPOSIT_QUEUE_CATEGORIES },
-            customerId: { not: null },
-            transactionDate: { lt: nextStart },
-          },
-          include: {
-            customer: { select: { id: true, name: true, phone: true } },
-            bankAccount: { select: { id: true, name: true, accountType: true, lastFour: true, isVirtual: true, supportsStatementImport: true } },
-            enteredBy: { select: { firstName: true, lastName: true } },
-          },
-          orderBy: [{ transactionDate: 'asc' }, { createdAt: 'asc' }],
-        }),
-        prisma.portalCheckout.findMany({
-          where: {
-            paymentMethod: 'TRANSFER',
-            status: { in: ['AWAITING_TRANSFER', 'ADMIN_CONFIRMED'] },
-            confirmationStatementLineId: null,
-            createdAt: { lt: nextStart },
-          },
-          include: {
-            customer: { select: { id: true, name: true, phone: true } },
-            batch: { select: { id: true, name: true, eggTypeKey: true } },
-            adminConfirmedBy: { select: { firstName: true, lastName: true } },
-          },
-          orderBy: [{ createdAt: 'desc' }],
-        }),
-        prisma.cashDepositBatch.findMany({
-          where: {
-            depositDate: { lt: nextStart },
-            status: { in: ['PENDING_CONFIRMATION', 'OVERDUE'] },
-          },
-          include: {
-            createdBy: { select: { firstName: true, lastName: true } },
-            transactions: { select: { id: true } },
-          },
-          orderBy: [{ depositDate: 'desc' }, { createdAt: 'desc' }],
-        }),
-        prisma.approvalRequest.findMany({
-          where: {
-            status: 'PENDING',
-            createdAt: { lt: nextStart },
-          },
-          include: {
-            requestedBy: { select: { firstName: true, lastName: true } },
-          },
-          orderBy: [{ createdAt: 'desc' }],
-        }),
-        getAvailableCashSaleTransactions({ upToDate: end }),
-      ]);
-
-      const hangingAllocationMap = hangingDepositTransactions.length > 0
-        ? new Map(
-            (await prisma.bookingPaymentAllocation.groupBy({
-              by: ['bankTransactionId'],
-              where: {
-                bankTransactionId: { in: hangingDepositTransactions.map((transaction) => transaction.id) },
-                createdAt: { lt: nextStart },
-              },
-              _sum: { amount: true },
-            })).map((entry) => [entry.bankTransactionId, Number(entry._sum.amount || 0)]),
-          )
-        : new Map();
-
-      const hangingDeposits = hangingDepositTransactions
-        .map((transaction) => {
-          const allocatedAmount = hangingAllocationMap.get(transaction.id) || 0;
-          const availableAmount = Math.max(0, Number(transaction.amount) - allocatedAmount);
-          return {
-            ...enrichTransaction(transaction),
-            allocatedAmount,
-            availableAmount,
-          };
-        })
-        .filter((transaction) => transaction.availableAmount > 0.009);
-
-      const accounts = await Promise.all(accountsRaw.map(async (account) => {
-        const [inflows, outflows, transactionCount, latestReconciliation, monthEndReconciliation] = await Promise.all([
-          prisma.bankTransaction.aggregate({
-            where: { bankAccountId: account.id, direction: 'INFLOW', transactionDate: { lt: nextStart } },
-            _sum: { amount: true },
+        const [review, monthClose, recentMonthCloses] = await Promise.all([
+          buildMonthEndReviewData(monthKey),
+          prisma.monthClose.findUnique({
+            where: { monthKey },
+            include: { closedBy: { select: { firstName: true, lastName: true } } },
           }),
-          prisma.bankTransaction.aggregate({
-            where: { bankAccountId: account.id, direction: 'OUTFLOW', transactionDate: { lt: nextStart } },
-            _sum: { amount: true },
-          }),
-          prisma.bankTransaction.count({
-            where: { bankAccountId: account.id, transactionDate: { lt: nextStart } },
-          }),
-          prisma.bankReconciliation.findFirst({
-            where: { bankAccountId: account.id, statementDate: { lt: nextStart } },
-            orderBy: [{ statementDate: 'desc' }, { createdAt: 'desc' }],
-            include: {
-              reconciledBy: { select: { firstName: true, lastName: true } },
-            },
-          }),
-          prisma.bankReconciliation.findFirst({
-            where: { bankAccountId: account.id, statementDate: { gte: start, lt: nextStart } },
-            orderBy: [{ statementDate: 'desc' }, { createdAt: 'desc' }],
-            include: {
-              reconciledBy: { select: { firstName: true, lastName: true } },
-            },
+          prisma.monthClose.findMany({
+            take: 12,
+            orderBy: [{ monthStart: 'desc' }, { closedAt: 'desc' }],
+            include: { closedBy: { select: { firstName: true, lastName: true } } },
           }),
         ]);
 
-        return {
-          ...account,
-          totalInflows: Number(inflows._sum.amount || 0),
-          totalOutflows: Number(outflows._sum.amount || 0),
-          systemBalance: Number(inflows._sum.amount || 0) - Number(outflows._sum.amount || 0),
-          transactionCount,
-          latestReconciliation: latestReconciliation ? enrichReconciliation(latestReconciliation) : null,
-          monthEndReconciliation: monthEndReconciliation ? enrichReconciliation(monthEndReconciliation) : null,
-        };
-      }));
+        return reply.send({
+          ...review,
+          monthClose: enrichMonthClose(monthClose),
+          recentMonthCloses: recentMonthCloses.map(enrichMonthClose),
+        });
+      } catch {
+        return reply.code(400).send({ error: 'Month must be in YYYY-MM format.' });
+      }
+    },
+  });
 
-      const accountsMissingMonthEndBalance = accounts.filter((account) => !account.monthEndReconciliation).length;
-
-      return reply.send({
-        month: monthKey,
-        label,
-        window: {
-          start,
-          end,
-        },
-        accounts,
-        accountsMissingMonthEndBalance,
-        unresolved: {
-          hangingDeposits: {
-            count: hangingDeposits.length,
-            total: hangingDeposits.reduce((sum, transaction) => sum + Number(transaction.availableAmount || 0), 0),
-            items: hangingDeposits,
-          },
-          pendingTransferConfirmations: {
-            count: pendingPortalTransfers.length,
-            total: pendingPortalTransfers.reduce((sum, checkout) => sum + Number(checkout.amountToPay || 0), 0),
-            items: pendingPortalTransfers.map((checkout) => ({
-              ...checkout,
-              unitPrice: Number(checkout.unitPrice || 0),
-              orderValue: Number(checkout.orderValue || 0),
-              amountToPay: Number(checkout.amountToPay || 0),
-              balanceAfterPayment: Number(checkout.balanceAfterPayment || 0),
-            })),
-          },
-          undepositedCash: {
-            count: undepositedCash.length,
-            total: undepositedCash.reduce((sum, transaction) => sum + Number(transaction.availableAmount || 0), 0),
-            items: undepositedCash,
-          },
-          pendingCashDeposits: {
-            count: pendingCashDeposits.length,
-            total: pendingCashDeposits.reduce((sum, batch) => sum + Number(batch.amount || 0), 0),
-            items: pendingCashDeposits.map((batch) => ({
-              ...batch,
-              amount: Number(batch.amount),
-            })),
-          },
-          pendingApprovals: {
-            count: pendingApprovals.length,
-            items: pendingApprovals,
-          },
-        },
+  fastify.get('/banking/month-closes', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER')],
+    handler: async (request, reply) => {
+      const limit = Math.min(60, Math.max(1, Number(request.query.limit || 12)));
+      const monthCloses = await prisma.monthClose.findMany({
+        take: limit,
+        orderBy: [{ monthStart: 'desc' }, { closedAt: 'desc' }],
+        include: { closedBy: { select: { firstName: true, lastName: true } } },
       });
+      return reply.send({ monthCloses: monthCloses.map(enrichMonthClose) });
+    },
+  });
+
+  fastify.post('/banking/month-closes', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER')],
+    handler: async (request, reply) => {
+      const queryMonth = typeof request.body.month === 'string' ? request.body.month : '';
+      const fallbackMonth = new Date().toISOString().slice(0, 7);
+      const monthKey = /^\d{4}-\d{2}$/.test(queryMonth) ? queryMonth : fallbackMonth;
+      const notes = typeof request.body.notes === 'string' ? request.body.notes.trim() : '';
+
+      try {
+        const existing = await prisma.monthClose.findUnique({ where: { monthKey } });
+        if (existing) {
+          return reply.code(409).send({ error: 'This month has already been closed.' });
+        }
+
+        const review = await buildMonthEndReviewData(monthKey);
+        if (review.accountsMissingMonthEndBalance > 0) {
+          return reply.code(400).send({ error: 'Enter a month-end balance for every active account before closing the month.' });
+        }
+
+        const unresolvedSnapshot = {
+          hangingDeposits: { count: review.unresolved.hangingDeposits.count, total: review.unresolved.hangingDeposits.total },
+          pendingTransferConfirmations: { count: review.unresolved.pendingTransferConfirmations.count, total: review.unresolved.pendingTransferConfirmations.total },
+          undepositedCash: { count: review.unresolved.undepositedCash.count, total: review.unresolved.undepositedCash.total },
+          pendingCashDeposits: { count: review.unresolved.pendingCashDeposits.count, total: review.unresolved.pendingCashDeposits.total },
+          pendingApprovals: { count: review.unresolved.pendingApprovals.count },
+          accountsMissingMonthEndBalance: review.accountsMissingMonthEndBalance,
+        };
+
+        const accountSnapshot = review.accounts.map((account) => ({
+          bankAccountId: account.id,
+          accountName: account.name,
+          accountType: account.accountType,
+          systemBalance: Number(account.systemBalance || 0),
+          transactionCount: Number(account.transactionCount || 0),
+          monthEndBalance: account.monthEndReconciliation ? Number(account.monthEndReconciliation.closingBalance || 0) : null,
+          variance: account.monthEndReconciliation ? Number(account.monthEndReconciliation.variance || 0) : null,
+          statementDate: account.monthEndReconciliation?.statementDate || null,
+          reconciliationStatus: account.monthEndReconciliation?.status || 'MISSING',
+        }));
+
+        const monthClose = await prisma.monthClose.create({
+          data: {
+            monthKey,
+            monthStart: review.window.start,
+            monthEnd: review.window.end,
+            status: 'CLOSED',
+            notes: notes || null,
+            unresolvedSnapshot,
+            accountSnapshot,
+            closedById: request.user.sub,
+          },
+          include: { closedBy: { select: { firstName: true, lastName: true } } },
+        });
+
+        return reply.code(201).send({ monthClose: enrichMonthClose(monthClose) });
+      } catch {
+        return reply.code(400).send({ error: 'Month must be in YYYY-MM format.' });
+      }
     },
   });
 

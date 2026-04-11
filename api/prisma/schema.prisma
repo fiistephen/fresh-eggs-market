@@ -62,6 +62,7 @@ model User {
   portalCheckoutDecisions PortalCheckoutDecision[]
   approvalRequestsRequested ApprovalRequest[] @relation("ApprovalRequestedBy")
   approvalRequestsResolved ApprovalRequest[] @relation("ApprovalResolvedBy")
+  monthCloses MonthClose[] @relation("MonthClosedBy")
 
   @@map("users")
 }
@@ -513,6 +514,10 @@ enum ReconciliationStatus {
   OPEN
 }
 
+enum MonthCloseStatus {
+  CLOSED
+}
+
 enum CashDepositBatchStatus {
   PENDING_CONFIRMATION
   CONFIRMED
@@ -638,6 +643,26 @@ model BankReconciliation {
   reconciledBy      User                 @relation("ReconciledBy", fields: [reconciledById], references: [id])
 
   @@map("bank_reconciliations")
+}
+
+model MonthClose {
+  id                String           @id @default(cuid())
+  monthKey          String           @unique @map("month_key")
+  monthStart        DateTime         @map("month_start")
+  monthEnd          DateTime         @map("month_end")
+  status            MonthCloseStatus @default(CLOSED)
+  notes             String?
+  unresolvedSnapshot Json            @map("unresolved_snapshot")
+  accountSnapshot   Json             @map("account_snapshot")
+  closedById        String           @map("closed_by_id")
+  closedAt          DateTime         @default(now()) @map("closed_at")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+
+  closedBy          User             @relation("MonthClosedBy", fields: [closedById], references: [id])
+
+  @@index([closedAt])
+  @@map("month_closes")
 }
 
 model BookingPaymentAllocation {
