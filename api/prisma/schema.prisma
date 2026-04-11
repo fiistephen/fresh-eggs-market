@@ -152,7 +152,7 @@ model FarmerLedgerEntry {
   id            String                @id @default(cuid())
   farmerId      String                @map("farmer_id")
   batchId       String?               @map("batch_id")
-  bankTransactionId String?           @unique @map("bank_transaction_id")
+  bankTransactionId String?           @map("bank_transaction_id")
   createdById   String                @map("created_by_id")
   entryType     FarmerLedgerEntryType @map("entry_type")
   amount        Decimal               @db.Decimal(12, 2)
@@ -169,6 +169,7 @@ model FarmerLedgerEntry {
 
   @@index([farmerId, entryDate])
   @@index([batchId])
+  @@index([bankTransactionId])
   @@map("farmer_ledger_entries")
 }
 
