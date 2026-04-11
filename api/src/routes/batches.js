@@ -326,7 +326,6 @@ export default async function batchRoutes(fastify) {
         eggTypeKey,
         wholesalePrice,
         retailPrice,
-        plannedItems = [],
       } = request.body;
       const eggTypes = await getCustomerEggTypeConfig();
       const activeEggType = findCustomerEggTypeByKey(
@@ -334,7 +333,6 @@ export default async function batchRoutes(fastify) {
         eggTypeKey || 'REGULAR',
       );
 
-      // Validation
       if (!expectedDate) return reply.code(400).send({ error: 'Expected date is required' });
       if (!expectedQuantity || expectedQuantity <= 0) return reply.code(400).send({ error: 'Expected quantity must be positive' });
       if (!activeEggType) return reply.code(400).send({ error: 'Choose an active egg type for this batch' });
@@ -346,70 +344,6 @@ export default async function batchRoutes(fastify) {
         return reply.code(400).send({ error: 'Available for booking cannot exceed expected quantity' });
       }
 
-      if (!Array.isArray(plannedItems) || plannedItems.length === 0) {
-        return reply.code(400).send({ error: 'Add at least one item type for this batch' });
-      }
-      if (plannedItems.length > 3) {
-        return reply.code(400).send({ error: 'A batch can have up to 3 item types' });
-      }
-
-      const normalizedPlannedItems = [];
-      const seenCodes = new Set();
-
-      for (const row of plannedItems) {
-        const rawCode = row.code || (row.price ? `FE${row.price}` : '');
-        const code = normalizeItemCode(rawCode);
-        if (!code || !/^FE\d+$/.test(code)) {
-          return reply.code(400).send({ error: 'Each batch item must use a valid FE code like FE4600' });
-        }
-
-        const itemCostPrice = Number(row.costPrice);
-        if (!itemCostPrice || itemCostPrice <= 0) {
-          return reply.code(400).send({ error: `Enter a valid cost price for ${code}` });
-        }
-
-        if (seenCodes.has(code)) {
-          return reply.code(400).send({ error: `${code} was added more than once. Use one row per item type.` });
-        }
-        seenCodes.add(code);
-
-        let item = null;
-        if (row.itemId) {
-          item = await prisma.item.findUnique({ where: { id: row.itemId } });
-          if (!item) {
-            return reply.code(400).send({ error: 'One of the selected items no longer exists' });
-          }
-        }
-
-        if (!item) {
-          item = await ensureItemForEggCode({
-            code,
-            wholesalePrice: Number(wholesalePrice),
-            retailPrice: Number(retailPrice),
-          });
-        }
-
-        if (
-          Number(item.defaultWholesalePrice ?? 0) !== Number(wholesalePrice)
-          || Number(item.defaultRetailPrice ?? 0) !== Number(retailPrice)
-        ) {
-          item = await prisma.item.update({
-            where: { id: item.id },
-            data: {
-              defaultWholesalePrice: Number(wholesalePrice),
-              defaultRetailPrice: Number(retailPrice),
-            },
-          });
-        }
-
-        normalizedPlannedItems.push({
-          code,
-          itemId: item?.id || null,
-          costPrice: itemCostPrice,
-        });
-      }
-
-      // Auto-generate batch name from date
       const date = new Date(expectedDate);
       const day = date.getUTCDate();
       const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
@@ -417,7 +351,6 @@ export default async function batchRoutes(fastify) {
       const year = date.getUTCFullYear();
       const baseName = `${day}${month}${year}`;
 
-      // Check for existing batches on same date to determine suffix
       const existing = await prisma.batch.findMany({
         where: { name: { startsWith: baseName } },
       });
@@ -426,7 +359,6 @@ export default async function batchRoutes(fastify) {
       if (existing.length === 0) {
         name = baseName;
       } else {
-        // If there's one existing without a letter, rename it to A, then this one is B
         if (existing.length === 1 && existing[0].name === baseName) {
           await prisma.batch.update({
             where: { id: existing[0].id },
@@ -434,10 +366,9 @@ export default async function batchRoutes(fastify) {
           });
           name = `${baseName}B`;
         } else {
-          // Find next letter
-          const letters = existing.map(b => b.name.replace(baseName, '')).filter(Boolean).sort();
+          const letters = existing.map((b) => b.name.replace(baseName, '')).filter(Boolean).sort();
           const nextLetter = String.fromCharCode(
-            (letters.length > 0 ? letters[letters.length - 1].charCodeAt(0) : 64) + 1
+            (letters.length > 0 ? letters[letters.length - 1].charCodeAt(0) : 64) + 1,
           );
           name = `${baseName}${nextLetter}`;
         }
@@ -452,20 +383,7 @@ export default async function batchRoutes(fastify) {
           eggTypeKey: activeEggType.key,
           wholesalePrice: Number(wholesalePrice),
           retailPrice: Number(retailPrice),
-          costPrice: normalizedPlannedItems[0].costPrice,
-          eggCodes: {
-            createMany: {
-              data: normalizedPlannedItems.map((row) => ({
-                itemId: row.itemId,
-                code: row.code,
-                costPrice: row.costPrice,
-                wholesalePrice: Number(wholesalePrice),
-                retailPrice: Number(retailPrice),
-                quantity: 0,
-                freeQty: 0,
-              })),
-            },
-          },
+          costPrice: 0,
         },
       });
 
@@ -476,11 +394,11 @@ export default async function batchRoutes(fastify) {
           wholesalePrice: Number(batch.wholesalePrice),
           retailPrice: Number(batch.retailPrice),
           costPrice: Number(batch.costPrice),
+          eggCodes: [],
         },
       });
     },
   });
-
   // ─── UPDATE BATCH (only OPEN batches) ──────────────────────────
   fastify.patch('/batches/:id', {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER')],

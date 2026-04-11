@@ -234,7 +234,7 @@ export default function BatchDetail() {
         <div className="mb-4 rounded-lg border border-info-200 bg-info-50 p-4 shadow-xs">
           <p className="text-body-medium font-medium text-info-900">This batch is still waiting to be received.</p>
           <p className="mt-1 text-body text-info-700">
-            Keep taking bookings here, then use <span className="font-medium">Receive Batch</span> when the eggs arrive and the real FE mix is known.
+            Keep taking bookings here, then use <span className="font-medium">Receive Batch</span> when the eggs arrive so you can enter the FE mix, actual quantities, and real cost prices.
           </p>
         </div>
       )}
@@ -300,7 +300,7 @@ export default function BatchDetail() {
             ? `${formatNumber(batch.expectedQuantity)} crates`
             : `${(overview.varianceToPolicy || 0) >= 0 ? '+' : '-'}${formatCurrency(Math.abs(overview.varianceToPolicy || 0))}`}
           subtext={batch.status === 'OPEN'
-            ? `${batch.eggCodes?.length || 0} planned FE item type${(batch.eggCodes?.length || 0) === 1 ? '' : 's'}`
+            ? 'FE mix and cost prices will be captured when the batch is received'
             : `${formatCurrency(overview.profitPerCrate)} per crate`}
           tone={batch.status === 'OPEN' ? 'neutral' : (overview.varianceToPolicy || 0) >= 0 ? 'success' : 'error'}
         />

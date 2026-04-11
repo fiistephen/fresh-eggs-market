@@ -28,27 +28,6 @@ function formatPercent(n) {
   return `${Number(n || 0).toFixed(1)}%`;
 }
 
-function normalizeFeCode(code) {
-  return String(code || '').trim().toUpperCase();
-}
-
-function feCodeFromPrice(price) {
-  const digits = String(price || '').replace(/\D/g, '');
-  return digits ? `FE${digits}` : '';
-}
-
-function fePriceFromCode(code) {
-  const normalized = normalizeFeCode(code);
-  if (!/^FE\d+$/.test(normalized)) return '';
-  return normalized.replace(/^FE/, '');
-}
-
-const EMPTY_BATCH_ITEM = {
-  mode: 'existing',
-  itemId: '',
-  newPrice: '',
-  costPrice: '',
-};
 
 function isBatchOverdue(batch) {
   if (batch.status !== 'OPEN' || !batch.expectedDate) return false;
@@ -134,7 +113,7 @@ function BatchCard({ batch, onOpen }) {
               FE mix: <span className="font-medium">{batch.eggCodes.map((eggCode) => eggCode.code).join(', ')}</span>
             </p>
           ) : (
-            <p className="mt-2 text-caption text-surface-500">No FE mix entered yet</p>
+            <p className="mt-2 text-caption text-surface-500">FE mix will be added at receipt</p>
           )}
         </div>
 
@@ -373,10 +352,8 @@ function CreateBatchModal({ onClose, onCreated }) {
     wholesalePrice: '',
     retailPrice: '',
   });
-  const [items, setItems] = useState([EMPTY_BATCH_ITEM]);
-  const [feItems, setFeItems] = useState([]);
   const [eggTypes, setEggTypes] = useState([]);
-  const [loadingItems, setLoadingItems] = useState(true);
+  const [loadingMeta, setLoadingMeta] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -384,14 +361,10 @@ function CreateBatchModal({ onClose, onCreated }) {
     let cancelled = false;
 
     async function loadCreateBatchMeta() {
-      setLoadingItems(true);
+      setLoadingMeta(true);
       try {
-        const [itemsResponse, metaResponse] = await Promise.all([
-          api.get('/items?category=FE_EGGS'),
-          api.get('/batches/meta'),
-        ]);
+        const metaResponse = await api.get('/batches/meta');
         if (cancelled) return;
-        setFeItems(itemsResponse.items || []);
         const activeEggTypes = metaResponse.activeCustomerEggTypes || [];
         setEggTypes(activeEggTypes);
         setForm((current) => ({
@@ -401,12 +374,9 @@ function CreateBatchModal({ onClose, onCreated }) {
             || 'REGULAR',
         }));
       } catch {
-        if (!cancelled) {
-          setFeItems([]);
-          setEggTypes([]);
-        }
+        if (!cancelled) setEggTypes([]);
       } finally {
-        if (!cancelled) setLoadingItems(false);
+        if (!cancelled) setLoadingMeta(false);
       }
     }
 
@@ -415,48 +385,7 @@ function CreateBatchModal({ onClose, onCreated }) {
   }, []);
 
   function update(field, value) {
-    setForm(f => ({ ...f, [field]: value }));
-  }
-
-  function updateBatchItem(index, field, value) {
-    setItems((current) => {
-      const next = [...current];
-      next[index] = { ...next[index], [field]: value };
-
-      if (field === 'mode') {
-        next[index] = value === 'existing'
-          ? { ...EMPTY_BATCH_ITEM, mode: 'existing' }
-          : { ...EMPTY_BATCH_ITEM, mode: 'new' };
-      }
-
-      if (field === 'itemId') {
-        const selected = feItems.find((item) => item.id === value);
-        const selectedPrice = fePriceFromCode(selected?.code);
-        next[index] = {
-          ...next[index],
-          costPrice: selectedPrice || '',
-        };
-      }
-
-      if (field === 'newPrice') {
-        next[index] = {
-          ...next[index],
-          costPrice: String(value || '').replace(/\D/g, ''),
-        };
-      }
-
-      return next;
-    });
-  }
-
-  function addBatchItem() {
-    if (items.length >= 3) return;
-    setItems((current) => [...current, EMPTY_BATCH_ITEM]);
-  }
-
-  function removeBatchItem(index) {
-    if (items.length <= 1) return;
-    setItems((current) => current.filter((_, itemIndex) => itemIndex !== index));
+    setForm((current) => ({ ...current, [field]: value }));
   }
 
   async function handleSubmit(e) {
@@ -464,44 +393,14 @@ function CreateBatchModal({ onClose, onCreated }) {
     setSubmitting(true);
     setError('');
 
-    const preparedItems = items.map((row) => {
-      if (row.mode === 'existing') {
-        const selected = feItems.find((item) => item.id === row.itemId);
-        return selected
-          ? {
-              itemId: selected.id,
-              code: normalizeFeCode(selected.code),
-              costPrice: Number(row.costPrice),
-            }
-          : null;
-      }
-
-      const code = feCodeFromPrice(row.newPrice);
-      return code ? {
-        code,
-        costPrice: Number(row.costPrice),
-      } : null;
-    }).filter(Boolean);
-
-    const seenCodes = new Set();
-    for (const row of preparedItems) {
-      if (seenCodes.has(row.code)) {
-        setError(`${row.code} was added more than once. Use one row per item type.`);
-        setSubmitting(false);
-        return;
-      }
-      seenCodes.add(row.code);
-    }
-
     try {
       await api.post('/batches', {
-        ...form,
+        expectedDate: form.expectedDate,
         expectedQuantity: Number(form.expectedQuantity),
         availableForBooking: Number(form.availableForBooking),
         eggTypeKey: form.eggTypeKey,
         wholesalePrice: Number(form.wholesalePrice),
         retailPrice: Number(form.retailPrice),
-        plannedItems: preparedItems,
       });
       toast.success('Batch created successfully');
       onCreated();
@@ -512,18 +411,6 @@ function CreateBatchModal({ onClose, onCreated }) {
       setSubmitting(false);
     }
   }
-
-  const PlusIcon = (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-    </svg>
-  );
-
-  const RemoveIcon = (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-    </svg>
-  );
 
   return (
     <Modal
@@ -549,7 +436,7 @@ function CreateBatchModal({ onClose, onCreated }) {
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         <p className="text-caption text-surface-600">
-          Batch name will be auto-generated from the expected date. Add up to 3 FE item types.
+          Batch name will be auto-generated from the expected date. Use this step to open the batch for bookings first, then enter FE mix and real cost prices when the eggs arrive.
         </p>
 
         {error && (
@@ -563,7 +450,7 @@ function CreateBatchModal({ onClose, onCreated }) {
           label="Expected Arrival Date"
           required
           value={form.expectedDate}
-          onChange={e => update('expectedDate', e.target.value)}
+          onChange={(e) => update('expectedDate', e.target.value)}
           containerClassName="w-full"
         />
 
@@ -574,7 +461,7 @@ function CreateBatchModal({ onClose, onCreated }) {
             required
             min="1"
             value={form.expectedQuantity}
-            onChange={e => update('expectedQuantity', e.target.value)}
+            onChange={(e) => update('expectedQuantity', e.target.value)}
             containerClassName="w-full"
           />
           <Input
@@ -583,7 +470,7 @@ function CreateBatchModal({ onClose, onCreated }) {
             required
             min="0"
             value={form.availableForBooking}
-            onChange={e => update('availableForBooking', e.target.value)}
+            onChange={(e) => update('availableForBooking', e.target.value)}
             containerClassName="w-full"
           />
         </div>
@@ -592,12 +479,12 @@ function CreateBatchModal({ onClose, onCreated }) {
           label="Customer-facing egg type"
           required
           value={form.eggTypeKey}
-          onChange={e => update('eggTypeKey', e.target.value)}
+          onChange={(e) => update('eggTypeKey', e.target.value)}
           hint="Only active egg types appear here"
           containerClassName="w-full"
         >
           {eggTypes.length === 0 ? (
-            <option value="REGULAR">Regular Size Eggs</option>
+            <option value="REGULAR">{loadingMeta ? 'Loading...' : 'Regular Size Eggs'}</option>
           ) : (
             eggTypes.map((eggType) => (
               <option key={eggType.key} value={eggType.key}>{eggType.label}</option>
@@ -613,7 +500,7 @@ function CreateBatchModal({ onClose, onCreated }) {
             min="1"
             placeholder="5400"
             value={form.wholesalePrice}
-            onChange={e => update('wholesalePrice', e.target.value)}
+            onChange={(e) => update('wholesalePrice', e.target.value)}
             containerClassName="w-full"
           />
           <Input
@@ -623,134 +510,16 @@ function CreateBatchModal({ onClose, onCreated }) {
             min="1"
             placeholder="5500"
             value={form.retailPrice}
-            onChange={e => update('retailPrice', e.target.value)}
+            onChange={(e) => update('retailPrice', e.target.value)}
             containerClassName="w-full"
           />
         </div>
 
-        <div className="rounded-lg border border-warning-100 bg-warning-50 px-4 py-3 text-caption text-warning-700">
-          Use one selling price for the batch. FE rows below are for different cost prices only.
-        </div>
-
-        <div className="rounded-lg border border-info-100 bg-info-50 p-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h3 className="text-heading text-info-700">Items expected in this batch</h3>
-              <p className="text-caption text-info-600 mt-1">
-                Use active FE items or create new ones. Format: <span className="font-medium">FE[price]</span>
-              </p>
-            </div>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              icon={PlusIcon}
-              onClick={addBatchItem}
-              disabled={items.length >= 3}
-            >
-              Add item
-            </Button>
-          </div>
-
-          <div className="mt-4 space-y-3">
-            {items.map((row, index) => {
-              const selectedItem = feItems.find((item) => item.id === row.itemId);
-              const generatedCode = row.mode === 'new' ? feCodeFromPrice(row.newPrice) : normalizeFeCode(selectedItem?.code);
-
-              return (
-                <Card key={`${index}-${row.mode}`} variant="outlined" padding="comfortable" className="border-info-100">
-                  <div className="flex items-start justify-between mb-4">
-                    <div>
-                      <p className="text-heading text-surface-800">Item type {index + 1}</p>
-                      <p className="text-caption text-surface-600 mt-0.5">Max 3 FE types per batch</p>
-                    </div>
-                    {items.length > 1 && (
-                      <Button
-                        type="button"
-                        variant="danger-ghost"
-                        size="sm"
-                        icon={RemoveIcon}
-                        onClick={() => removeBatchItem(index)}
-                      >
-                        Remove
-                      </Button>
-                    )}
-                  </div>
-
-                  <div className="flex gap-2 mb-4">
-                    <Button
-                      type="button"
-                      variant={row.mode === 'existing' ? 'primary' : 'secondary'}
-                      size="sm"
-                      onClick={() => updateBatchItem(index, 'mode', 'existing')}
-                    >
-                      Choose active item
-                    </Button>
-                    <Button
-                      type="button"
-                      variant={row.mode === 'new' ? 'primary' : 'secondary'}
-                      size="sm"
-                      onClick={() => updateBatchItem(index, 'mode', 'new')}
-                    >
-                      Create from price
-                    </Button>
-                  </div>
-
-                  {row.mode === 'existing' ? (
-                    <Select
-                      label="Active FE item"
-                      required
-                      value={row.itemId}
-                      onChange={(e) => updateBatchItem(index, 'itemId', e.target.value)}
-                      containerClassName="w-full mb-4"
-                    >
-                      <option value="">{loadingItems ? 'Loading...' : 'Select an item'}</option>
-                      {feItems.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.displayName || item.name}
-                        </option>
-                      ))}
-                    </Select>
-                  ) : (
-                    <Input
-                      type="number"
-                      label="Price of new FE item"
-                      required
-                      min="1"
-                      placeholder="4600"
-                      value={row.newPrice}
-                      onChange={(e) => updateBatchItem(index, 'newPrice', e.target.value)}
-                      containerClassName="w-full mb-4"
-                    />
-                  )}
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-                    <div className="rounded-md bg-surface-50 px-3 py-2">
-                      <p className="text-overline text-surface-500">Generated code</p>
-                      <p className="mt-1 text-body-medium text-surface-800">{generatedCode || '—'}</p>
-                    </div>
-                    <div className="rounded-md bg-surface-50 px-3 py-2">
-                      <p className="text-overline text-surface-500">Item name</p>
-                      <p className="mt-1 text-body-medium text-surface-800">{generatedCode || '—'}</p>
-                    </div>
-                  </div>
-
-                  <Input
-                    type="number"
-                    label="Cost price (₦)"
-                    required
-                    min="1"
-                    placeholder="4600"
-                    value={row.costPrice}
-                    onChange={(e) => updateBatchItem(index, 'costPrice', e.target.value)}
-                    containerClassName="w-full"
-                  />
-                </Card>
-              );
-            })}
-          </div>
+        <div className="rounded-lg border border-brand-100 bg-brand-50 px-4 py-3 text-caption text-brand-700">
+          FE item codes, cost prices, and actual received quantities are no longer needed here. Capture them at <span className="font-medium">Receive Batch</span>, when the farm delivery is physically in hand.
         </div>
       </form>
     </Modal>
   );
 }
+
