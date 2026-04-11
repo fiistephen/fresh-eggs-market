@@ -481,10 +481,12 @@ async function getAvailableCashSaleTransactions({ upToDate } = {}) {
     .map((transaction) => {
       const allocatedAmount = allocationMap.get(transaction.id) || 0;
       const availableAmount = Math.max(0, Number(transaction.amount) - allocatedAmount);
+      const ageHours = hoursBetween(transaction.transactionDate);
       return {
         ...enrichTransaction(transaction),
         allocatedAmount,
         availableAmount,
+        ageHours,
       };
     })
     .filter((transaction) => transaction.availableAmount > 0.009);
@@ -1304,7 +1306,7 @@ export default async function bankingRoutes(fastify) {
   fastify.post('/banking/transfers/internal', {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
     handler: async (request, reply) => {
-      const { fromAccountId, toAccountId, amount, description, transactionDate } = request.body;
+      const { fromAccountId, toAccountId, amount, description, transactionDate, selectedCashTransactionIds = [] } = request.body;
 
       if (!fromAccountId || !toAccountId) {
         return reply.code(400).send({ error: 'fromAccountId and toAccountId are required' });
@@ -1333,27 +1335,48 @@ export default async function bankingRoutes(fastify) {
       if (isCashDepositWorkflow) {
         const effectiveDate = endOfDay(transactionDate);
         const availableCashTransactions = await getAvailableCashSaleTransactions({ upToDate: effectiveDate });
+        const availableMap = new Map(availableCashTransactions.map((transaction) => [transaction.id, transaction]));
         const availableTotal = availableCashTransactions.reduce((sum, transaction) => sum + Number(transaction.availableAmount), 0);
-        const requestedAmount = Number(amount);
 
-        if (requestedAmount > availableTotal + 0.009) {
-          return reply.code(400).send({
-            error: `Only ${availableTotal.toLocaleString('en-NG', { style: 'currency', currency: 'NGN', minimumFractionDigits: 0 })} is available to deposit from Cash Account for that date.`,
-          });
+        let requestedAmount = Number(amount);
+        let allocations = [];
+
+        if (Array.isArray(selectedCashTransactionIds) && selectedCashTransactionIds.length > 0) {
+          const uniqueIds = [...new Set(selectedCashTransactionIds.filter(Boolean))];
+          const selectedTransactions = uniqueIds.map((id) => availableMap.get(id)).filter(Boolean);
+
+          if (selectedTransactions.length !== uniqueIds.length) {
+            return reply.code(400).send({ error: 'One or more selected cash sales are no longer available to deposit.' });
+          }
+
+          allocations = selectedTransactions.map((transaction) => ({
+            bankTransactionId: transaction.id,
+            amountIncluded: Number(transaction.availableAmount),
+          }));
+          requestedAmount = allocations.reduce((sum, entry) => sum + Number(entry.amountIncluded), 0);
+        } else {
+          if (requestedAmount > availableTotal + 0.009) {
+            return reply.code(400).send({
+              error: `Only ${availableTotal.toLocaleString('en-NG', { style: 'currency', currency: 'NGN', minimumFractionDigits: 0 })} is available to deposit from Cash Account for that date.`,
+            });
+          }
+
+          let remainingAmount = requestedAmount;
+          for (const transaction of availableCashTransactions) {
+            if (remainingAmount <= 0.009) break;
+            const amountIncluded = Math.min(remainingAmount, Number(transaction.availableAmount));
+            if (amountIncluded <= 0) continue;
+            allocations.push({ bankTransactionId: transaction.id, amountIncluded });
+            remainingAmount -= amountIncluded;
+          }
+
+          if (remainingAmount > 0.009) {
+            return reply.code(400).send({ error: 'Could not allocate enough cash-sale transactions to cover this deposit.' });
+          }
         }
 
-        let remainingAmount = requestedAmount;
-        const allocations = [];
-        for (const transaction of availableCashTransactions) {
-          if (remainingAmount <= 0.009) break;
-          const amountIncluded = Math.min(remainingAmount, Number(transaction.availableAmount));
-          if (amountIncluded <= 0) continue;
-          allocations.push({ bankTransactionId: transaction.id, amountIncluded });
-          remainingAmount -= amountIncluded;
-        }
-
-        if (remainingAmount > 0.009) {
-          return reply.code(400).send({ error: 'Could not allocate enough cash-sale transactions to cover this deposit.' });
+        if (!allocations.length || requestedAmount <= 0) {
+          return reply.code(400).send({ error: 'Select at least one cash sale to move into this deposit.' });
         }
 
         const transferDescription = description?.trim() || `Cash deposit awaiting bank confirmation: ${fromAccount.name} -> ${toAccount.name}`;
@@ -1476,6 +1499,17 @@ export default async function bankingRoutes(fastify) {
         policy,
         ...workspace,
       };
+    },
+  });
+
+  fastify.get('/banking/cash-deposits/available', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
+    handler: async (request, reply) => {
+      const { upToDate } = request.query;
+      const effectiveDate = upToDate ? endOfDay(upToDate) : undefined;
+      const transactions = await getAvailableCashSaleTransactions({ upToDate: effectiveDate });
+      const total = transactions.reduce((sum, transaction) => sum + Number(transaction.availableAmount || 0), 0);
+      return reply.send({ transactions, total });
     },
   });
 
