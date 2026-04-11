@@ -77,6 +77,26 @@ function endOfDay(dateInput) {
   return date;
 }
 
+function getMonthWindow(monthKey) {
+  const [yearString, monthString] = String(monthKey || '').split('-');
+  const year = Number(yearString);
+  const monthIndex = Number(monthString) - 1;
+  if (!Number.isInteger(year) || !Number.isInteger(monthIndex) || monthIndex < 0 || monthIndex > 11) {
+    throw new Error('Invalid month');
+  }
+
+  const start = new Date(Date.UTC(year, monthIndex, 1, 0, 0, 0, 0));
+  const nextStart = new Date(Date.UTC(year, monthIndex + 1, 1, 0, 0, 0, 0));
+  const end = new Date(nextStart.getTime() - 1);
+  const label = start.toLocaleDateString('en-NG', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+
+  return { start, nextStart, end, label };
+}
+
 function buildCategoryConfigMap(categories = []) {
   return categories.reduce((acc, entry) => {
     acc[entry.category] = entry;
@@ -440,12 +460,19 @@ function createBankTransaction({
   });
 }
 
-async function getCashSaleAllocationMap(transactionIds = []) {
+async function getCashSaleAllocationMap(transactionIds = [], { upToDate } = {}) {
   if (transactionIds.length === 0) return new Map();
+
+  const where = { bankTransactionId: { in: transactionIds } };
+  if (upToDate) {
+    where.cashDepositBatch = {
+      depositDate: { lte: upToDate },
+    };
+  }
 
   const allocations = await prisma.cashDepositBatchTransaction.groupBy({
     by: ['bankTransactionId'],
-    where: { bankTransactionId: { in: transactionIds } },
+    where,
     _sum: { amountIncluded: true },
   });
 
@@ -475,7 +502,7 @@ async function getAvailableCashSaleTransactions({ upToDate } = {}) {
     orderBy: [{ transactionDate: 'asc' }, { createdAt: 'asc' }],
   });
 
-  const allocationMap = await getCashSaleAllocationMap(transactions.map((transaction) => transaction.id));
+  const allocationMap = await getCashSaleAllocationMap(transactions.map((transaction) => transaction.id), { upToDate });
 
   return transactions
     .map((transaction) => {
@@ -2646,6 +2673,194 @@ export default async function bankingRoutes(fastify) {
         })),
         allocatedAmount: nextAllocatedAmount,
         availableAmount: Math.max(0, Number(transaction.amount) - nextAllocatedAmount),
+      });
+    },
+  });
+
+  fastify.get('/banking/month-end-review', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER')],
+    handler: async (request, reply) => {
+      const queryMonth = typeof request.query.month === 'string' ? request.query.month : '';
+      const fallbackMonth = new Date().toISOString().slice(0, 7);
+      const monthKey = /^\d{4}-\d{2}$/.test(queryMonth) ? queryMonth : fallbackMonth;
+
+      let monthWindow;
+      try {
+        monthWindow = getMonthWindow(monthKey);
+      } catch {
+        return reply.code(400).send({ error: 'Month must be in YYYY-MM format.' });
+      }
+
+      const { start, nextStart, end, label } = monthWindow;
+
+      const [accountsRaw, hangingDepositTransactions, pendingPortalTransfers, pendingCashDeposits, pendingApprovals, undepositedCash] = await Promise.all([
+        prisma.bankAccount.findMany({
+          where: { isActive: true },
+          orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+        }),
+        prisma.bankTransaction.findMany({
+          where: {
+            direction: 'INFLOW',
+            category: { in: CUSTOMER_DEPOSIT_QUEUE_CATEGORIES },
+            customerId: { not: null },
+            transactionDate: { lt: nextStart },
+          },
+          include: {
+            customer: { select: { id: true, name: true, phone: true } },
+            bankAccount: { select: { id: true, name: true, accountType: true, lastFour: true, isVirtual: true, supportsStatementImport: true } },
+            enteredBy: { select: { firstName: true, lastName: true } },
+          },
+          orderBy: [{ transactionDate: 'asc' }, { createdAt: 'asc' }],
+        }),
+        prisma.portalCheckout.findMany({
+          where: {
+            paymentMethod: 'TRANSFER',
+            status: { in: ['AWAITING_TRANSFER', 'ADMIN_CONFIRMED'] },
+            confirmationStatementLineId: null,
+            createdAt: { lt: nextStart },
+          },
+          include: {
+            customer: { select: { id: true, name: true, phone: true } },
+            batch: { select: { id: true, name: true, eggTypeKey: true } },
+            adminConfirmedBy: { select: { firstName: true, lastName: true } },
+          },
+          orderBy: [{ createdAt: 'desc' }],
+        }),
+        prisma.cashDepositBatch.findMany({
+          where: {
+            depositDate: { lt: nextStart },
+            status: { in: ['PENDING_CONFIRMATION', 'OVERDUE'] },
+          },
+          include: {
+            createdBy: { select: { firstName: true, lastName: true } },
+            transactions: { select: { id: true } },
+          },
+          orderBy: [{ depositDate: 'desc' }, { createdAt: 'desc' }],
+        }),
+        prisma.approvalRequest.findMany({
+          where: {
+            status: 'PENDING',
+            createdAt: { lt: nextStart },
+          },
+          include: {
+            requestedBy: { select: { firstName: true, lastName: true } },
+          },
+          orderBy: [{ createdAt: 'desc' }],
+        }),
+        getAvailableCashSaleTransactions({ upToDate: end }),
+      ]);
+
+      const hangingAllocationMap = hangingDepositTransactions.length > 0
+        ? new Map(
+            (await prisma.bookingPaymentAllocation.groupBy({
+              by: ['bankTransactionId'],
+              where: {
+                bankTransactionId: { in: hangingDepositTransactions.map((transaction) => transaction.id) },
+                createdAt: { lt: nextStart },
+              },
+              _sum: { amount: true },
+            })).map((entry) => [entry.bankTransactionId, Number(entry._sum.amount || 0)]),
+          )
+        : new Map();
+
+      const hangingDeposits = hangingDepositTransactions
+        .map((transaction) => {
+          const allocatedAmount = hangingAllocationMap.get(transaction.id) || 0;
+          const availableAmount = Math.max(0, Number(transaction.amount) - allocatedAmount);
+          return {
+            ...enrichTransaction(transaction),
+            allocatedAmount,
+            availableAmount,
+          };
+        })
+        .filter((transaction) => transaction.availableAmount > 0.009);
+
+      const accounts = await Promise.all(accountsRaw.map(async (account) => {
+        const [inflows, outflows, transactionCount, latestReconciliation, monthEndReconciliation] = await Promise.all([
+          prisma.bankTransaction.aggregate({
+            where: { bankAccountId: account.id, direction: 'INFLOW', transactionDate: { lt: nextStart } },
+            _sum: { amount: true },
+          }),
+          prisma.bankTransaction.aggregate({
+            where: { bankAccountId: account.id, direction: 'OUTFLOW', transactionDate: { lt: nextStart } },
+            _sum: { amount: true },
+          }),
+          prisma.bankTransaction.count({
+            where: { bankAccountId: account.id, transactionDate: { lt: nextStart } },
+          }),
+          prisma.bankReconciliation.findFirst({
+            where: { bankAccountId: account.id, statementDate: { lt: nextStart } },
+            orderBy: [{ statementDate: 'desc' }, { createdAt: 'desc' }],
+            include: {
+              reconciledBy: { select: { firstName: true, lastName: true } },
+            },
+          }),
+          prisma.bankReconciliation.findFirst({
+            where: { bankAccountId: account.id, statementDate: { gte: start, lt: nextStart } },
+            orderBy: [{ statementDate: 'desc' }, { createdAt: 'desc' }],
+            include: {
+              reconciledBy: { select: { firstName: true, lastName: true } },
+            },
+          }),
+        ]);
+
+        return {
+          ...account,
+          totalInflows: Number(inflows._sum.amount || 0),
+          totalOutflows: Number(outflows._sum.amount || 0),
+          systemBalance: Number(inflows._sum.amount || 0) - Number(outflows._sum.amount || 0),
+          transactionCount,
+          latestReconciliation: latestReconciliation ? enrichReconciliation(latestReconciliation) : null,
+          monthEndReconciliation: monthEndReconciliation ? enrichReconciliation(monthEndReconciliation) : null,
+        };
+      }));
+
+      const accountsMissingMonthEndBalance = accounts.filter((account) => !account.monthEndReconciliation).length;
+
+      return reply.send({
+        month: monthKey,
+        label,
+        window: {
+          start,
+          end,
+        },
+        accounts,
+        accountsMissingMonthEndBalance,
+        unresolved: {
+          hangingDeposits: {
+            count: hangingDeposits.length,
+            total: hangingDeposits.reduce((sum, transaction) => sum + Number(transaction.availableAmount || 0), 0),
+            items: hangingDeposits,
+          },
+          pendingTransferConfirmations: {
+            count: pendingPortalTransfers.length,
+            total: pendingPortalTransfers.reduce((sum, checkout) => sum + Number(checkout.amountToPay || 0), 0),
+            items: pendingPortalTransfers.map((checkout) => ({
+              ...checkout,
+              unitPrice: Number(checkout.unitPrice || 0),
+              orderValue: Number(checkout.orderValue || 0),
+              amountToPay: Number(checkout.amountToPay || 0),
+              balanceAfterPayment: Number(checkout.balanceAfterPayment || 0),
+            })),
+          },
+          undepositedCash: {
+            count: undepositedCash.length,
+            total: undepositedCash.reduce((sum, transaction) => sum + Number(transaction.availableAmount || 0), 0),
+            items: undepositedCash,
+          },
+          pendingCashDeposits: {
+            count: pendingCashDeposits.length,
+            total: pendingCashDeposits.reduce((sum, batch) => sum + Number(batch.amount || 0), 0),
+            items: pendingCashDeposits.map((batch) => ({
+              ...batch,
+              amount: Number(batch.amount),
+            })),
+          },
+          pendingApprovals: {
+            count: pendingApprovals.length,
+            items: pendingApprovals,
+          },
+        },
       });
     },
   });

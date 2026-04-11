@@ -16,6 +16,7 @@ import AccountBalances from './Reports/AccountBalances';
 import UnbookedDeposits from './Reports/UnbookedDeposits';
 import CustomerLiability from './Reports/CustomerLiability';
 import Expenses from './Reports/Expenses';
+import MonthEndReview from './Reports/MonthEndReview';
 
 // Modals
 import EntryModal from './EntryModal';
@@ -39,6 +40,7 @@ const TABS = [
 ];
 
 const REPORT_TABS = [
+  { key: 'month-end', label: 'Month-end review' },
   { key: 'balances', label: 'Account Balances' },
   { key: 'unbooked', label: 'Unbooked Deposits' },
   { key: 'liability', label: 'Customer Liability' },
@@ -623,6 +625,8 @@ export default function Banking() {
           onRefresh={loadApprovalRequests}
         />
       )}
+
+      {activeView === 'reports' && activeReport === 'month-end' && <MonthEndReview />}
 
       {activeView === 'reports' && activeReport === 'balances' && (
         <AccountBalances
