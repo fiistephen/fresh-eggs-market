@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import { categoryOptionsForDirection, categoryLabel, displayAccountName, fmtMoney, todayStr } from './shared/constants';
 import { ModalShell, ModalActions } from './shared/ui';
@@ -14,6 +14,7 @@ function createRow(defaults = {}) {
     amount: '',
     description: '',
     reference: defaults.reference || '',
+    farmerId: defaults.farmerId || '',
   };
 }
 
@@ -30,8 +31,25 @@ export default function BulkTransactionModal({ accounts, transactionCategories, 
     createRow(initialDefaults),
   ]);
   const [showCategoryCreator, setShowCategoryCreator] = useState(false);
+  const [farmers, setFarmers] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    async function loadFarmers() {
+      try {
+        const data = await api.get('/farmers?limit=200');
+        if (active) setFarmers(data.farmers || []);
+      } catch {
+        if (active) setFarmers([]);
+      }
+    }
+    loadFarmers();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   function updateRow(index, patch) {
     setRows((current) => current.map((row, i) => {
@@ -106,6 +124,7 @@ export default function BulkTransactionModal({ accounts, transactionCategories, 
           amount: Number(row.amount),
           description: row.description,
           reference: row.reference,
+          farmerId: row.farmerId,
         })),
       });
       onRecorded();
@@ -146,7 +165,7 @@ export default function BulkTransactionModal({ accounts, transactionCategories, 
       )}
 
       <div className="overflow-x-auto custom-scrollbar rounded-lg border border-surface-200">
-        <table className="w-full min-w-[860px]">
+        <table className="w-full min-w-[1040px]">
           <thead className="sticky top-0 z-10 bg-surface-50">
             <tr className="border-b border-surface-200">
               <th className="px-3 py-2.5 text-left text-overline text-surface-500 w-[80px]">In / Out</th>
@@ -154,6 +173,7 @@ export default function BulkTransactionModal({ accounts, transactionCategories, 
               <th className="px-3 py-2.5 text-left text-overline text-surface-500">Category</th>
               <th className="px-3 py-2.5 text-left text-overline text-surface-500 w-[120px]">Date</th>
               <th className="px-3 py-2.5 text-right text-overline text-surface-500 w-[120px]">Amount</th>
+              <th className="px-3 py-2.5 text-left text-overline text-surface-500 w-[180px]">Farmer</th>
               <th className="px-3 py-2.5 text-left text-overline text-surface-500">Description</th>
               <th className="px-3 py-2.5 text-left text-overline text-surface-500 w-[160px]">Reference</th>
               <th className="px-3 py-2.5 text-left text-overline text-surface-500 w-[90px]"></th>
@@ -213,6 +233,24 @@ export default function BulkTransactionModal({ accounts, transactionCategories, 
                       className="w-full rounded-md border border-surface-200 px-2 py-1.5 text-right text-body outline-none focus:ring-2 focus:ring-brand-500"
                       placeholder="0"
                     />
+                  </td>
+                  <td className="px-3 py-2">
+                    {row.category === 'FARMER_PAYMENT' ? (
+                      <select
+                        value={row.farmerId || ''}
+                        onChange={(e) => updateRow(index, { farmerId: e.target.value })}
+                        className="w-full rounded-md border border-surface-200 px-2 py-1.5 text-body outline-none focus:ring-2 focus:ring-brand-500"
+                      >
+                        <option value="">Choose farmer</option>
+                        {farmers.map((farmer) => (
+                          <option key={farmer.id} value={farmer.id}>
+                            {farmer.name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="text-caption text-surface-400">—</span>
+                    )}
                   </td>
                   <td className="px-3 py-2">
                     <input

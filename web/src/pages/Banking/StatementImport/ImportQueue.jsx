@@ -35,6 +35,23 @@ export default function ImportsView({
   const [bulkStatus, setBulkStatus] = useState('');
   const [bulkSaving, setBulkSaving] = useState(false);
   const [bulkError, setBulkError] = useState('');
+  const [farmers, setFarmers] = useState([]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadFarmers() {
+      try {
+        const data = await api.get('/farmers?limit=200');
+        if (active) setFarmers(data.farmers || []);
+      } catch {
+        if (active) setFarmers([]);
+      }
+    }
+    loadFarmers();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     setSelectedLineIds([]);
@@ -328,7 +345,7 @@ export default function ImportsView({
                       <th className="px-3 py-2.5 text-left text-overline text-surface-500">Category</th>
                       <th className="px-3 py-2.5 text-left text-overline text-surface-500">Status</th>
                       <th className="px-3 py-2.5 text-left text-overline text-surface-500">Clean description</th>
-                      <th className="px-3 py-2.5 text-left text-overline text-surface-500">Deposit match</th>
+                      <th className="px-3 py-2.5 text-left text-overline text-surface-500">Link</th>
                       <th className="w-20 px-3 py-2.5 text-left text-overline text-surface-500">Action</th>
                     </tr>
                   </thead>
@@ -339,6 +356,7 @@ export default function ImportsView({
                         line={line}
                         bankAccountId={selectedImport?.bankAccount?.id || ''}
                         categoryMap={categoryMap}
+                        farmers={farmers}
                         selected={selectedLineIds.includes(line.id)}
                         onToggleSelected={(id, checked) => setSelectedLineIds((c) => checked ? [...new Set([...c, id])] : c.filter((x) => x !== id))}
                         onSaved={onLineUpdated}

@@ -142,6 +142,8 @@ model Farmer {
 
   batches        Batch[]
   ledgerEntries  FarmerLedgerEntry[]
+  bankTransactions BankTransaction[]
+  selectedStatementLines BankStatementLine[]
 
   @@map("farmers")
 }
@@ -150,6 +152,7 @@ model FarmerLedgerEntry {
   id            String                @id @default(cuid())
   farmerId      String                @map("farmer_id")
   batchId       String?               @map("batch_id")
+  bankTransactionId String?           @unique @map("bank_transaction_id")
   createdById   String                @map("created_by_id")
   entryType     FarmerLedgerEntryType @map("entry_type")
   amount        Decimal               @db.Decimal(12, 2)
@@ -161,6 +164,7 @@ model FarmerLedgerEntry {
 
   farmer      Farmer @relation(fields: [farmerId], references: [id], onDelete: Cascade)
   batch       Batch? @relation(fields: [batchId], references: [id])
+  bankTransaction BankTransaction? @relation(fields: [bankTransactionId], references: [id])
   createdBy   User   @relation("FarmerLedgerEntryCreatedBy", fields: [createdById], references: [id])
 
   @@index([farmerId, entryDate])
@@ -591,6 +595,7 @@ model BankTransaction {
   // Optional links — depends on category
   saleId          String?              @map("sale_id")
   customerId      String?              @map("customer_id")
+  farmerId        String?              @map("farmer_id")
   bookingId       String?              @map("booking_id_ref") // For CUSTOMER_BOOKING category
   enteredById     String               @map("entered_by_id")
 
@@ -600,11 +605,13 @@ model BankTransaction {
   bankAccount BankAccount @relation(fields: [bankAccountId], references: [id])
   sale        Sale?       @relation("SalePaymentTransactions", fields: [saleId], references: [id])
   customer    Customer?   @relation(fields: [customerId], references: [id])
+  farmer      Farmer?     @relation(fields: [farmerId], references: [id])
   enteredBy   User        @relation("TransactionEnteredBy", fields: [enteredById], references: [id])
   statementLine BankStatementLine?
   allocations BookingPaymentAllocation[]
   cashDepositBatchLinks CashDepositBatchTransaction[]
   cashDepositOutflow CashDepositBatch? @relation("CashDepositBatchOutflow")
+  farmerLedgerEntries FarmerLedgerEntry[]
 
   @@map("bank_transactions")
 }
@@ -651,6 +658,7 @@ model BankStatementLine {
   suggestedCategory  String?                   @map("suggested_category")
   selectedCategory   String?                   @map("selected_category")
   selectedCustomerId String?                   @map("selected_customer_id")
+  selectedFarmerId   String?                   @map("selected_farmer_id")
   matchedCashDepositBatchId String?            @map("matched_cash_deposit_batch_id")
   selectedPortalCheckoutId String?             @unique @map("selected_portal_checkout_id")
   notes              String?
@@ -662,6 +670,7 @@ model BankStatementLine {
 
   import            BankStatementImport @relation(fields: [importId], references: [id], onDelete: Cascade)
   selectedCustomer  Customer?           @relation(fields: [selectedCustomerId], references: [id])
+  selectedFarmer    Farmer?             @relation(fields: [selectedFarmerId], references: [id])
   postedTransaction BankTransaction?    @relation(fields: [postedTransactionId], references: [id])
   matchedCashDepositBatch CashDepositBatch? @relation("CashDepositBatchMatchedStatementLine", fields: [matchedCashDepositBatchId], references: [id])
   confirmedCashDepositBatch CashDepositBatch? @relation("CashDepositBatchConfirmedStatementLine")

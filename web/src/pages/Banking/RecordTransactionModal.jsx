@@ -30,12 +30,30 @@ export default function RecordTransactionModal({
   const [customerSearch, setCustomerSearch] = useState('');
   const [customers, setCustomers] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [farmers, setFarmers] = useState([]);
+  const [selectedFarmerId, setSelectedFarmerId] = useState('');
   const [showCategoryCreator, setShowCategoryCreator] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [savedCount, setSavedCount] = useState(0);
   const [savedTotal, setSavedTotal] = useState(0);
   const [lastSavedMsg, setLastSavedMsg] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    async function loadFarmers() {
+      try {
+        const data = await api.get('/farmers?limit=200');
+        if (active) setFarmers(data.farmers || []);
+      } catch {
+        if (active) setFarmers([]);
+      }
+    }
+    loadFarmers();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!customerSearch.trim() || selectedCustomer) {
@@ -55,6 +73,7 @@ export default function RecordTransactionModal({
 
   const categoryOptions = categoryOptionsForDirection(form.direction, categoryMap, form.category);
   const needsCustomer = ['CUSTOMER_DEPOSIT', 'REFUND'].includes(form.category);
+  const needsFarmer = form.category === 'FARMER_PAYMENT';
 
   function setDirection(direction) {
     const preferredCategory = direction === 'INFLOW' ? 'UNALLOCATED_INCOME' : 'UNALLOCATED_EXPENSE';
@@ -77,6 +96,7 @@ export default function RecordTransactionModal({
         ...form,
         amount: Number(form.amount),
         customerId: selectedCustomer?.id || undefined,
+        farmerId: selectedFarmerId || undefined,
       });
       const savedAmt = Number(form.amount);
       setSavedCount((c) => c + 1);
@@ -90,6 +110,7 @@ export default function RecordTransactionModal({
       }));
       setSelectedCustomer(null);
       setCustomerSearch('');
+      setSelectedFarmerId('');
       onRecorded(false);
     } catch (err) {
       setError(err.error || 'Failed to record transaction');
@@ -237,6 +258,26 @@ export default function RecordTransactionModal({
               )}
             </>
           )}
+        </div>
+      )}
+
+      {needsFarmer && (
+        <div className="space-y-2">
+          <label className="block text-body-medium text-surface-700">Farmer</label>
+          <select
+            value={selectedFarmerId}
+            onChange={(event) => setSelectedFarmerId(event.target.value)}
+            className="w-full rounded-md border border-surface-200 px-3 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500"
+            required
+          >
+            <option value="">Choose farmer</option>
+            {farmers.map((farmer) => (
+              <option key={farmer.id} value={farmer.id}>
+                {farmer.name}{farmer.phone ? ` · ${farmer.phone}` : ''}
+              </option>
+            ))}
+          </select>
+          <p className="text-caption text-surface-500">This will increase the farmer’s prepaid balance from Banking truth.</p>
         </div>
       )}
 

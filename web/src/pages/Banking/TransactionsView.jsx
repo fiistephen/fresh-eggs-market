@@ -179,7 +179,7 @@ export default function TransactionsView({
                   <th className="px-4 py-2.5 text-left text-xs font-medium uppercase text-surface-500">Category</th>
                   {detailsOpen && <th className="px-4 py-2.5 text-left text-xs font-medium uppercase text-surface-500">Source</th>}
                   <th className="px-4 py-2.5 text-left text-xs font-medium uppercase text-surface-500">Description</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-medium uppercase text-surface-500">Customer</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium uppercase text-surface-500">Customer / Farmer</th>
                   {detailsOpen && <th className="px-4 py-2.5 text-left text-xs font-medium uppercase text-surface-500">Recorded by</th>}
                   <th className="px-4 py-2.5 text-right text-xs font-medium uppercase text-surface-500">Amount</th>
                   {(canRequestDelete || canRequestEdit) && <th className="px-4 py-2.5 text-right text-xs font-medium uppercase text-surface-500">Action</th>}
@@ -195,7 +195,7 @@ export default function TransactionsView({
                     <td className="px-4 py-2.5 text-sm text-surface-500 max-w-[240px] truncate" title={[t.description, t.reference].filter(Boolean).join(' · ') || '—'}>
                       {t.description || t.reference || '—'}
                     </td>
-                    <td className="px-4 py-2.5 text-sm text-surface-500">{t.customer?.name || '—'}</td>
+                    <td className="px-4 py-2.5 text-sm text-surface-500">{t.customer?.name || t.farmer?.name || '—'}</td>
                     {detailsOpen && <td className="px-4 py-2.5 text-sm text-surface-500">{t.enteredBy?.firstName || '—'}</td>}
                     <td className={`px-4 py-2.5 text-right text-sm font-semibold ${DIRECTION_COLORS[t.direction]}`}>
                       {t.direction === 'INFLOW' ? '+' : '−'}{fmtMoney(t.amount)}

@@ -28,7 +28,7 @@ function buildFarmerSummary(farmer, currentBalance = 0) {
 
 export default async function farmerRoutes(fastify) {
   fastify.get('/farmers', {
-    preHandler: [authenticate, authorize('ADMIN', 'MANAGER')],
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
     handler: async (request, reply) => {
       const { search, limit = 50, offset = 0 } = request.query;
       const where = search
@@ -96,6 +96,17 @@ export default async function farmerRoutes(fastify) {
           ledgerEntries: {
             include: {
               batch: { select: { id: true, name: true, status: true } },
+              bankTransaction: {
+                select: {
+                  id: true,
+                  category: true,
+                  description: true,
+                  reference: true,
+                  transactionDate: true,
+                  amount: true,
+                  bankAccount: { select: { id: true, name: true, accountType: true, lastFour: true } },
+                },
+              },
               createdBy: { select: { firstName: true, lastName: true } },
             },
             orderBy: [{ entryDate: 'desc' }, { createdAt: 'desc' }],
@@ -166,8 +177,8 @@ export default async function farmerRoutes(fastify) {
       const notes = String(request.body.notes || '').trim() || null;
       const adjustmentDirection = String(request.body.adjustmentDirection || '').trim().toUpperCase();
 
-      if (!['PREPAYMENT', 'ADJUSTMENT'].includes(entryType)) {
-        return reply.code(400).send({ error: 'Only farmer prepayments and adjustments can be entered manually here.' });
+      if (entryType !== 'ADJUSTMENT') {
+        return reply.code(400).send({ error: 'Farmer payments should be recorded from Banking. Only adjustments can be entered manually here.' });
       }
       if (!amount || amount <= 0) {
         return reply.code(400).send({ error: 'Amount must be positive' });
@@ -177,12 +188,10 @@ export default async function farmerRoutes(fastify) {
       }
 
       let balanceEffect = amount;
-      if (entryType === 'ADJUSTMENT') {
-        if (!['INCREASE', 'DECREASE'].includes(adjustmentDirection)) {
-          return reply.code(400).send({ error: 'Choose whether the adjustment increases or decreases the farmer balance.' });
-        }
-        balanceEffect = adjustmentDirection === 'DECREASE' ? -amount : amount;
+      if (!['INCREASE', 'DECREASE'].includes(adjustmentDirection)) {
+        return reply.code(400).send({ error: 'Choose whether the adjustment increases or decreases the farmer balance.' });
       }
+      balanceEffect = adjustmentDirection === 'DECREASE' ? -amount : amount;
 
       const entry = await prisma.farmerLedgerEntry.create({
         data: {

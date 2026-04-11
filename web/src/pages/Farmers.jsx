@@ -73,7 +73,7 @@ export default function Farmers() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
         <div>
           <h1 className="text-display text-surface-900">Farmers</h1>
-          <p className="text-body text-surface-500 mt-1">Track who supplied each batch and how much prepaid balance is still with each farmer.</p>
+          <p className="text-body text-surface-500 mt-1">Track batch suppliers, Banking-linked farmer payments, and the running balance still sitting with each farmer.</p>
         </div>
         <Button variant="primary" size="md" onClick={() => setShowCreate(true)}>New Farmer</Button>
       </div>
@@ -81,7 +81,7 @@ export default function Farmers() {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3 mb-6">
         <MetricCard label="Farmers" value={total.toLocaleString()} subtext={`${totals.activeCount.toLocaleString()} active`} />
         <MetricCard label="Current prepaid balance" value={formatCurrency(totals.currentBalance)} subtext="Total balance still sitting with farmers" />
-        <MetricCard label="What this screen does" value="Prepayments + drawdowns" subtext="Receiving a batch will reduce the farmer balance automatically" />
+        <MetricCard label="What this screen does" value="Ledger + adjustments" subtext="Record real farmer payments from Banking. Receiving a batch reduces the balance automatically." />
       </div>
 
       <div className="mb-6 max-w-md">
@@ -247,7 +247,7 @@ function FarmerDetailModal({ farmerId, onClose, onUpdated }) {
           <h2 className="text-title text-surface-900">{farmer.name}</h2>
           <p className="mt-1 text-body text-surface-500">{farmer.phone || 'No phone'} {farmer.notes ? `· ${farmer.notes}` : ''}</p>
         </div>
-        <Button variant="primary" size="sm" onClick={() => setShowLedgerEntry(true)}>Record payment or adjustment</Button>
+        <Button variant="primary" size="sm" onClick={() => setShowLedgerEntry(true)}>Record adjustment</Button>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -260,7 +260,7 @@ function FarmerDetailModal({ farmerId, onClose, onUpdated }) {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-heading text-surface-900">Farmer ledger</h3>
-            <p className="text-caption text-surface-500 mt-1">Newest first. Prepayments increase the balance, receipt drawdowns reduce it.</p>
+            <p className="text-caption text-surface-500 mt-1">Newest first. Banking farmer payments increase the balance, receipt drawdowns reduce it.</p>
           </div>
         </div>
         {ledgerEntries.length === 0 ? (
@@ -274,6 +274,7 @@ function FarmerDetailModal({ farmerId, onClose, onUpdated }) {
                   <th className="px-3 py-3 text-left text-overline text-surface-500">Type</th>
                   <th className="px-3 py-3 text-right text-overline text-surface-500">Amount</th>
                   <th className="px-3 py-3 text-right text-overline text-surface-500">Effect</th>
+                  <th className="px-3 py-3 text-left text-overline text-surface-500">Source</th>
                   <th className="px-3 py-3 text-left text-overline text-surface-500">Batch</th>
                   <th className="px-3 py-3 text-left text-overline text-surface-500">Staff</th>
                   <th className="px-3 py-3 text-left text-overline text-surface-500">Notes</th>
@@ -288,9 +289,16 @@ function FarmerDetailModal({ farmerId, onClose, onUpdated }) {
                     <td className={`px-3 py-3 text-right text-body-medium font-semibold ${Number(entry.balanceEffect) >= 0 ? 'text-success-700' : 'text-error-700'}`}>
                       {Number(entry.balanceEffect) >= 0 ? '+' : '-'}{formatCurrency(Math.abs(Number(entry.balanceEffect)))}
                     </td>
+                    <td className="px-3 py-3 text-body text-surface-600">
+                      {entry.bankTransaction
+                        ? `Banking · ${entry.bankTransaction.bankAccount?.name || 'Account'}`
+                        : entry.entryType === 'ADJUSTMENT'
+                          ? 'Manual adjustment'
+                          : 'Batch receipt'}
+                    </td>
                     <td className="px-3 py-3 text-body text-surface-600">{entry.batch?.name || '—'}</td>
                     <td className="px-3 py-3 text-body text-surface-600">{entry.createdBy?.firstName || '—'} {entry.createdBy?.lastName || ''}</td>
-                    <td className="px-3 py-3 text-body text-surface-500">{entry.notes || '—'}</td>
+                    <td className="px-3 py-3 text-body text-surface-500">{entry.notes || entry.bankTransaction?.reference || entry.bankTransaction?.description || '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -331,7 +339,7 @@ function FarmerDetailModal({ farmerId, onClose, onUpdated }) {
         )}
       </Card>
 
-      <Modal open={showLedgerEntry} onClose={() => setShowLedgerEntry(false)} title={`Record farmer entry: ${farmer.name}`} size="md">
+      <Modal open={showLedgerEntry} onClose={() => setShowLedgerEntry(false)} title={`Record farmer adjustment: ${farmer.name}`} size="md">
         <FarmerLedgerEntryModal
           farmerId={farmer.id}
           onClose={() => setShowLedgerEntry(false)}
@@ -352,7 +360,6 @@ function FarmerDetailModal({ farmerId, onClose, onUpdated }) {
 
 function FarmerLedgerEntryModal({ farmerId, onClose, onSaved }) {
   const [form, setForm] = useState({
-    entryType: 'PREPAYMENT',
     adjustmentDirection: 'INCREASE',
     amount: '',
     entryDate: new Date().toISOString().slice(0, 10),
@@ -371,8 +378,8 @@ function FarmerLedgerEntryModal({ farmerId, onClose, onSaved }) {
     setError('');
     try {
       await api.post(`/farmers/${farmerId}/ledger-entries`, {
-        entryType: form.entryType,
-        adjustmentDirection: form.entryType === 'ADJUSTMENT' ? form.adjustmentDirection : undefined,
+        entryType: 'ADJUSTMENT',
+        adjustmentDirection: form.adjustmentDirection,
         amount: Number(form.amount),
         entryDate: form.entryDate,
         notes: form.notes.trim() || undefined,
@@ -389,25 +396,22 @@ function FarmerLedgerEntryModal({ farmerId, onClose, onSaved }) {
     <form onSubmit={handleSubmit} className="space-y-4">
       {error ? <div className="rounded-lg border border-error-100 bg-error-50 px-3 py-2 text-body text-error-700">{error}</div> : null}
 
-      <Select label="Entry type" value={form.entryType} onChange={(event) => update('entryType', event.target.value)}>
-        <option value="PREPAYMENT">Prepayment</option>
-        <option value="ADJUSTMENT">Adjustment</option>
-      </Select>
+      <div className="rounded-lg border border-info-100 bg-info-50 px-3 py-3 text-body text-info-700">
+        Real farmer payments should be recorded from Banking. Use this form only for manual corrections or balance adjustments.
+      </div>
 
-      {form.entryType === 'ADJUSTMENT' ? (
-        <Select label="Adjustment effect" value={form.adjustmentDirection} onChange={(event) => update('adjustmentDirection', event.target.value)}>
-          <option value="INCREASE">Increase farmer balance</option>
-          <option value="DECREASE">Decrease farmer balance</option>
-        </Select>
-      ) : null}
+      <Select label="Adjustment effect" value={form.adjustmentDirection} onChange={(event) => update('adjustmentDirection', event.target.value)}>
+        <option value="INCREASE">Increase farmer balance</option>
+        <option value="DECREASE">Decrease farmer balance</option>
+      </Select>
 
       <Input label="Amount" type="number" min="1" required value={form.amount} onChange={(event) => update('amount', event.target.value)} />
       <Input label="Entry date" type="date" required value={form.entryDate} onChange={(event) => update('entryDate', event.target.value)} />
-      <Textarea label="Notes" rows={3} value={form.notes} onChange={(event) => update('notes', event.target.value)} placeholder="Why was this payment or adjustment recorded?" />
+      <Textarea label="Notes" rows={3} value={form.notes} onChange={(event) => update('notes', event.target.value)} placeholder="Why was this adjustment recorded?" />
 
       <div className="flex justify-end gap-3 pt-2">
         <Button type="button" variant="secondary" size="md" onClick={onClose}>Cancel</Button>
-        <Button type="submit" variant="primary" size="md" loading={submitting}>Save Entry</Button>
+        <Button type="submit" variant="primary" size="md" loading={submitting}>Save Adjustment</Button>
       </div>
     </form>
   );

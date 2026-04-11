@@ -175,6 +175,8 @@ function serializeApprovalTransaction(transaction) {
     sourceType: transaction.sourceType,
     customerId: transaction.customerId || null,
     customerName: transaction.customer?.name || null,
+    farmerId: transaction.farmerId || null,
+    farmerName: transaction.farmer?.name || null,
     enteredById: transaction.enteredById,
     enteredByName: transaction.enteredBy
       ? `${transaction.enteredBy.firstName || ''} ${transaction.enteredBy.lastName || ''}`.trim() || null
@@ -209,6 +211,9 @@ function canManageManualBankTransaction(transaction, user) {
   }
   if ((transaction.cashDepositBatchLinks?.length || 0) > 0 || transaction.cashDepositOutflow) {
     return { allowed: false, error: 'This transaction is already linked to a cash deposit flow and cannot be changed here.' };
+  }
+  if ((transaction.farmerLedgerEntries?.length || 0) > 0) {
+    return { allowed: false, error: 'This transaction is already linked to a farmer ledger flow and cannot be changed here.' };
   }
   return { allowed: true };
 }
@@ -332,6 +337,13 @@ async function validateCustomer(customerId) {
   return customer || false;
 }
 
+async function validateFarmer(farmerId) {
+  if (!farmerId) return null;
+  const farmer = await prisma.farmer.findUnique({ where: { id: farmerId } });
+  if (!farmer || farmer.isActive === false) return false;
+  return farmer;
+}
+
 async function finalizePortalTransferBookingFromStatement({
   portalCheckoutId,
   bankTransactionId,
@@ -438,13 +450,15 @@ function createBankTransaction({
   reference,
   transactionDate,
   customerId,
+  farmerId,
   bookingId,
   enteredById,
   sourceType = 'MANUAL',
   sourceFingerprint = null,
   internalTransferGroupId = null,
+  client = prisma,
 }) {
-  return prisma.bankTransaction.create({
+  return client.bankTransaction.create({
     data: {
       bankAccountId,
       direction,
@@ -454,6 +468,7 @@ function createBankTransaction({
       reference: reference || null,
       transactionDate: new Date(transactionDate),
       customerId: customerId || null,
+      farmerId: farmerId || null,
       bookingId: bookingId || null,
       enteredById,
       sourceType,
@@ -464,7 +479,33 @@ function createBankTransaction({
     include: {
       bankAccount: { select: { id: true, name: true, accountType: true, isVirtual: true, supportsStatementImport: true } },
       customer: { select: { id: true, name: true, phone: true } },
+      farmer: { select: { id: true, name: true, phone: true } },
       enteredBy: { select: { firstName: true, lastName: true } },
+    },
+  });
+}
+
+function buildFarmerPaymentNotes(transaction) {
+  return [transaction.description, transaction.reference].filter(Boolean).join(' · ') || null;
+}
+
+async function createFarmerLedgerEntryFromBankTransaction({
+  transaction,
+  enteredById,
+  client = prisma,
+}) {
+  if (!transaction?.farmerId || transaction.category !== 'FARMER_PAYMENT') return null;
+
+  return client.farmerLedgerEntry.create({
+    data: {
+      farmerId: transaction.farmerId,
+      bankTransactionId: transaction.id,
+      createdById: enteredById,
+      entryType: 'PREPAYMENT',
+      amount: Number(transaction.amount),
+      balanceEffect: Number(transaction.amount),
+      entryDate: new Date(transaction.transactionDate),
+      notes: buildFarmerPaymentNotes(transaction),
     },
   });
 }
@@ -991,6 +1032,16 @@ export default async function bankingRoutes(fastify) {
               },
             },
           },
+          {
+            farmer: {
+              is: {
+                OR: [
+                  { name: { contains: searchTerm, mode: 'insensitive' } },
+                  { phone: { contains: searchTerm, mode: 'insensitive' } },
+                ],
+              },
+            },
+          },
         ];
         const parsedAmount = Number(searchTerm.replace(/,/g, ''));
         if (!Number.isNaN(parsedAmount) && searchTerm !== '') {
@@ -1014,11 +1065,13 @@ export default async function bankingRoutes(fastify) {
           include: {
             bankAccount: { select: { id: true, name: true, accountType: true, lastFour: true, isVirtual: true, supportsStatementImport: true } },
             customer: { select: { id: true, name: true, phone: true } },
+            farmer: { select: { id: true, name: true, phone: true } },
             enteredBy: { select: { firstName: true, lastName: true } },
             statementLine: { select: { id: true } },
             allocations: { select: { id: true } },
             cashDepositBatchLinks: { select: { id: true } },
             cashDepositOutflow: { select: { id: true } },
+            farmerLedgerEntries: { select: { id: true } },
           },
           orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }],
           take: parseInt(limit, 10),
@@ -1039,11 +1092,13 @@ export default async function bankingRoutes(fastify) {
         include: {
           bankAccount: true,
           customer: true,
+          farmer: true,
           enteredBy: { select: { firstName: true, lastName: true } },
           statementLine: { select: { id: true } },
           allocations: { select: { id: true } },
           cashDepositBatchLinks: { select: { id: true } },
           cashDepositOutflow: { select: { id: true } },
+          farmerLedgerEntries: { select: { id: true } },
         },
       });
       if (!txn) return reply.code(404).send({ error: 'Transaction not found' });
@@ -1081,6 +1136,7 @@ export default async function bankingRoutes(fastify) {
             include: {
               bankAccount: { select: { id: true, name: true, accountType: true, lastFour: true } },
               customer: { select: { id: true, name: true, phone: true } },
+              farmer: { select: { id: true, name: true, phone: true } },
               enteredBy: { select: { firstName: true, lastName: true } },
             },
           })
@@ -1107,11 +1163,13 @@ export default async function bankingRoutes(fastify) {
         include: {
           bankAccount: { select: { id: true, name: true, accountType: true, lastFour: true } },
           customer: { select: { id: true, name: true, phone: true } },
+          farmer: { select: { id: true, name: true, phone: true } },
           enteredBy: { select: { firstName: true, lastName: true } },
           statementLine: { select: { id: true } },
           allocations: { select: { id: true } },
           cashDepositBatchLinks: { select: { id: true } },
           cashDepositOutflow: { select: { id: true } },
+          farmerLedgerEntries: { select: { id: true } },
         },
       });
 
@@ -1162,11 +1220,13 @@ export default async function bankingRoutes(fastify) {
         include: {
           bankAccount: { select: { id: true, name: true, accountType: true, lastFour: true } },
           customer: { select: { id: true, name: true, phone: true } },
+          farmer: { select: { id: true, name: true, phone: true } },
           enteredBy: { select: { firstName: true, lastName: true } },
           statementLine: { select: { id: true } },
           allocations: { select: { id: true } },
           cashDepositBatchLinks: { select: { id: true } },
           cashDepositOutflow: { select: { id: true } },
+          farmerLedgerEntries: { select: { id: true } },
         },
       });
 
@@ -1268,11 +1328,13 @@ export default async function bankingRoutes(fastify) {
         include: {
           bankAccount: { select: { id: true, name: true, accountType: true, lastFour: true } },
           customer: { select: { id: true, name: true, phone: true } },
+          farmer: { select: { id: true, name: true, phone: true } },
           enteredBy: { select: { firstName: true, lastName: true } },
           statementLine: { select: { id: true } },
           allocations: { select: { id: true } },
           cashDepositBatchLinks: { select: { id: true } },
           cashDepositOutflow: { select: { id: true } },
+          farmerLedgerEntries: { select: { id: true } },
         },
       });
 
@@ -1415,7 +1477,7 @@ export default async function bankingRoutes(fastify) {
   fastify.post('/banking/transactions', {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
     handler: async (request, reply) => {
-      const { bankAccountId, direction, category, amount, description, reference, transactionDate, customerId, sourceType } = request.body;
+      const { bankAccountId, direction, category, amount, description, reference, transactionDate, customerId, farmerId, sourceType } = request.body;
       const categoryConfig = await getTransactionCategoryConfig();
 
       if (!bankAccountId) return reply.code(400).send({ error: 'Bank account is required' });
@@ -1429,18 +1491,33 @@ export default async function bankingRoutes(fastify) {
 
       const customer = await validateCustomer(customerId);
       if (customer === false) return reply.code(404).send({ error: 'Customer not found' });
+      const farmer = await validateFarmer(farmerId);
+      if (farmer === false) return reply.code(404).send({ error: 'Farmer not found' });
+      if (category === 'FARMER_PAYMENT' && !farmerId) {
+        return reply.code(400).send({ error: 'Choose the farmer this payment is for.' });
+      }
 
-      const transaction = await createBankTransaction({
-        bankAccountId,
-        direction,
-        category,
-        amount,
-        description,
-        reference,
-        transactionDate,
-        customerId,
-        enteredById: request.user.sub,
-        sourceType: sourceType || 'MANUAL',
+      const transaction = await prisma.$transaction(async (tx) => {
+        const created = await createBankTransaction({
+          bankAccountId,
+          direction,
+          category,
+          amount,
+          description,
+          reference,
+          transactionDate,
+          customerId,
+          farmerId,
+          enteredById: request.user.sub,
+          sourceType: sourceType || 'MANUAL',
+          client: tx,
+        });
+        await createFarmerLedgerEntryFromBankTransaction({
+          transaction: created,
+          enteredById: request.user.sub,
+          client: tx,
+        });
+        return created;
       });
 
       return reply.code(201).send({ transaction: enrichTransaction(transaction) });
@@ -1473,28 +1550,34 @@ export default async function bankingRoutes(fastify) {
 
       const accountIds = [...new Set(rows.map((row) => row.bankAccountId))];
       const customerIds = [...new Set(rows.map((row) => row.customerId).filter(Boolean))];
+      const farmerIds = [...new Set(rows.map((row) => row.farmerId).filter(Boolean))];
 
-      const [accounts, customers] = await Promise.all([
+      const [accounts, customers, farmers] = await Promise.all([
         prisma.bankAccount.findMany({ where: { id: { in: accountIds } } }),
         customerIds.length > 0 ? prisma.customer.findMany({ where: { id: { in: customerIds } } }) : [],
+        farmerIds.length > 0 ? prisma.farmer.findMany({ where: { id: { in: farmerIds }, isActive: true } }) : [],
       ]);
 
       const accountSet = new Set(accounts.map((account) => account.id));
       const customerSet = new Set(customers.map((customer) => customer.id));
+      const farmerSet = new Set(farmers.map((farmer) => farmer.id));
 
       for (let index = 0; index < rows.length; index += 1) {
         const row = rows[index];
         if (!accountSet.has(row.bankAccountId)) validationErrors.push({ index, error: 'Bank account not found' });
         if (row.customerId && !customerSet.has(row.customerId)) validationErrors.push({ index, error: 'Customer not found' });
+        if (row.farmerId && !farmerSet.has(row.farmerId)) validationErrors.push({ index, error: 'Farmer not found' });
+        if (row.category === 'FARMER_PAYMENT' && !row.farmerId) validationErrors.push({ index, error: 'Choose the farmer this payment is for' });
       }
 
       if (validationErrors.length > 0) {
         return reply.code(400).send({ error: 'Validation failed', rows: validationErrors });
       }
 
-      const created = await prisma.$transaction(
-        rows.map((row) =>
-          createBankTransaction({
+      const created = await prisma.$transaction(async (tx) => {
+        const createdRows = [];
+        for (const row of rows) {
+          const createdTransaction = await createBankTransaction({
             bankAccountId: row.bankAccountId,
             direction: row.direction,
             category: row.category,
@@ -1503,11 +1586,20 @@ export default async function bankingRoutes(fastify) {
             reference: row.reference,
             transactionDate: row.transactionDate,
             customerId: row.customerId,
+            farmerId: row.farmerId,
             enteredById: request.user.sub,
             sourceType: 'MANUAL',
-          })
-        )
-      );
+            client: tx,
+          });
+          await createFarmerLedgerEntryFromBankTransaction({
+            transaction: createdTransaction,
+            enteredById: request.user.sub,
+            client: tx,
+          });
+          createdRows.push(createdTransaction);
+        }
+        return createdRows;
+      });
 
       return reply.code(201).send({ transactions: created.map(enrichTransaction), count: created.length });
     },
@@ -2060,6 +2152,7 @@ export default async function bankingRoutes(fastify) {
         where,
         include: {
           selectedCustomer: { select: { id: true, name: true, phone: true } },
+          selectedFarmer: { select: { id: true, name: true, phone: true } },
           postedTransaction: { select: { id: true, amount: true, category: true, transactionDate: true } },
           matchedCashDepositBatch: {
             select: {
@@ -2100,7 +2193,7 @@ export default async function bankingRoutes(fastify) {
         return reply.code(400).send({ error: 'Posted lines cannot be edited' });
       }
 
-      const { selectedCategory, selectedCustomerId, matchedCashDepositBatchId, selectedPortalCheckoutId, notes, reviewStatus, description } = request.body;
+      const { selectedCategory, selectedCustomerId, selectedFarmerId, matchedCashDepositBatchId, selectedPortalCheckoutId, notes, reviewStatus, description } = request.body;
       const updates = {};
       const categoryConfig = await getTransactionCategoryConfig();
 
@@ -2119,6 +2212,9 @@ export default async function bankingRoutes(fastify) {
         if (selectedCategory !== 'CUSTOMER_BOOKING' && selectedPortalCheckoutId === undefined) {
           updates.selectedPortalCheckoutId = null;
         }
+        if (selectedCategory !== 'FARMER_PAYMENT' && selectedFarmerId === undefined) {
+          updates.selectedFarmerId = null;
+        }
       }
 
       if (description !== undefined) {
@@ -2136,6 +2232,16 @@ export default async function bankingRoutes(fastify) {
           updates.selectedCustomerId = selectedCustomerId;
         } else {
           updates.selectedCustomerId = null;
+        }
+      }
+
+      if (selectedFarmerId !== undefined) {
+        if (selectedFarmerId) {
+          const farmer = await prisma.farmer.findUnique({ where: { id: selectedFarmerId } });
+          if (!farmer || farmer.isActive === false) return reply.code(404).send({ error: 'Farmer not found' });
+          updates.selectedFarmerId = selectedFarmerId;
+        } else {
+          updates.selectedFarmerId = null;
         }
       }
 
@@ -2187,6 +2293,11 @@ export default async function bankingRoutes(fastify) {
         }
       }
 
+      if ((selectedCategory || existing.selectedCategory) === 'FARMER_PAYMENT'
+        && !(updates.selectedFarmerId || selectedFarmerId || existing.selectedFarmerId)) {
+        return reply.code(400).send({ error: 'Choose the farmer this payment is for.' });
+      }
+
       if (notes !== undefined) updates.notes = notes || null;
       else if (updates.description) updates.notes = buildCleanDescription(updates.description) || null;
 
@@ -2205,6 +2316,7 @@ export default async function bankingRoutes(fastify) {
         data: updates,
         include: {
           selectedCustomer: { select: { id: true, name: true, phone: true } },
+          selectedFarmer: { select: { id: true, name: true, phone: true } },
           matchedCashDepositBatch: {
             select: {
               id: true,
@@ -2383,6 +2495,7 @@ export default async function bankingRoutes(fastify) {
             include: {
               matchedCashDepositBatch: true,
               selectedPortalCheckout: true,
+              selectedFarmer: true,
             },
           },
         },
@@ -2459,6 +2572,11 @@ export default async function bankingRoutes(fastify) {
           }
         }
 
+        if (line.selectedCategory === 'FARMER_PAYMENT' && !line.selectedFarmerId) {
+          skipped.push({ lineId: line.id, reason: 'Farmer payment line still needs the farmer to be selected.' });
+          continue;
+        }
+
         const transaction = await createBankTransaction({
           bankAccountId: line.selectedCategory === 'CASH_DEPOSIT_CONFIRMATION'
             ? line.matchedCashDepositBatch.toBankAccountId
@@ -2472,9 +2590,15 @@ export default async function bankingRoutes(fastify) {
           reference: line.docNum,
           transactionDate: line.transactionDate || new Date(),
           customerId: line.selectedPortalCheckout?.customerId || line.selectedCustomerId,
+          farmerId: line.selectedFarmerId,
           enteredById: request.user.sub,
           sourceType: 'STATEMENT_IMPORT',
           sourceFingerprint: line.fingerprint,
+        });
+
+        await createFarmerLedgerEntryFromBankTransaction({
+          transaction,
+          enteredById: request.user.sub,
         });
 
         await prisma.bankStatementLine.update({
