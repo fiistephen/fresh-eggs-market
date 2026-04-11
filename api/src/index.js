@@ -15,6 +15,7 @@ import portalRoutes from './routes/portal.js';
 import reportsRoutes from './routes/reports.js';
 import adminRoutes from './routes/admin.js';
 import itemRoutes from './routes/items.js';
+import farmerRoutes from './routes/farmers.js';
 
 const app = Fastify({
   logger: {
@@ -48,6 +49,7 @@ app.register(portalRoutes, { prefix: '/api' });
 app.register(reportsRoutes, { prefix: '/api' });
 app.register(adminRoutes, { prefix: '/api' });
 app.register(itemRoutes, { prefix: '/api' });
+app.register(farmerRoutes, { prefix: '/api' });
 
 // ── Start server ──────────────────────────────────────────────
 try {

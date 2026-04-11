@@ -63,6 +63,7 @@ model User {
   approvalRequestsRequested ApprovalRequest[] @relation("ApprovalRequestedBy")
   approvalRequestsResolved ApprovalRequest[] @relation("ApprovalResolvedBy")
   monthCloses MonthClose[] @relation("MonthClosedBy")
+  farmerLedgerEntriesCreated FarmerLedgerEntry[] @relation("FarmerLedgerEntryCreatedBy")
 
   @@map("users")
 }
@@ -124,6 +125,49 @@ model Customer {
   @@map("customers")
 }
 
+enum FarmerLedgerEntryType {
+  PREPAYMENT
+  RECEIPT_DRAWDOWN
+  ADJUSTMENT
+}
+
+model Farmer {
+  id          String   @id @default(cuid())
+  name        String
+  phone       String?
+  notes       String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  batches        Batch[]
+  ledgerEntries  FarmerLedgerEntry[]
+
+  @@map("farmers")
+}
+
+model FarmerLedgerEntry {
+  id            String                @id @default(cuid())
+  farmerId      String                @map("farmer_id")
+  batchId       String?               @map("batch_id")
+  createdById   String                @map("created_by_id")
+  entryType     FarmerLedgerEntryType @map("entry_type")
+  amount        Decimal               @db.Decimal(12, 2)
+  balanceEffect Decimal               @map("balance_effect") @db.Decimal(12, 2)
+  entryDate     DateTime              @map("entry_date")
+  notes         String?
+  createdAt     DateTime              @default(now()) @map("created_at")
+  updatedAt     DateTime              @updatedAt @map("updated_at")
+
+  farmer      Farmer @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+  batch       Batch? @relation(fields: [batchId], references: [id])
+  createdBy   User   @relation("FarmerLedgerEntryCreatedBy", fields: [createdById], references: [id])
+
+  @@index([farmerId, entryDate])
+  @@index([batchId])
+  @@map("farmer_ledger_entries")
+}
+
 // ─── BATCHES ───────────────────────────────────────────────────
 
 enum BatchStatus {
@@ -145,6 +189,7 @@ model Batch {
   actualQuantity        Int?        @map("actual_quantity")        // Actual received (paid + free)
   freeCrates            Int         @default(3) @map("free_crates") // Free crates from farm (usually 3)
   eggTypeKey            String      @default("REGULAR") @map("egg_type_key")
+  farmerId              String?     @map("farmer_id")
 
   wholesalePrice        Decimal     @map("wholesale_price") @db.Decimal(12, 2)
   retailPrice           Decimal     @map("retail_price")   @db.Decimal(12, 2)
@@ -159,7 +204,10 @@ model Batch {
   portalCheckouts PortalCheckout[]
   sales       Sale[]
   inventory   InventoryCount[]
+  farmer      Farmer?              @relation(fields: [farmerId], references: [id])
+  farmerLedgerEntries FarmerLedgerEntry[]
 
+  @@index([farmerId])
   @@map("batches")
 }
 

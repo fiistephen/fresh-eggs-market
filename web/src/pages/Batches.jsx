@@ -108,6 +108,14 @@ function BatchCard({ batch, onOpen }) {
           <p className="mt-2 text-body-medium text-surface-700">
             {batch.eggTypeLabel || 'Regular Size Eggs'}
           </p>
+          {batch.farmer?.name ? (
+            <p className="mt-2 text-caption text-surface-600">
+              Farmer: <span className="font-medium text-surface-900">{batch.farmer.name}</span>
+              {batch.farmer.phone ? <> · {batch.farmer.phone}</> : null}
+            </p>
+          ) : batch.status === 'OPEN' ? (
+            <p className="mt-2 text-caption text-surface-500">Farmer will be selected when the batch is received</p>
+          ) : null}
           {batch.eggCodes?.length > 0 ? (
             <p className="mt-2 text-caption text-surface-600">
               FE mix: <span className="font-medium">{batch.eggCodes.map((eggCode) => eggCode.code).join(', ')}</span>

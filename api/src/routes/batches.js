@@ -223,6 +223,7 @@ export default async function batchRoutes(fastify) {
             },
           },
           _count: { select: { bookings: true, sales: true, inventory: true } },
+          farmer: { select: { id: true, name: true, phone: true } },
         },
         orderBy: { expectedDate: 'desc' },
       });
@@ -271,6 +272,7 @@ export default async function batchRoutes(fastify) {
             },
           },
           bookings: { include: { customer: true } },
+          farmer: { select: { id: true, name: true, phone: true, notes: true } },
           _count: { select: { bookings: true, sales: true } },
         },
       });
@@ -474,7 +476,7 @@ export default async function batchRoutes(fastify) {
   fastify.patch('/batches/:id/receive', {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER')],
     handler: async (request, reply) => {
-      const { actualQuantity, freeCrates, wholesalePrice, retailPrice, eggCodes } = request.body;
+      const { actualQuantity, freeCrates, wholesalePrice, retailPrice, eggCodes, farmerId } = request.body;
 
       const existing = await prisma.batch.findUnique({ where: { id: request.params.id } });
       if (!existing) return reply.code(404).send({ error: 'Batch not found' });
@@ -494,6 +496,14 @@ export default async function batchRoutes(fastify) {
       }
       if (!retailPrice || Number(retailPrice) <= 0) {
         return reply.code(400).send({ error: 'Retail price for this batch is required' });
+      }
+      if (!farmerId) {
+        return reply.code(400).send({ error: 'Choose the farmer this batch came from' });
+      }
+
+      const farmer = await prisma.farmer.findUnique({ where: { id: farmerId } });
+      if (!farmer || !farmer.isActive) {
+        return reply.code(400).send({ error: 'Choose an active farmer for this batch' });
       }
 
       // Validate egg codes
@@ -549,32 +559,55 @@ export default async function batchRoutes(fastify) {
         }
       }
 
-      const batch = await prisma.batch.update({
-        where: { id: request.params.id },
-        data: {
-          status: 'RECEIVED',
-          receivedDate: new Date(),
-          actualQuantity,
-          freeCrates: freeCrates ?? totalFree,
-          wholesalePrice: Number(wholesalePrice),
-          retailPrice: Number(retailPrice),
-          costPrice: Number(eggCodes[0].costPrice),
-          eggCodes: {
-            deleteMany: {}, // Clear any existing (shouldn't be any)
-            createMany: {
-              data: eggCodes.map(ec => ({
-                itemId: itemByCode.get(normalizeItemCode(ec.code))?.id || null,
-                code: normalizeItemCode(ec.code),
-                costPrice: ec.costPrice,
-                wholesalePrice: Number(wholesalePrice),
-                retailPrice: Number(retailPrice),
-                quantity: ec.quantity,
-                freeQty: ec.freeQty || 0,
-              })),
+      const totalFarmerDrawdown = eggCodes.reduce(
+        (sum, ec) => sum + (Number(ec.costPrice) * Number(ec.quantity || 0)),
+        0,
+      );
+
+      const batch = await prisma.$transaction(async (tx) => {
+        const receivedBatch = await tx.batch.update({
+          where: { id: request.params.id },
+          data: {
+            status: 'RECEIVED',
+            receivedDate: new Date(),
+            actualQuantity,
+            freeCrates: freeCrates ?? totalFree,
+            wholesalePrice: Number(wholesalePrice),
+            retailPrice: Number(retailPrice),
+            costPrice: Number(eggCodes[0].costPrice),
+            farmerId,
+            eggCodes: {
+              deleteMany: {},
+              createMany: {
+                data: eggCodes.map(ec => ({
+                  itemId: itemByCode.get(normalizeItemCode(ec.code))?.id || null,
+                  code: normalizeItemCode(ec.code),
+                  costPrice: ec.costPrice,
+                  wholesalePrice: Number(wholesalePrice),
+                  retailPrice: Number(retailPrice),
+                  quantity: ec.quantity,
+                  freeQty: ec.freeQty || 0,
+                })),
+              },
             },
           },
-        },
-        include: { eggCodes: true },
+          include: { eggCodes: true, farmer: { select: { id: true, name: true, phone: true } } },
+        });
+
+        await tx.farmerLedgerEntry.create({
+          data: {
+            farmerId,
+            batchId: receivedBatch.id,
+            createdById: request.user.sub,
+            entryType: 'RECEIPT_DRAWDOWN',
+            amount: totalFarmerDrawdown,
+            balanceEffect: -totalFarmerDrawdown,
+            entryDate: receivedBatch.receivedDate || new Date(),
+            notes: 'Batch ' + receivedBatch.name + ' received and posted to farmer ledger.',
+          },
+        });
+
+        return receivedBatch;
       });
 
       return reply.send({

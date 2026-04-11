@@ -44,6 +44,14 @@ const Icons = {
       <path d="M23 21v-2a4 4 0 00-3-3.87" /><path d="M16 3.13a4 4 0 010 7.75" />
     </svg>
   ),
+  farmers: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 18.5V10a2 2 0 0 1 .88-1.66l5.5-3.67a3 3 0 0 1 3.24 0l5.5 3.67A2 2 0 0 1 20 10v8.5" />
+      <path d="M8 18h8" />
+      <path d="M9 14c1.5-1 4.5-1 6 0" />
+      <path d="M12 10v.01" />
+    </svg>
+  ),
   reports: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
       <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" />
@@ -81,6 +89,7 @@ const NAV_ITEMS = [
   { to: '/bookings', label: 'Bookings', icon: Icons.bookings, roles: null },
   { to: '/inventory', label: 'Inventory', icon: Icons.inventory, roles: null },
   { to: '/customers', label: 'Customers', icon: Icons.customers, roles: ['ADMIN', 'MANAGER', 'SHOP_FLOOR'] },
+  { to: '/farmers', label: 'Farmers', icon: Icons.farmers, roles: ['ADMIN', 'MANAGER'] },
   { to: '/reports', label: 'Reports', icon: Icons.reports, roles: ['ADMIN', 'MANAGER'] },
   { to: '/items', label: 'Items', icon: Icons.items, roles: ['ADMIN', 'MANAGER'] },
   { to: '/admin', label: 'Admin', icon: Icons.admin, roles: ['ADMIN'] },

@@ -197,6 +197,14 @@ export default function BatchDetail() {
           <p className="text-body-medium text-surface-700">
             Customer-facing type: {batch.eggTypeLabel || 'Regular Size Eggs'}
           </p>
+          {batch.farmer?.name ? (
+            <p className="mt-2 text-caption text-surface-600">
+              Farmer: <span className="font-medium text-surface-900">{batch.farmer.name}</span>
+              {batch.farmer.phone ? <> · {batch.farmer.phone}</> : null}
+            </p>
+          ) : batch.status === 'OPEN' ? (
+            <p className="mt-2 text-caption text-surface-500">Farmer will be selected when this batch is received.</p>
+          ) : null}
         </div>
 
         {/* Action buttons */}
@@ -234,7 +242,7 @@ export default function BatchDetail() {
         <div className="mb-4 rounded-lg border border-info-200 bg-info-50 p-4 shadow-xs">
           <p className="text-body-medium font-medium text-info-900">This batch is still waiting to be received.</p>
           <p className="mt-1 text-body text-info-700">
-            Keep taking bookings here, then use <span className="font-medium">Receive Batch</span> when the eggs arrive so you can enter the FE mix, actual quantities, and real cost prices.
+            Keep taking bookings here, then use <span className="font-medium">Receive Batch</span> when the eggs arrive so you can choose the farmer, enter the FE mix, actual quantities, and real cost prices.
           </p>
         </div>
       )}
@@ -920,32 +928,49 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
   const [wholesalePrice, setWholesalePrice] = useState(batch.wholesalePrice || '');
   const [retailPrice, setRetailPrice] = useState(batch.retailPrice || '');
   const [catalogItems, setCatalogItems] = useState([]);
+  const [farmers, setFarmers] = useState([]);
+  const [farmerId, setFarmerId] = useState(batch.farmer?.id || '');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  const totalPaid = eggCodes.reduce((s, ec) => s + (Number(ec.quantity) || 0), 0);
-  const totalFree = eggCodes.reduce((s, ec) => s + (Number(ec.freeQty) || 0), 0);
+  const totalPaid = eggCodes.reduce((sum, ec) => sum + (Number(ec.quantity) || 0), 0);
+  const totalFree = eggCodes.reduce((sum, ec) => sum + (Number(ec.freeQty) || 0), 0);
   const actualQuantity = totalPaid + totalFree;
   const expectedGap = actualQuantity - Number(batch.expectedQuantity || 0);
+  const projectedFarmerDrawdown = eggCodes.reduce(
+    (sum, ec) => sum + ((Number(ec.costPrice) || 0) * (Number(ec.quantity) || 0)),
+    0,
+  );
   const knownItemsByCode = new Map(
     catalogItems
       .filter((item) => item.code)
       .map((item) => [normalizeEggCode(item.code), item]),
   );
+  const selectedFarmer = farmers.find((farmer) => farmer.id === farmerId) || null;
+  const projectedFarmerBalance = selectedFarmer
+    ? Number(selectedFarmer.currentBalance || 0) - projectedFarmerDrawdown
+    : null;
 
   useEffect(() => {
     let cancelled = false;
 
-    async function loadCatalogItems() {
+    async function loadMetadata() {
       try {
-        const data = await api.get('/items?category=FE_EGGS');
-        if (!cancelled) setCatalogItems(data.items || []);
+        const [itemsData, farmersData] = await Promise.all([
+          api.get('/items?category=FE_EGGS'),
+          api.get('/farmers?limit=200'),
+        ]);
+        if (cancelled) return;
+        setCatalogItems(itemsData.items || []);
+        setFarmers(farmersData.farmers || []);
       } catch {
-        if (!cancelled) setCatalogItems([]);
+        if (cancelled) return;
+        setCatalogItems([]);
+        setFarmers([]);
       }
     }
 
-    loadCatalogItems();
+    loadMetadata();
     return () => { cancelled = true; };
   }, []);
 
@@ -973,11 +998,12 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
         };
       }
     }
+
     setEggCodes(updated);
   }
 
-  async function handleSubmit(e) {
-    e.preventDefault();
+  async function handleSubmit(event) {
+    event.preventDefault();
     setSubmitting(true);
     setError('');
 
@@ -985,28 +1011,33 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
     for (const ec of eggCodes) {
       const normalizedCode = normalizeEggCode(ec.code);
       if (!normalizedCode || !/^FE\d+$/.test(normalizedCode)) {
-        setError(`Invalid egg code: "${ec.code}". Must be FE followed by numbers (e.g. FE4600)`);
+        setError('Invalid egg code: "' + ec.code + '". Must be FE followed by numbers (e.g. FE4600)');
         setSubmitting(false);
         return;
       }
       if (seenCodes.has(normalizedCode)) {
-        setError(`You entered ${normalizedCode} more than once. Use one row per FE code.`);
+        setError('You entered ' + normalizedCode + ' more than once. Use one row per FE code.');
         setSubmitting(false);
         return;
       }
       seenCodes.add(normalizedCode);
       if (!ec.costPrice || Number(ec.costPrice) <= 0) {
-        setError(`Cost price for ${normalizedCode} must be positive`);
+        setError('Cost price for ' + normalizedCode + ' must be positive');
         setSubmitting(false);
         return;
       }
       if (!ec.quantity || Number(ec.quantity) <= 0) {
-        setError(`Quantity for ${normalizedCode} must be positive`);
+        setError('Quantity for ' + normalizedCode + ' must be positive');
         setSubmitting(false);
         return;
       }
     }
 
+    if (!farmerId) {
+      setError('Choose the farmer this batch came from before saving the receipt.');
+      setSubmitting(false);
+      return;
+    }
     if (!wholesalePrice || Number(wholesalePrice) <= 0) {
       setError('Wholesale price for the batch must be positive');
       setSubmitting(false);
@@ -1019,12 +1050,13 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
     }
 
     try {
-      await api.patch(`/batches/${batch.id}/receive`, {
+      await api.patch('/batches/' + batch.id + '/receive', {
         actualQuantity,
         freeCrates: totalFree,
+        farmerId,
         wholesalePrice: Number(wholesalePrice),
         retailPrice: Number(retailPrice),
-        eggCodes: eggCodes.map(ec => ({
+        eggCodes: eggCodes.map((ec) => ({
           code: normalizeEggCode(ec.code),
           costPrice: Number(ec.costPrice),
           quantity: Number(ec.quantity),
@@ -1041,23 +1073,23 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-surface-0 rounded-lg shadow-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto custom-scrollbar" onClick={e => e.stopPropagation()}>
+      <div className="bg-surface-0 rounded-lg shadow-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto custom-scrollbar" onClick={(event) => event.stopPropagation()}>
         <div className="px-4 sm:px-6 py-4 border-b border-surface-200">
           <h2 className="text-title text-surface-900">Receive Batch: {batch.name}</h2>
-          <p className="text-body text-surface-600 mt-1">Record what actually arrived from the farm, including FE mix, paid crates, and any extra free crates.</p>
+          <p className="text-body text-surface-600 mt-1">Record what actually arrived from the farm, choose the farmer, then save the FE mix, paid crates, and any extra free crates.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-5">
-          {error && (
+          {error ? (
             <div className="bg-error-50 text-error-700 px-3 py-2 rounded-md text-body">{error}</div>
-          )}
+          ) : null}
 
           <div className="rounded-md border border-info-200 bg-info-50 p-4">
             <p className="text-body-medium font-medium text-info-900">What to enter here</p>
             <div className="mt-2 space-y-2 text-body text-info-800">
-              <p>1. Add one row for each FE code that arrived in this batch.</p>
-              <p>2. Enter the paid crates for each FE code.</p>
-              <p>3. Add any extra free crates from the farm in the same row.</p>
+              <p>1. Choose the farmer this batch came from.</p>
+              <p>2. Add one row for each FE code that arrived in this batch.</p>
+              <p>3. Enter the paid crates for each FE code and any extra free crates from the farm.</p>
             </div>
           </div>
 
@@ -1074,11 +1106,42 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
               <p className="text-overline text-success-700">Free</p>
               <p className="mt-1 text-metric text-success-900">{formatNumber(totalFree)} crates</p>
             </div>
-            <div className={`rounded-md border p-3 shadow-xs ${
-              expectedGap >= 0 ? 'border-info-200 bg-info-50' : 'border-warning-200 bg-warning-50'
-            }`}>
-              <p className={`text-overline ${expectedGap >= 0 ? 'text-info-700' : 'text-warning-700'}`}>Total arrived</p>
-              <p className={`mt-1 text-metric font-bold ${expectedGap >= 0 ? 'text-info-900' : 'text-warning-900'}`}>{formatNumber(actualQuantity)} crates</p>
+            <div className={
+              'rounded-md border p-3 shadow-xs ' +
+              (expectedGap >= 0 ? 'border-info-200 bg-info-50' : 'border-warning-200 bg-warning-50')
+            }>
+              <p className={'text-overline ' + (expectedGap >= 0 ? 'text-info-700' : 'text-warning-700')}>Total arrived</p>
+              <p className={'mt-1 text-metric font-bold ' + (expectedGap >= 0 ? 'text-info-900' : 'text-warning-900')}>{formatNumber(actualQuantity)} crates</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <Select label="Farmer this batch came from" required value={farmerId} onChange={(event) => setFarmerId(event.target.value)}>
+              <option value="">Select farmer</option>
+              {farmers.map((farmer) => (
+                <option key={farmer.id} value={farmer.id}>
+                  {farmer.name}{farmer.phone ? ' · ' + farmer.phone : ''}
+                </option>
+              ))}
+            </Select>
+
+            <div className="rounded-md border border-surface-200 bg-surface-50 p-4 shadow-xs">
+              <p className="text-overline text-surface-600">Farmer ledger impact</p>
+              {selectedFarmer ? (
+                <div className="mt-2 space-y-2 text-body text-surface-700">
+                  <p>
+                    Current prepaid balance: <span className="font-medium text-surface-900">{formatCurrency(selectedFarmer.currentBalance)}</span>
+                  </p>
+                  <p>
+                    This receipt drawdown: <span className="font-medium text-surface-900">{formatCurrency(projectedFarmerDrawdown)}</span>
+                  </p>
+                  <p>
+                    Projected balance after receipt: <span className="font-medium text-surface-900">{formatCurrency(projectedFarmerBalance)}</span>
+                  </p>
+                </div>
+              ) : (
+                <p className="mt-2 text-body text-surface-600">Choose the farmer first so you can see how this receipt will affect the farmer ledger.</p>
+              )}
             </div>
           </div>
 
@@ -1089,7 +1152,7 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
               required
               min="1"
               value={wholesalePrice}
-              onChange={e => setWholesalePrice(e.target.value)}
+              onChange={(event) => setWholesalePrice(event.target.value)}
             />
             <Input
               label="Retail price for this batch"
@@ -1097,20 +1160,21 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
               required
               min="1"
               value={retailPrice}
-              onChange={e => setRetailPrice(e.target.value)}
+              onChange={(event) => setRetailPrice(event.target.value)}
             />
           </div>
 
-          <div className={`rounded-md border px-3 py-3 text-body ${
-            expectedGap === 0
+          <div className={
+            'rounded-md border px-3 py-3 text-body ' +
+            (expectedGap === 0
               ? 'border-success-200 bg-success-50 text-success-800'
               : expectedGap > 0
                 ? 'border-info-200 bg-info-50 text-info-800'
-                : 'border-warning-200 bg-warning-50 text-warning-800'
-          }`}>
-            {expectedGap === 0 && 'The total received matches the expected batch quantity exactly.'}
-            {expectedGap > 0 && `This batch arrived with ${formatNumber(expectedGap)} more crate${expectedGap === 1 ? '' : 's'} than expected.`}
-            {expectedGap < 0 && `This batch is short by ${formatNumber(Math.abs(expectedGap))} crate${Math.abs(expectedGap) === 1 ? '' : 's'} compared with what was expected.`}
+                : 'border-warning-200 bg-warning-50 text-warning-800')
+          }>
+            {expectedGap === 0 ? 'The total received matches the expected batch quantity exactly.' : null}
+            {expectedGap > 0 ? 'This batch arrived with ' + formatNumber(expectedGap) + ' more crate' + (expectedGap === 1 ? '' : 's') + ' than expected.' : null}
+            {expectedGap < 0 ? 'This batch is short by ' + formatNumber(Math.abs(expectedGap)) + ' crate' + (Math.abs(expectedGap) === 1 ? '' : 's') + ' compared with what was expected.' : null}
           </div>
 
           <div>
@@ -1129,72 +1193,74 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
             </div>
 
             <div className="space-y-3">
-              {eggCodes.map((ec, i) => (
-                <div key={i} className="rounded-md border border-surface-200 p-3 sm:p-4 shadow-xs">
+              {eggCodes.map((ec, index) => (
+                <div key={index} className="rounded-md border border-surface-200 p-3 sm:p-4 shadow-xs">
                   <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 sm:items-end">
                     <div className="sm:col-span-3">
-                      {i === 0 && <label className="block text-caption text-surface-600 mb-1">Code</label>}
+                      {index === 0 ? <label className="block text-caption text-surface-600 mb-1">Code</label> : null}
                       <Input
                         list="batch-receive-fe-codes"
                         type="text"
                         required
                         placeholder="FE4600"
                         value={ec.code}
-                        onChange={e => updateEggCode(i, 'code', e.target.value)}
+                        onChange={(event) => updateEggCode(index, 'code', event.target.value)}
                         size="sm"
                       />
                     </div>
                     <div className="sm:col-span-2">
-                      {i === 0 && <label className="block text-caption text-surface-600 mb-1">Cost/Crate</label>}
+                      {index === 0 ? <label className="block text-caption text-surface-600 mb-1">Cost/Crate</label> : null}
                       <Input
                         type="number"
                         required
                         min="1"
                         placeholder="4600"
                         value={ec.costPrice}
-                        onChange={e => updateEggCode(i, 'costPrice', e.target.value)}
+                        onChange={(event) => updateEggCode(index, 'costPrice', event.target.value)}
                         size="sm"
                       />
                     </div>
                     <div className="sm:col-span-2">
-                      {i === 0 && <label className="block text-caption text-surface-600 mb-1">Paid Qty</label>}
+                      {index === 0 ? <label className="block text-caption text-surface-600 mb-1">Paid Qty</label> : null}
                       <Input
                         type="number"
                         required
                         min="1"
                         placeholder="1800"
                         value={ec.quantity}
-                        onChange={e => updateEggCode(i, 'quantity', e.target.value)}
+                        onChange={(event) => updateEggCode(index, 'quantity', event.target.value)}
                         size="sm"
                       />
                     </div>
                     <div className="sm:col-span-2">
-                      {i === 0 && <label className="block text-caption text-surface-600 mb-1">Free Qty</label>}
+                      {index === 0 ? <label className="block text-caption text-surface-600 mb-1">Free Qty</label> : null}
                       <Input
                         type="number"
                         min="0"
                         placeholder="3"
                         value={ec.freeQty}
-                        onChange={e => updateEggCode(i, 'freeQty', e.target.value)}
+                        onChange={(event) => updateEggCode(index, 'freeQty', event.target.value)}
                         size="sm"
                       />
                     </div>
                     <div className="sm:col-span-1 flex items-center justify-start sm:justify-end">
-                      {eggCodes.length > 1 && (
+                      {eggCodes.length > 1 ? (
                         <button
                           type="button"
-                          onClick={() => removeEggCode(i)}
+                          onClick={() => removeEggCode(index)}
                           className="text-error-400 hover:text-error-600 text-body px-2 py-2 transition-colors"
                         >
                           <IconTrash />
                         </button>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                   <div className="mt-3 flex flex-col gap-2 text-caption sm:flex-row sm:items-center sm:justify-between">
                     <div className="text-surface-600">
                       {knownItemsByCode.get(normalizeEggCode(ec.code)) ? (
-                        <>Matched item: <span className="font-medium text-surface-900">{knownItemsByCode.get(normalizeEggCode(ec.code)).displayName || knownItemsByCode.get(normalizeEggCode(ec.code)).name}</span></>
+                        <>
+                          Matched item: <span className="font-medium text-surface-900">{knownItemsByCode.get(normalizeEggCode(ec.code)).displayName || knownItemsByCode.get(normalizeEggCode(ec.code)).name}</span>
+                        </>
                       ) : normalizeEggCode(ec.code) ? (
                         <>This FE code will be created as a new item if it does not already exist.</>
                       ) : (
@@ -1223,7 +1289,7 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
             <Button variant="tertiary" size="md" onClick={onClose}>
               Cancel
             </Button>
-            <Button variant="primary" size="md" disabled={submitting} onClick={handleSubmit}>
+            <Button variant="primary" size="md" disabled={submitting || farmers.length === 0} onClick={handleSubmit}>
               {submitting ? 'Receiving...' : 'Save Receipt Details'}
             </Button>
           </div>
@@ -1232,6 +1298,7 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
     </div>
   );
 }
+
 
 function BatchCountModal({ batch, onClose, onSaved }) {
   const overview = batch.overview || {};
