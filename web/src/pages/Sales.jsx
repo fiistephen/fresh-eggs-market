@@ -155,6 +155,57 @@ function saleBatchLabel(sale) {
   return sale.batchSummary || sale.batch?.name || '—';
 }
 
+function saleSourceBadgeMeta(sale) {
+  if (sale.booking?.portalCheckout?.checkoutType === 'BUY_NOW') {
+    return { label: 'Portal buy now', color: 'info' };
+  }
+  if (sale.booking?.portalCheckout?.checkoutType === 'BOOK_UPCOMING') {
+    return { label: 'Portal booking', color: 'brand' };
+  }
+  if (sale.sourceType === 'BOOKING') {
+    return { label: 'Booking pickup', color: 'success' };
+  }
+  return { label: 'Direct sale', color: 'neutral' };
+}
+
+function saleSettlementMoments(sale) {
+  const moments = [];
+  if (sale.booking?.createdAt) {
+    moments.push({
+      label: 'Booking created',
+      value: formatDateTime(sale.booking.createdAt),
+      tone: 'neutral',
+    });
+  }
+  if (sale.booking?.portalCheckout?.createdAt) {
+    moments.push({
+      label: 'Portal checkout started',
+      value: formatDateTime(sale.booking.portalCheckout.createdAt),
+      tone: 'neutral',
+    });
+  }
+  if (sale.booking?.portalCheckout?.adminConfirmedAt) {
+    moments.push({
+      label: 'Staff saw transfer',
+      value: formatDateTime(sale.booking.portalCheckout.adminConfirmedAt),
+      tone: 'warning',
+    });
+  }
+  if (sale.booking?.portalCheckout?.verifiedAt) {
+    moments.push({
+      label: sale.booking?.portalCheckout?.confirmationStatementLineId ? 'Statement confirmed' : 'Payment confirmed',
+      value: formatDateTime(sale.booking.portalCheckout.verifiedAt),
+      tone: 'success',
+    });
+  }
+  moments.push({
+    label: sale.sourceType === 'BOOKING' ? 'Pickup completed' : 'Sale recorded',
+    value: formatDateTime(sale.saleDate),
+    tone: 'success',
+  });
+  return moments;
+}
+
 function orderLimitMessage(orderLimitProfile) {
   if (!orderLimitProfile) return '';
   if (orderLimitProfile.isUsingEarlyOrderLimit) {
@@ -545,6 +596,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
   const [customerWorkspace, setCustomerWorkspace] = useState({
     customer: null,
     bookings: [],
+    recentFulfilments: [],
     directSaleBatches: [],
     mixedDirectSaleStock: [],
   });
@@ -596,12 +648,13 @@ function RecordSaleModal({ onClose, onRecorded }) {
       setCustomerWorkspace({
         customer: data.customer || null,
         bookings: data.bookings || [],
+        recentFulfilments: data.recentFulfilments || [],
         directSaleBatches: data.directSaleBatches || [],
         mixedDirectSaleStock: data.mixedDirectSaleStock || [],
       });
     } catch {
       setWorkspaceError('Failed to load this customer\'s sales options');
-      setCustomerWorkspace({ customer: null, bookings: [], directSaleBatches: [], mixedDirectSaleStock: [] });
+      setCustomerWorkspace({ customer: null, bookings: [], recentFulfilments: [], directSaleBatches: [], mixedDirectSaleStock: [] });
     } finally {
       setLoadingWorkspace(false);
     }
@@ -1099,6 +1152,51 @@ function RecordSaleModal({ onClose, onRecorded }) {
                 )}
               </section>
 
+              {customerWorkspace.recentFulfilments?.length > 0 && (
+                <section className="space-y-3">
+                  <div>
+                    <h3 className="text-heading text-surface-900">Recent pickups and sales</h3>
+                    <p className="text-body text-surface-600 mt-1">
+                      Use this to confirm what this customer already collected recently before you save anything new.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    {customerWorkspace.recentFulfilments.map((sale) => {
+                      const sourceMeta = saleSourceBadgeMeta(sale);
+                      const bookingTruth = sale.booking ? bookingPaymentTruthMeta({
+                        portalCheckout: sale.booking.portalCheckout,
+                        isFullyPaid: true,
+                      }) : null;
+
+                      return (
+                        <Card key={sale.id} variant="outlined" padding="comfortable">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-heading text-surface-900">{sale.receiptNumber}</p>
+                              <p className="text-body text-surface-600 mt-1">
+                                {formatDateTime(sale.saleDate)} · {sale.totalQuantity} crates · {formatCurrency(sale.totalAmount)}
+                              </p>
+                              <p className="text-caption text-surface-500 mt-1">
+                                {sale.batchSummary || sale.batch?.name || '—'} · {PAYMENT_LABELS[sale.paymentMethod] || sale.paymentMethod}
+                              </p>
+                              <div className="mt-2 flex items-center gap-2 flex-wrap">
+                                <Badge color={sourceMeta.color} dot>{sourceMeta.label}</Badge>
+                                {bookingTruth && <Badge color={bookingTruth.color} dot>{bookingTruth.label}</Badge>}
+                                {sale.booking?.portalCheckout?.reference && (
+                                  <span className="text-caption text-surface-500 font-mono">{sale.booking.portalCheckout.reference}</span>
+                                )}
+                              </div>
+                            </div>
+                            <Badge color="success" dot>Completed</Badge>
+                          </div>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+
               <section className="space-y-3">
                 <div>
                   <h3 className="text-heading text-surface-900">2. Create a new direct sale</h3>
@@ -1204,6 +1302,11 @@ function RecordSaleModal({ onClose, onRecorded }) {
                   ? `Enter the egg codes collected. The total must stay at ${selectedBooking?.quantity} crates.`
                   : 'Record the remaining payment in Banking and update the booking before pickup.'}
               </p>
+              {selectedBooking?.isFullyPaid && (
+                <p className="text-caption text-surface-700 mt-2">
+                  If the customer is collecting only part today, update the booking first so the booking quantity matches what will actually leave the store.
+                </p>
+              )}
             </Card>
           ) : (
             <Card variant="outlined" padding="comfortable" className="border-info-200 bg-info-50">
@@ -1486,6 +1589,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
 function SaleDetailModal({ sale, onClose }) {
   const profit = sale.totalAmount - sale.totalCost;
   const paymentRows = salePaymentRows(sale);
+  const settlementMoments = saleSettlementMoments(sale);
 
   function customerLineItems(currentSale) {
     return (currentSale.lineItems || []).map((lineItem) => ({
@@ -1736,6 +1840,9 @@ function SaleDetailModal({ sale, onClose }) {
               <p className="text-surface-600">Booking</p>
               <p className="text-body-medium font-semibold text-surface-900 mt-1">{sale.booking.quantity} crates</p>
               <p className="text-caption text-surface-600 mt-1">Paid {formatCurrency(sale.booking.amountPaid)}</p>
+              {sale.booking.portalCheckout?.reference && (
+                <p className="text-caption text-surface-500 font-mono mt-1">{sale.booking.portalCheckout.reference}</p>
+              )}
             </div>
           )}
           {paymentRows.length > 0 && (
@@ -1759,6 +1866,23 @@ function SaleDetailModal({ sale, onClose }) {
           <Card variant="outlined" padding="comfortable" className="border-warning-200 bg-warning-50">
             <p className="text-overline text-warning-800">Limit Override Note</p>
             <p className="text-body text-warning-900 mt-2 whitespace-pre-wrap">{sale.limitOverride.note}</p>
+          </Card>
+        )}
+
+        {sale.sourceType === 'BOOKING' && settlementMoments.length > 0 && (
+          <Card variant="outlined" padding="comfortable" className="bg-surface-50">
+            <p className="text-overline text-surface-600 mb-3">Settlement History</p>
+            <div className="space-y-3">
+              {settlementMoments.map((moment) => (
+                <div key={`${moment.label}-${moment.value}`} className="flex items-start justify-between gap-3 border-b border-surface-200 pb-3 last:border-b-0 last:pb-0">
+                  <div>
+                    <p className="text-body-medium font-semibold text-surface-900">{moment.label}</p>
+                    <p className="text-caption text-surface-600 mt-1">{moment.value}</p>
+                  </div>
+                  <Badge color={moment.tone} dot>{moment.label}</Badge>
+                </div>
+              ))}
+            </div>
           </Card>
         )}
 

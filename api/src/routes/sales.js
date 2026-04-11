@@ -190,6 +190,41 @@ function mapBookingForWorkspace(booking, eggTypes = []) {
   };
 }
 
+function mapRecentFulfilmentForWorkspace(sale, eggTypes = []) {
+  return {
+    id: sale.id,
+    receiptNumber: sale.receiptNumber,
+    saleDate: sale.saleDate,
+    totalQuantity: sale.totalQuantity,
+    totalAmount: Number(sale.totalAmount),
+    paymentMethod: sale.paymentMethod,
+    sourceType: sale.bookingId ? 'BOOKING' : 'DIRECT',
+    batchSummary: deriveSaleBatchSummary(sale),
+    booking: sale.booking
+      ? {
+          id: sale.booking.id,
+          quantity: sale.booking.quantity,
+          amountPaid: Number(sale.booking.amountPaid),
+          orderValue: Number(sale.booking.orderValue),
+          createdAt: sale.booking.createdAt,
+          portalCheckout: sale.booking.portalCheckout
+            ? {
+                reference: sale.booking.portalCheckout.reference,
+                checkoutType: sale.booking.portalCheckout.checkoutType,
+                paymentMethod: sale.booking.portalCheckout.paymentMethod,
+                status: sale.booking.portalCheckout.status,
+                adminConfirmedAt: sale.booking.portalCheckout.adminConfirmedAt,
+                verifiedAt: sale.booking.portalCheckout.verifiedAt,
+                confirmationStatementLineId: sale.booking.portalCheckout.confirmationStatementLineId,
+                createdAt: sale.booking.portalCheckout.createdAt,
+              }
+            : null,
+        }
+      : null,
+    batch: sale.batch ? mapBatchForSale(sale.batch, eggTypes) : null,
+  };
+}
+
 function mapSalePaymentTransaction(paymentTransaction) {
   return {
     ...paymentTransaction,
@@ -220,6 +255,11 @@ function enrichSale(sale, eggTypes = []) {
       ...sale.booking,
       amountPaid: Number(sale.booking.amountPaid),
       orderValue: Number(sale.booking.orderValue),
+      portalCheckout: sale.booking.portalCheckout
+        ? {
+            ...sale.booking.portalCheckout,
+          }
+        : null,
     } : undefined,
     ...(sale.lineItems && {
       lineItems: sale.lineItems.map((lineItem) => ({
@@ -261,6 +301,19 @@ function buildSaleInclude() {
         amountPaid: true,
         orderValue: true,
         status: true,
+        createdAt: true,
+        portalCheckout: {
+          select: {
+            reference: true,
+            checkoutType: true,
+            paymentMethod: true,
+            status: true,
+            adminConfirmedAt: true,
+            verifiedAt: true,
+            confirmationStatementLineId: true,
+            createdAt: true,
+          },
+        },
       },
     },
     lineItems: {
@@ -472,6 +525,46 @@ export default async function salesRoutes(fastify) {
           orderBy: { receivedDate: 'desc' },
         }),
       ]);
+      const recentSales = await prisma.sale.findMany({
+        where: { customerId },
+        include: {
+          batch: {
+            select: { id: true, name: true, eggTypeKey: true, wholesalePrice: true, retailPrice: true, receivedDate: true },
+          },
+          booking: {
+            select: {
+              id: true,
+              quantity: true,
+              amountPaid: true,
+              orderValue: true,
+              createdAt: true,
+              portalCheckout: {
+                select: {
+                  reference: true,
+                  checkoutType: true,
+                  paymentMethod: true,
+                  status: true,
+                  adminConfirmedAt: true,
+                  verifiedAt: true,
+                  confirmationStatementLineId: true,
+                  createdAt: true,
+                },
+              },
+            },
+          },
+          lineItems: {
+            include: {
+              batchEggCode: {
+                select: {
+                  batch: { select: { id: true, name: true } },
+                },
+              },
+            },
+          },
+        },
+        orderBy: [{ saleDate: 'desc' }],
+        take: 6,
+      });
 
       const batchSnapshots = await Promise.all(batches.map((batch) => getBatchStockSnapshot(batch.id, eggTypes)));
       const trackedOrderCount = await getCustomerTrackedOrderCount(customerId);
@@ -497,6 +590,7 @@ export default async function salesRoutes(fastify) {
           orderLimitMessage: formatOrderLimitMessage(orderLimitProfile),
         },
         bookings: bookings.map((booking) => mapBookingForWorkspace(booking, eggTypes)),
+        recentFulfilments: recentSales.map((sale) => mapRecentFulfilmentForWorkspace(sale, eggTypes)),
         directSaleBatches: saleReadyBatches.map((snapshot) => ({
           ...snapshot.batch,
           salesCount: batches.find((batch) => batch.id === snapshot.batch.id)?._count.sales || 0,
