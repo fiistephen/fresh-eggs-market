@@ -11,6 +11,18 @@ function formatDate(value) {
   return new Date(value).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+function statusTone(status) {
+  if (status === 'OVERDRAWN') return 'bg-error-50 text-error-700 border-error-100';
+  if (status === 'BALANCE_WITH_FARMER') return 'bg-warning-50 text-warning-700 border-warning-100';
+  return 'bg-success-50 text-success-700 border-success-100';
+}
+
+function statusLabel(status) {
+  if (status === 'OVERDRAWN') return 'Overdrawn';
+  if (status === 'BALANCE_WITH_FARMER') return 'Balance with farmer';
+  return 'Settled';
+}
+
 function MetricCard({ label, value, subtext }) {
   return (
     <div className="rounded-lg border border-surface-200 bg-surface-0 p-4">
@@ -66,6 +78,8 @@ export default function Farmers() {
   const totals = useMemo(() => ({
     currentBalance: farmers.reduce((sum, farmer) => sum + Number(farmer.currentBalance || 0), 0),
     activeCount: farmers.filter((farmer) => farmer.isActive !== false).length,
+    withBalanceCount: farmers.filter((farmer) => Number(farmer.currentBalance || 0) > 0.009).length,
+    overdrawnCount: farmers.filter((farmer) => Number(farmer.currentBalance || 0) < -0.009).length,
   }), [farmers]);
 
   return (
@@ -80,8 +94,8 @@ export default function Farmers() {
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3 mb-6">
         <MetricCard label="Farmers" value={total.toLocaleString()} subtext={`${totals.activeCount.toLocaleString()} active`} />
-        <MetricCard label="Current prepaid balance" value={formatCurrency(totals.currentBalance)} subtext="Total balance still sitting with farmers" />
-        <MetricCard label="What this screen does" value="Ledger + adjustments" subtext="Record real farmer payments from Banking. Receiving a batch reduces the balance automatically." />
+        <MetricCard label="Current prepaid balance" value={formatCurrency(totals.currentBalance)} subtext={`${totals.withBalanceCount.toLocaleString()} farmers still have balance sitting with them`} />
+        <MetricCard label="Needs attention" value={totals.overdrawnCount.toLocaleString()} subtext="Farmers whose drawdowns are ahead of recorded balance" />
       </div>
 
       <div className="mb-6 max-w-md">
@@ -110,12 +124,14 @@ export default function Farmers() {
       ) : (
         <Card variant="outlined" padding="none">
           <div className="overflow-x-auto custom-scrollbar">
-            <table className="w-full min-w-[760px]">
+            <table className="w-full min-w-[980px]">
               <thead>
                 <tr className="border-b border-surface-200 bg-surface-50">
                   <th className="px-4 py-3 text-left text-overline text-surface-500">Farmer</th>
                   <th className="px-4 py-3 text-left text-overline text-surface-500">Phone</th>
                   <th className="px-4 py-3 text-right text-overline text-surface-500">Current balance</th>
+                  <th className="px-4 py-3 text-left text-overline text-surface-500">Last payment</th>
+                  <th className="px-4 py-3 text-left text-overline text-surface-500">Last batch</th>
                   <th className="px-4 py-3 text-center text-overline text-surface-500">Batches</th>
                   <th className="px-4 py-3 text-center text-overline text-surface-500">Ledger lines</th>
                   <th className="px-4 py-3 text-left text-overline text-surface-500">Status</th>
@@ -136,9 +152,31 @@ export default function Farmers() {
                     <td className={`px-4 py-3 text-right text-body-medium font-semibold ${Number(farmer.currentBalance || 0) < 0 ? 'text-error-700' : 'text-surface-900'}`}>
                       {formatCurrency(farmer.currentBalance)}
                     </td>
+                    <td className="px-4 py-3 text-body text-surface-600">
+                      {farmer.latestPayment ? (
+                        <>
+                          <p className="font-medium text-surface-800">{formatCurrency(farmer.latestPayment.amount)}</p>
+                          <p className="mt-1 text-caption text-surface-500">{formatDate(farmer.latestPayment.entryDate)}</p>
+                        </>
+                      ) : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-body text-surface-600">
+                      {farmer.latestBatch ? (
+                        <>
+                          <p className="font-medium text-surface-800">{farmer.latestBatch.name}</p>
+                          <p className="mt-1 text-caption text-surface-500">{formatDate(farmer.latestBatch.receivedDate || farmer.latestBatch.expectedDate)}</p>
+                        </>
+                      ) : '—'}
+                    </td>
                     <td className="px-4 py-3 text-center text-body text-surface-600">{farmer._count?.batches || 0}</td>
                     <td className="px-4 py-3 text-center text-body text-surface-600">{farmer._count?.ledgerEntries || 0}</td>
-                    <td className="px-4 py-3 text-body text-surface-600">{farmer.isActive === false ? 'Inactive' : 'Active'}</td>
+                    <td className="px-4 py-3 text-body text-surface-600">
+                      {farmer.isActive === false ? (
+                        <span className="inline-flex rounded-full border border-surface-200 bg-surface-100 px-2.5 py-1 text-caption-medium text-surface-600">Inactive</span>
+                      ) : (
+                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-caption-medium ${statusTone(farmer.status)}`}>{statusLabel(farmer.status)}</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -254,6 +292,34 @@ function FarmerDetailModal({ farmerId, onClose, onUpdated }) {
         <MetricCard label="Current balance" value={formatCurrency(summary.currentBalance)} subtext="What is still sitting with this farmer" />
         <MetricCard label="Total prepayments" value={formatCurrency(summary.totalPrepayments)} subtext="All increases to the farmer balance" />
         <MetricCard label="Total drawdowns" value={formatCurrency(summary.totalDrawdowns)} subtext="Batches already received from this farmer" />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <Card padding="comfortable">
+          <p className="text-overline text-surface-500">Last Banking payment</p>
+          {summary.lastPayment ? (
+            <>
+              <p className="mt-2 text-title text-surface-900">{formatCurrency(summary.lastPayment.amount)}</p>
+              <p className="mt-1 text-body text-surface-600">{formatDate(summary.lastPayment.entryDate)} · {summary.lastPayment.bankAccount?.name || 'Banking'}</p>
+              <p className="mt-2 text-caption text-surface-500">{summary.lastPayment.reference || summary.lastPayment.description || 'No extra note'}</p>
+            </>
+          ) : (
+            <p className="mt-2 text-body text-surface-500">No Banking-linked farmer payment yet.</p>
+          )}
+        </Card>
+
+        <Card padding="comfortable">
+          <p className="text-overline text-surface-500">Latest batch drawdown</p>
+          {summary.lastDrawdown ? (
+            <>
+              <p className="mt-2 text-title text-surface-900">{formatCurrency(summary.lastDrawdown.amount)}</p>
+              <p className="mt-1 text-body text-surface-600">{formatDate(summary.lastDrawdown.entryDate)} · {summary.lastDrawdown.batch?.name || 'Batch receipt'}</p>
+              <p className="mt-2 text-caption text-surface-500">{summary.lastDrawdown.batch?.status || 'Receipt drawdown'}</p>
+            </>
+          ) : (
+            <p className="mt-2 text-body text-surface-500">No receipt drawdown yet.</p>
+          )}
+        </Card>
       </div>
 
       <Card padding="comfortable">

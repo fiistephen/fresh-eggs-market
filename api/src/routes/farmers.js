@@ -26,6 +26,13 @@ function buildFarmerSummary(farmer, currentBalance = 0) {
   };
 }
 
+function buildFarmerStatus(currentBalance) {
+  const balance = Number(currentBalance || 0);
+  if (balance < -0.009) return 'OVERDRAWN';
+  if (balance > 0.009) return 'BALANCE_WITH_FARMER';
+  return 'SETTLED';
+}
+
 export default async function farmerRoutes(fastify) {
   fastify.get('/farmers', {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
@@ -48,6 +55,36 @@ export default async function farmerRoutes(fastify) {
           where,
           include: {
             _count: { select: { batches: true, ledgerEntries: true } },
+            batches: {
+              orderBy: [{ receivedDate: 'desc' }, { expectedDate: 'desc' }],
+              take: 1,
+              select: {
+                id: true,
+                name: true,
+                status: true,
+                expectedDate: true,
+                receivedDate: true,
+              },
+            },
+            ledgerEntries: {
+              where: {
+                bankTransactionId: { not: null },
+                balanceEffect: { gt: 0 },
+              },
+              orderBy: [{ entryDate: 'desc' }, { createdAt: 'desc' }],
+              take: 1,
+              select: {
+                id: true,
+                amount: true,
+                entryDate: true,
+                bankTransaction: {
+                  select: {
+                    id: true,
+                    bankAccount: { select: { id: true, name: true, accountType: true, lastFour: true } },
+                  },
+                },
+              },
+            },
           },
           orderBy: [{ name: 'asc' }],
           take: parsedLimit,
@@ -63,14 +100,29 @@ export default async function farmerRoutes(fastify) {
 
       const balanceMap = buildBalanceMap(balances);
       return reply.send({
-        farmers: farmers.map((farmer) => buildFarmerSummary(farmer, balanceMap.get(farmer.id) || 0)),
+        farmers: farmers.map((farmer) => {
+          const currentBalance = balanceMap.get(farmer.id) || 0;
+          return {
+            ...buildFarmerSummary(farmer, currentBalance),
+            status: buildFarmerStatus(currentBalance),
+            latestBatch: farmer.batches?.[0] || null,
+            latestPayment: farmer.ledgerEntries?.[0]
+              ? {
+                  id: farmer.ledgerEntries[0].id,
+                  amount: Number(farmer.ledgerEntries[0].amount),
+                  entryDate: farmer.ledgerEntries[0].entryDate,
+                  bankAccount: farmer.ledgerEntries[0].bankTransaction?.bankAccount || null,
+                }
+              : null,
+          };
+        }),
         total,
       });
     },
   });
 
   fastify.get('/farmers/:id', {
-    preHandler: [authenticate, authorize('ADMIN', 'MANAGER')],
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
     handler: async (request, reply) => {
       const farmer = await prisma.farmer.findUnique({
         where: { id: request.params.id },
@@ -118,7 +170,7 @@ export default async function farmerRoutes(fastify) {
 
       if (!farmer) return reply.code(404).send({ error: 'Farmer not found' });
 
-      const [balanceAggregate, positiveAggregate, drawdownAggregate] = await Promise.all([
+      const [balanceAggregate, positiveAggregate, drawdownAggregate, lastPaymentEntry, lastDrawdownEntry] = await Promise.all([
         prisma.farmerLedgerEntry.aggregate({
           where: { farmerId: farmer.id },
           _sum: { balanceEffect: true },
@@ -131,14 +183,64 @@ export default async function farmerRoutes(fastify) {
           where: { farmerId: farmer.id, balanceEffect: { lt: 0 } },
           _sum: { balanceEffect: true },
         }),
+        prisma.farmerLedgerEntry.findFirst({
+          where: {
+            farmerId: farmer.id,
+            bankTransactionId: { not: null },
+            balanceEffect: { gt: 0 },
+          },
+          include: {
+            bankTransaction: {
+              select: {
+                id: true,
+                bankAccount: { select: { id: true, name: true, accountType: true, lastFour: true } },
+                description: true,
+                reference: true,
+              },
+            },
+          },
+          orderBy: [{ entryDate: 'desc' }, { createdAt: 'desc' }],
+        }),
+        prisma.farmerLedgerEntry.findFirst({
+          where: {
+            farmerId: farmer.id,
+            entryType: 'RECEIPT_DRAWDOWN',
+          },
+          include: {
+            batch: { select: { id: true, name: true, status: true, receivedDate: true, expectedDate: true } },
+          },
+          orderBy: [{ entryDate: 'desc' }, { createdAt: 'desc' }],
+        }),
       ]);
 
+      const currentBalance = toNumber(balanceAggregate._sum.balanceEffect);
       return reply.send({
-        farmer: buildFarmerSummary(farmer, balanceAggregate._sum.balanceEffect || 0),
+        farmer: {
+          ...buildFarmerSummary(farmer, currentBalance || 0),
+          status: buildFarmerStatus(currentBalance),
+        },
         summary: {
-          currentBalance: toNumber(balanceAggregate._sum.balanceEffect),
+          currentBalance,
           totalPrepayments: toNumber(positiveAggregate._sum.balanceEffect),
           totalDrawdowns: Math.abs(toNumber(drawdownAggregate._sum.balanceEffect)),
+          lastPayment: lastPaymentEntry
+            ? {
+                id: lastPaymentEntry.id,
+                amount: Number(lastPaymentEntry.amount),
+                entryDate: lastPaymentEntry.entryDate,
+                bankAccount: lastPaymentEntry.bankTransaction?.bankAccount || null,
+                description: lastPaymentEntry.bankTransaction?.description || null,
+                reference: lastPaymentEntry.bankTransaction?.reference || null,
+              }
+            : null,
+          lastDrawdown: lastDrawdownEntry
+            ? {
+                id: lastDrawdownEntry.id,
+                amount: Number(lastDrawdownEntry.amount),
+                entryDate: lastDrawdownEntry.entryDate,
+                batch: lastDrawdownEntry.batch || null,
+              }
+            : null,
         },
         ledgerEntries: farmer.ledgerEntries.map(enrichLedgerEntry),
       });
