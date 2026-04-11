@@ -37,6 +37,61 @@ function bookingSourceMeta(booking) {
   };
 }
 
+function bookingPaymentTruthMeta(booking) {
+  const checkout = booking?.portalCheckout;
+  if (checkout?.paymentMethod === 'TRANSFER') {
+    if (checkout.status === 'ADMIN_CONFIRMED') {
+      return {
+        label: 'Waiting for statement',
+        description: 'Staff has seen the transfer, but the final financial truth still needs the bank statement match.',
+        color: 'warning',
+      };
+    }
+    if (checkout.status === 'AWAITING_TRANSFER') {
+      return {
+        label: 'Waiting for admin',
+        description: 'The customer said they transferred, but staff has not confirmed seeing the money yet.',
+        color: 'neutral',
+      };
+    }
+    if (checkout.status === 'PAID' && checkout.confirmationStatementLineId) {
+      return {
+        label: 'Statement confirmed',
+        description: 'This transfer has been fully confirmed from the bank statement.',
+        color: 'success',
+      };
+    }
+    if (checkout.status === 'PAID') {
+      return {
+        label: 'Transfer confirmed',
+        description: 'This transfer has been confirmed and is ready for pickup.',
+        color: 'success',
+      };
+    }
+    if (checkout.status === 'CANCELLED') {
+      return {
+        label: 'Transfer declined',
+        description: 'This transfer was declined and should not be fulfilled.',
+        color: 'error',
+      };
+    }
+  }
+  if (checkout?.paymentMethod === 'CARD' && checkout.status === 'PAID') {
+    return {
+      label: 'Card verified',
+      description: 'This portal card payment was verified automatically.',
+      color: 'success',
+    };
+  }
+  return {
+    label: booking?.isFullyPaid ? 'Paid and ready' : 'Needs payment',
+    description: booking?.isFullyPaid
+      ? 'This booking is fully paid and can be completed now.'
+      : 'Record the remaining payment in Banking before pickup.',
+    color: booking?.isFullyPaid ? 'success' : 'warning',
+  };
+}
+
 function formatCurrency(n) {
   if (n == null) return '—';
   return new Intl.NumberFormat('en-NG', {
@@ -158,6 +213,10 @@ export default function Sales() {
   const [error, setError] = useState('');
   const [dateFilter, setDateFilter] = useState(todayStr());
   const [paymentFilter, setPaymentFilter] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
   const [summary, setSummary] = useState(null);
   const [loadingSummary, setLoadingSummary] = useState(false);
@@ -169,8 +228,16 @@ export default function Sales() {
   const canViewReports = ['ADMIN', 'MANAGER'].includes(user?.role);
 
   useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [searchInput]);
+
+  useEffect(() => {
     loadSales();
-  }, [dateFilter, paymentFilter]);
+  }, [dateFilter, paymentFilter, search, page, pageSize]);
 
   useEffect(() => {
     if (canViewReports) loadSummary();
@@ -180,8 +247,13 @@ export default function Sales() {
     setLoading(true);
     setError('');
     try {
-      let params = `?date=${dateFilter}`;
-      if (paymentFilter) params += `&paymentMethod=${paymentFilter}`;
+      const query = new URLSearchParams();
+      query.set('date', dateFilter);
+      query.set('limit', String(pageSize));
+      query.set('offset', String((page - 1) * pageSize));
+      if (paymentFilter) query.set('paymentMethod', paymentFilter);
+      if (search) query.set('search', search);
+      const params = `?${query.toString()}`;
       const data = await api.get(`/sales${params}`);
       setSales(data.sales);
       setTotal(data.total);
@@ -233,6 +305,16 @@ export default function Sales() {
       </Card>
 
       <div className="flex flex-wrap items-end gap-4 mb-6">
+        <div className="flex-1 min-w-[220px]">
+          <Input
+            label="Search"
+            type="text"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Receipt, customer, phone, batch, or portal ref"
+            size="md"
+          />
+        </div>
         <div className="flex-1 min-w-[150px]">
           <Input
             label="Date"
@@ -258,7 +340,12 @@ export default function Sales() {
         <Button
           variant="ghost"
           size="md"
-          onClick={() => setDateFilter(todayStr())}
+          onClick={() => {
+            setDateFilter(todayStr());
+            setSearchInput('');
+            setPaymentFilter('');
+            setPage(1);
+          }}
         >
           Today
         </Button>
@@ -380,7 +467,42 @@ export default function Sales() {
               </tbody>
             </table>
           </Card>
-          <p className="text-caption text-surface-500 mt-3">{total} sale record(s) shown.</p>
+          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-caption text-surface-500">{total} sale record(s) in view.</p>
+            <div className="flex items-center gap-3">
+              <Select
+                value={String(pageSize)}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setPage(1);
+                }}
+                size="sm"
+              >
+                {[25, 50, 100, 200, 250].map((option) => (
+                  <option key={option} value={option}>{option} / page</option>
+                ))}
+              </Select>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                disabled={page <= 1}
+              >
+                Previous
+              </Button>
+              <span className="text-caption text-surface-600">
+                Page {page} of {Math.max(1, Math.ceil(total / pageSize))}
+              </span>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setPage((current) => Math.min(Math.max(1, Math.ceil(total / pageSize)), current + 1))}
+                disabled={page >= Math.max(1, Math.ceil(total / pageSize))}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -915,6 +1037,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                     {customerWorkspace.bookings.map((booking) => {
                       const sourceMeta = bookingSourceMeta(booking);
+                      const paymentMeta = bookingPaymentTruthMeta(booking);
                       return (
                       <Card key={booking.id} variant="outlined" padding="comfortable">
                         <div className="flex items-start justify-between gap-3">
@@ -926,11 +1049,13 @@ function RecordSaleModal({ onClose, onRecorded }) {
                             </p>
                             <div className="mt-2 flex items-center gap-2 flex-wrap">
                               <Badge color={sourceMeta.color} dot>{sourceMeta.label}</Badge>
+                              <Badge color={paymentMeta.color} dot>{paymentMeta.label}</Badge>
                               {booking.portalCheckout?.reference && (
                                 <span className="text-caption text-surface-500 font-mono">{booking.portalCheckout.reference}</span>
                               )}
                             </div>
                             <p className="text-caption text-surface-500 mt-2">{sourceMeta.description}</p>
+                            <p className="text-caption text-surface-500 mt-1">{paymentMeta.description}</p>
                           </div>
                           <Badge
                             color={booking.isFullyPaid ? 'success' : 'warning'}

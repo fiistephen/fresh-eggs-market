@@ -171,6 +171,9 @@ function mapBookingForWorkspace(booking, eggTypes = []) {
           checkoutType: booking.portalCheckout.checkoutType,
           paymentMethod: booking.portalCheckout.paymentMethod,
           status: booking.portalCheckout.status,
+          adminConfirmedAt: booking.portalCheckout.adminConfirmedAt,
+          verifiedAt: booking.portalCheckout.verifiedAt,
+          confirmationStatementLineId: booking.portalCheckout.confirmationStatementLineId,
           createdAt: booking.portalCheckout.createdAt,
         }
       : null,
@@ -336,30 +339,46 @@ export default async function salesRoutes(fastify) {
     preHandler: [authenticate],
     handler: async (request, reply) => {
       const { date, dateFrom, dateTo, batchId, paymentMethod, customerId, limit = 50, offset = 0 } = request.query;
+      const search = String(request.query?.search || '').trim();
 
-      const where = {};
+      const filters = [];
       if (date) {
         const start = new Date(date);
         const end = new Date(date);
         end.setDate(end.getDate() + 1);
-        where.saleDate = { gte: start, lt: end };
+        filters.push({ saleDate: { gte: start, lt: end } });
       } else if (dateFrom || dateTo) {
-        where.saleDate = {};
-        if (dateFrom) where.saleDate.gte = new Date(dateFrom);
-      if (dateTo) {
+        const saleDate = {};
+        if (dateFrom) saleDate.gte = new Date(dateFrom);
+        if (dateTo) {
           const end = new Date(dateTo);
           end.setDate(end.getDate() + 1);
-          where.saleDate.lt = end;
+          saleDate.lt = end;
         }
+        filters.push({ saleDate });
       }
       if (batchId) {
-        where.OR = [
+        filters.push({
+          OR: [
           { batchId },
           { lineItems: { some: { batchEggCode: { batchId } } } },
-        ];
+          ],
+        });
       }
-      if (paymentMethod) where.paymentMethod = paymentMethod;
-      if (customerId) where.customerId = customerId;
+      if (paymentMethod) filters.push({ paymentMethod });
+      if (customerId) filters.push({ customerId });
+      if (search) {
+        filters.push({
+          OR: [
+            { receiptNumber: { contains: search, mode: 'insensitive' } },
+            { customer: { name: { contains: search, mode: 'insensitive' } } },
+            { customer: { phone: { contains: search } } },
+            { batch: { name: { contains: search, mode: 'insensitive' } } },
+            { booking: { portalCheckout: { reference: { contains: search, mode: 'insensitive' } } } },
+          ],
+        });
+      }
+      const where = filters.length > 0 ? { AND: filters } : {};
 
       const [sales, total] = await Promise.all([
         prisma.sale.findMany({
@@ -435,6 +454,9 @@ export default async function salesRoutes(fastify) {
                 checkoutType: true,
                 paymentMethod: true,
                 status: true,
+                adminConfirmedAt: true,
+                verifiedAt: true,
+                confirmationStatementLineId: true,
                 createdAt: true,
               },
             },
