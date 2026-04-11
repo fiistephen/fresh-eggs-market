@@ -1256,7 +1256,7 @@ export default async function portalRoutes(fastify) {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
     handler: async (request, reply) => {
       const eggTypes = await getCustomerEggTypeConfig();
-      const [transferQueue, recentCardBookings] = await Promise.all([
+      const [transferQueue, recentCardBookings, recentTransferDecisions] = await Promise.all([
         prisma.portalCheckout.findMany({
           where: {
             checkoutType: 'BOOK_UPCOMING',
@@ -1285,11 +1285,31 @@ export default async function portalRoutes(fastify) {
           orderBy: [{ verifiedAt: 'desc' }, { updatedAt: 'desc' }],
           take: 10,
         }),
+        prisma.portalCheckoutDecision.findMany({
+          where: {
+            portalCheckout: {
+              checkoutType: 'BOOK_UPCOMING',
+              paymentMethod: 'TRANSFER',
+            },
+          },
+          include: {
+            actor: { select: { id: true, firstName: true, lastName: true } },
+            portalCheckout: {
+              include: {
+                customer: { select: { id: true, name: true, phone: true, email: true } },
+                batch: { select: { id: true, name: true, expectedDate: true, receivedDate: true, eggTypeKey: true, status: true } },
+              },
+            },
+          },
+          orderBy: [{ createdAt: 'desc' }],
+          take: 12,
+        }),
       ]);
 
       return reply.send({
         transferQueue: transferQueue.map((checkout) => mapAdminBookingCheckout(checkout, eggTypes)),
         recentCardBookings: recentCardBookings.map((checkout) => mapAdminBookingCheckout(checkout, eggTypes)),
+        recentTransferDecisions: recentTransferDecisions.map((decision) => mapPortalTransferDecision(decision, eggTypes)),
       });
     },
   });

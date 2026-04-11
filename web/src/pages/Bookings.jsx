@@ -40,6 +40,24 @@ function bookingSourceMeta(booking) {
   return { label: 'Manual booking', tone: 'default' };
 }
 
+function bookingPaymentTruthMeta(booking) {
+  const checkout = booking.portalCheckout;
+  if (checkout?.paymentMethod === 'TRANSFER') {
+    if (checkout.status === 'ADMIN_CONFIRMED') return { label: 'Waiting for statement', tone: 'warning' };
+    if (checkout.status === 'AWAITING_TRANSFER') return { label: 'Waiting for admin', tone: 'default' };
+    if (checkout.status === 'PAID' && checkout.confirmationStatementLineId) return { label: 'Statement confirmed', tone: 'success' };
+    if (checkout.status === 'PAID') return { label: 'Transfer confirmed', tone: 'success' };
+    if (checkout.status === 'CANCELLED') return { label: 'Transfer declined', tone: 'error' };
+  }
+  if (checkout?.paymentMethod === 'CARD' && checkout.status === 'PAID') {
+    return { label: 'Card verified', tone: 'success' };
+  }
+  if ((booking.allocations?.length || 0) > 0) {
+    return { label: 'Deposits applied', tone: 'info' };
+  }
+  return { label: 'No payment linked', tone: 'default' };
+}
+
 function hangingAgeLabel(ageInDays) {
   if (ageInDays >= 90) return '90+ days hanging';
   if (ageInDays >= 30) return '30+ days hanging';
@@ -176,16 +194,22 @@ function SuggestionCard({ title, suggestion, targetAmount, onApply }) {
 export default function Bookings() {
   const { user } = useAuth();
   const [bookings, setBookings] = useState([]);
+  const [bookingsPagination, setBookingsPagination] = useState({ page: 1, pageSize: 25, total: 0, totalPages: 1 });
   const [hangingDeposits, setHangingDeposits] = useState([]);
   const [hangingDepositsLoading, setHangingDepositsLoading] = useState(true);
   const [hangingDepositsError, setHangingDepositsError] = useState('');
   const [portalTransferBookings, setPortalTransferBookings] = useState([]);
   const [portalCardBookings, setPortalCardBookings] = useState([]);
+  const [recentTransferDecisions, setRecentTransferDecisions] = useState([]);
   const [portalQueueLoading, setPortalQueueLoading] = useState(true);
   const [portalQueueError, setPortalQueueError] = useState('');
   const [workingPortalCheckoutId, setWorkingPortalCheckoutId] = useState('');
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [showCreate, setShowCreate] = useState(null);
   const [managePaymentsBooking, setManagePaymentsBooking] = useState(null);
   const [showCancel, setShowCancel] = useState(null);
@@ -195,8 +219,16 @@ export default function Bookings() {
   const canCancel = ['ADMIN', 'MANAGER'].includes(user?.role);
 
   useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [searchInput]);
+
+  useEffect(() => {
     loadBookings();
-  }, [filter]);
+  }, [filter, search, page, pageSize]);
 
   useEffect(() => {
     loadPortalBookingQueue();
@@ -225,9 +257,15 @@ export default function Bookings() {
     setLoading(true);
     setError('');
     try {
-      const params = filter ? `?status=${filter}` : '';
+      const query = new URLSearchParams();
+      if (filter) query.set('status', filter);
+      if (search) query.set('search', search);
+      query.set('page', String(page));
+      query.set('pageSize', String(pageSize));
+      const params = query.toString() ? `?${query.toString()}` : '';
       const data = await api.get(`/bookings${params}`);
       setBookings(data.bookings || []);
+      setBookingsPagination(data.pagination || { page: 1, pageSize, total: data.bookings?.length || 0, totalPages: 1 });
     } catch {
       setError('Failed to load bookings');
     } finally {
@@ -242,6 +280,7 @@ export default function Bookings() {
       const data = await api.get('/portal/admin/booking-checkouts');
       setPortalTransferBookings(data.transferQueue || []);
       setPortalCardBookings(data.recentCardBookings || []);
+      setRecentTransferDecisions(data.recentTransferDecisions || []);
     } catch {
       setPortalQueueError('Failed to load portal booking confirmations');
     } finally {
@@ -346,6 +385,7 @@ export default function Bookings() {
         onConfirm={confirmPortalTransfer}
         onReject={rejectPortalTransfer}
         onRefresh={loadPortalBookingQueue}
+        recentTransferDecisions={recentTransferDecisions}
       />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -355,26 +395,54 @@ export default function Bookings() {
         <SummaryCard label="Money applied" value={formatCurrency(summary.amountApplied)} />
       </div>
 
-      <div className="overflow-x-auto custom-scrollbar">
-        <div className="flex gap-1 rounded-md bg-surface-100 p-1 w-fit">
-          {[
-            { value: '', label: 'All' },
-            { value: 'CONFIRMED', label: 'Confirmed' },
-            { value: 'PICKED_UP', label: 'Picked up' },
-            { value: 'CANCELLED', label: 'Cancelled' },
-          ].map((tab) => (
-            <button
-              key={tab.value}
-              onClick={() => setFilter(tab.value)}
-              className={`whitespace-nowrap rounded-sm px-4 py-1.5 text-body font-medium transition-all duration-normal ${
-                filter === tab.value
-                  ? 'bg-white text-surface-900 shadow-sm'
-                  : 'text-surface-500 hover:text-surface-700'
-              }`}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="overflow-x-auto custom-scrollbar">
+          <div className="flex gap-1 rounded-md bg-surface-100 p-1 w-fit">
+            {[
+              { value: '', label: 'All' },
+              { value: 'CONFIRMED', label: 'Confirmed' },
+              { value: 'PICKED_UP', label: 'Picked up' },
+              { value: 'CANCELLED', label: 'Cancelled' },
+            ].map((tab) => (
+              <button
+                key={tab.value}
+                onClick={() => {
+                  setFilter(tab.value);
+                  setPage(1);
+                }}
+                className={`whitespace-nowrap rounded-sm px-4 py-1.5 text-body font-medium transition-all duration-normal ${
+                  filter === tab.value
+                    ? 'bg-white text-surface-900 shadow-sm'
+                    : 'text-surface-500 hover:text-surface-700'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="min-w-[240px]">
+            <Input
+              type="text"
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.target.value)}
+              placeholder="Search customer, phone, batch, or ref"
+            />
+          </div>
+          <div className="w-[140px]">
+            <Select
+              value={String(pageSize)}
+              onChange={(event) => {
+                setPageSize(Number(event.target.value));
+                setPage(1);
+              }}
             >
-              {tab.label}
-            </button>
-          ))}
+              {[25, 50, 100, 200, 250].map((option) => (
+                <option key={option} value={option}>{option} / page</option>
+              ))}
+            </Select>
+          </div>
         </div>
       </div>
 
@@ -402,6 +470,7 @@ export default function Bookings() {
               <tr className="border-b border-surface-200">
                 <th className="px-4 py-3 text-left text-overline text-surface-600">Customer</th>
                 <th className="px-4 py-3 text-left text-overline text-surface-600">Source</th>
+                <th className="px-4 py-3 text-left text-overline text-surface-600">Payment truth</th>
                 <th className="px-4 py-3 text-left text-overline text-surface-600">Batch</th>
                 <th className="px-4 py-3 text-right text-overline text-surface-600">Qty</th>
                 <th className="px-4 py-3 text-right text-overline text-surface-600">Booking value</th>
@@ -423,6 +492,11 @@ export default function Bookings() {
                   <td className="px-4 py-3">
                     <Badge color={bookingSourceMeta(booking).tone}>
                       {bookingSourceMeta(booking).label}
+                    </Badge>
+                  </td>
+                  <td className="px-4 py-3">
+                    <Badge color={bookingPaymentTruthMeta(booking).tone}>
+                      {bookingPaymentTruthMeta(booking).label}
                     </Badge>
                   </td>
                   <td className="px-4 py-3">
@@ -469,6 +543,35 @@ export default function Bookings() {
             </tbody>
           </table>
         </Card>
+      )}
+
+      {bookingsPagination.totalPages > 1 && (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-body text-surface-500">
+            Showing {bookings.length.toLocaleString()} of {bookingsPagination.total.toLocaleString()} bookings
+          </p>
+          <div className="flex items-center gap-3">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+              disabled={page <= 1}
+            >
+              Previous
+            </Button>
+            <p className="text-body text-surface-600">
+              Page {bookingsPagination.page} of {bookingsPagination.totalPages}
+            </p>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setPage((current) => Math.min(bookingsPagination.totalPages, current + 1))}
+              disabled={page >= bookingsPagination.totalPages}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
       )}
 
       {showCreate && (
@@ -661,6 +764,7 @@ function PortalBookingReviewSection({
   error,
   transferQueue,
   recentCardBookings,
+  recentTransferDecisions,
   workingId,
   onConfirm,
   onReject,
@@ -674,7 +778,7 @@ function PortalBookingReviewSection({
     );
   }
 
-  if ((!transferQueue || transferQueue.length === 0) && (!recentCardBookings || recentCardBookings.length === 0)) {
+  if ((!transferQueue || transferQueue.length === 0) && (!recentCardBookings || recentCardBookings.length === 0) && (!recentTransferDecisions || recentTransferDecisions.length === 0)) {
     return null;
   }
 
@@ -783,6 +887,45 @@ function PortalBookingReviewSection({
                   <div className="text-right space-y-1">
                     <p className="text-body-medium font-semibold text-surface-900">{formatCurrency(checkout.amountToPay)}</p>
                     <p className="text-caption text-surface-500">Paid by card</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      ) : null}
+
+      {recentTransferDecisions?.length ? (
+        <Card className="p-4 space-y-3">
+          <div>
+            <h3 className="text-heading font-semibold text-surface-900">Recent transfer decisions</h3>
+            <p className="mt-2 text-body text-surface-500">Keep track of who marked money seen, who rejected a transfer, and which bookings have now been fully confirmed from the bank statement.</p>
+          </div>
+
+          <div className="space-y-3">
+            {recentTransferDecisions.map((decision) => (
+              <div key={decision.id} className="rounded-lg border border-surface-200 p-4">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-body-medium font-semibold text-surface-900">{decision.checkout?.customer?.name || 'Customer'}</p>
+                      <Badge color={decision.decisionType === 'REJECTED' ? 'error' : decision.decisionType === 'STATEMENT_CONFIRMED' ? 'success' : 'warning'}>
+                        {decision.decisionType === 'MONEY_SEEN' ? 'Money seen' : decision.decisionType === 'STATEMENT_CONFIRMED' ? 'Statement confirmed' : 'Transfer declined'}
+                      </Badge>
+                    </div>
+                    <p className="text-body text-surface-500">
+                      {decision.checkout?.batch?.name || 'Batch'} · {decision.checkout?.batch?.eggTypeLabel || 'Regular Size Eggs'} · {decision.checkout?.quantity || 0} crates
+                    </p>
+                    <p className="text-caption text-surface-500">
+                      {decision.actor?.label || 'Unknown staff'} · {formatDate(decision.createdAt)}
+                    </p>
+                    {decision.notes ? (
+                      <p className="text-body text-surface-600">{decision.notes}</p>
+                    ) : null}
+                  </div>
+                  <div className="text-right space-y-1">
+                    <p className="text-body-medium font-semibold text-surface-900">{formatCurrency(decision.checkout?.amountToPay || 0)}</p>
+                    <p className="text-caption text-surface-500">{decision.checkout?.reference || 'No reference'}</p>
                   </div>
                 </div>
               </div>

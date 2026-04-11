@@ -114,6 +114,9 @@ function buildBookingInclude() {
         checkoutType: true,
         paymentMethod: true,
         status: true,
+        adminConfirmedAt: true,
+        verifiedAt: true,
+        confirmationStatementLineId: true,
         createdAt: true,
       },
     },
@@ -405,22 +408,56 @@ export default async function bookingRoutes(fastify) {
   fastify.get('/bookings', {
     preHandler: [authenticate],
     handler: async (request, reply) => {
-      const { batchId, customerId, status } = request.query;
-      const where = {};
-      if (batchId) where.batchId = batchId;
-      if (customerId) where.customerId = customerId;
-      if (status) where.status = status;
+      const {
+        batchId,
+        customerId,
+        status,
+        search = '',
+        page = 1,
+        pageSize = 25,
+      } = request.query;
+      const parsedPage = Math.max(1, Number(page) || 1);
+      const parsedPageSize = Math.min(250, Math.max(25, Number(pageSize) || 25));
+      const searchTerm = String(search || '').trim();
+      const filters = [];
 
-      const [bookings, eggTypes, policy] = await Promise.all([
+      if (batchId) filters.push({ batchId });
+      if (customerId) filters.push({ customerId });
+      if (status) filters.push({ status });
+      if (searchTerm) {
+        filters.push({
+          OR: [
+            { customer: { name: { contains: searchTerm, mode: 'insensitive' } } },
+            { customer: { phone: { contains: searchTerm } } },
+            { batch: { name: { contains: searchTerm, mode: 'insensitive' } } },
+            { portalCheckout: { reference: { contains: searchTerm, mode: 'insensitive' } } },
+          ],
+        });
+      }
+
+      const where = filters.length > 0 ? { AND: filters } : {};
+
+      const [bookings, total, eggTypes, policy] = await Promise.all([
         prisma.booking.findMany({
           where,
           include: buildBookingInclude(),
           orderBy: { createdAt: 'desc' },
+          skip: (parsedPage - 1) * parsedPageSize,
+          take: parsedPageSize,
         }),
+        prisma.booking.count({ where }),
         getCustomerEggTypeConfig(),
         getOperationsPolicy(),
       ]);
-      return reply.send({ bookings: bookings.map((booking) => enrichBooking(booking, eggTypes, policy)) });
+      return reply.send({
+        bookings: bookings.map((booking) => enrichBooking(booking, eggTypes, policy)),
+        pagination: {
+          page: parsedPage,
+          pageSize: parsedPageSize,
+          total,
+          totalPages: Math.max(1, Math.ceil(total / parsedPageSize)),
+        },
+      });
     },
   });
 
