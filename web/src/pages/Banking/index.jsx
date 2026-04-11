@@ -514,6 +514,7 @@ export default function Banking() {
           customerBookingQueue={customerBookingQueue}
           portalTransferQueue={portalTransferQueue}
           cashDeposits={cashDeposits}
+          approvalRequests={approvalRequests}
           canViewReports={canViewReports}
           onNavigate={setActiveView}
           onOpenReport={openReport}
@@ -626,7 +627,14 @@ export default function Banking() {
         />
       )}
 
-      {activeView === 'reports' && activeReport === 'month-end' && <MonthEndReview />}
+      {activeView === 'reports' && activeReport === 'month-end' && (
+        <MonthEndReview
+          onNavigate={(view, options = {}) => {
+            if (options.reportKey) setActiveReport(options.reportKey);
+            setActiveView(view);
+          }}
+        />
+      )}
 
       {activeView === 'reports' && activeReport === 'balances' && (
         <AccountBalances

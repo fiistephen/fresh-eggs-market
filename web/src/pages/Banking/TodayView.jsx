@@ -1,6 +1,6 @@
 import { ACCOUNT_STYLES, DIRECTION_COLORS, SOURCE_LABELS, fmtMoney, fmtDate, displayAccountName, accountLabel, categoryLabel } from './shared/constants';
 
-export default function TodayView({ loading, accounts, imports, transactions, categoryMap, customerBookingQueue, portalTransferQueue, cashDeposits, canViewReports, onNavigate, onOpenReport }) {
+export default function TodayView({ loading, accounts, imports, transactions, categoryMap, customerBookingQueue, portalTransferQueue, cashDeposits, approvalRequests, canViewReports, onNavigate, onOpenReport }) {
   if (loading) {
     return <div className="rounded-lg border border-surface-200 bg-surface-0 px-6 py-20 text-center text-sm text-surface-500">Loading…</div>;
   }
@@ -54,6 +54,18 @@ export default function TodayView({ loading, accounts, imports, transactions, ca
       title: `${pendingCashDepositCount} cash deposit${pendingCashDepositCount === 1 ? '' : 's'} waiting for bank confirmation`,
       subtitle: `${fmtMoney(pendingCashDepositTotal)} still needs a matching bank line`,
       action: () => onNavigate('cash-deposits'),
+    });
+  }
+
+  const pendingApprovalCount = (approvalRequests || []).filter((request) => request.status === 'PENDING').length;
+  if (pendingApprovalCount > 0) {
+    attentionItems.push({
+      key: 'approvals',
+      color: 'warning',
+      count: pendingApprovalCount,
+      title: `${pendingApprovalCount} approval request${pendingApprovalCount === 1 ? '' : 's'} waiting`,
+      subtitle: 'Review Banking edits and deletes',
+      action: () => onNavigate('approvals'),
     });
   }
 

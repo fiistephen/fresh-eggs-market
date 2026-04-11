@@ -35,6 +35,23 @@ function StatCard({ label, value, subtext, tone = 'default' }) {
   );
 }
 
+function ActionLink({ label, onClick, tone = 'brand' }) {
+  const toneStyles = {
+    brand: 'border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100',
+    warning: 'border-warning-200 bg-warning-50 text-warning-700 hover:bg-warning-100',
+    surface: 'border-surface-200 bg-surface-50 text-surface-700 hover:bg-surface-100',
+  };
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-md border px-3 py-2 text-sm font-medium transition-colors duration-fast ${toneStyles[tone] || toneStyles.brand}`}
+    >
+      {label}
+    </button>
+  );
+}
+
 function SectionCard({ title, subtitle, children, action = null }) {
   return (
     <div className="rounded-xl border border-surface-200 bg-surface-0">
@@ -234,7 +251,7 @@ function CloseMonthModal({ month, review, onClose, onClosed }) {
   );
 }
 
-export default function MonthEndReview() {
+export default function MonthEndReview({ onNavigate }) {
   const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -292,6 +309,7 @@ export default function MonthEndReview() {
   const monthClose = data.monthClose;
   const recentMonthCloses = data.recentMonthCloses || [];
   const canCloseMonth = !monthClose && Number(data.accountsMissingMonthEndBalance || 0) === 0;
+  const goToView = (view, options = {}) => onNavigate?.(view, options);
 
   return (
     <>
@@ -355,15 +373,37 @@ export default function MonthEndReview() {
         />
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <StatCard label="Accounts reviewed" value={String(accounts.length)} subtext={`${data.accountsMissingMonthEndBalance || 0} still missing a month-end balance entry`} tone={data.accountsMissingMonthEndBalance > 0 ? 'warning' : 'brand'} />
-          <StatCard label="Hanging customer deposits" value={fmtMoney(unresolved.hangingDeposits?.total || 0)} subtext={`${unresolved.hangingDeposits?.count || 0} deposit${Number(unresolved.hangingDeposits?.count || 0) !== 1 ? 's' : ''} still not fully matched`} tone={toneForCount(unresolved.hangingDeposits?.count, unresolved.hangingDeposits?.total)} />
-          <StatCard label="Transfer payments awaiting final truth" value={fmtMoney(unresolved.pendingTransferConfirmations?.total || 0)} subtext={`${unresolved.pendingTransferConfirmations?.count || 0} portal transfer${Number(unresolved.pendingTransferConfirmations?.count || 0) !== 1 ? 's' : ''} still need statement-backed confirmation`} tone={toneForCount(unresolved.pendingTransferConfirmations?.count, unresolved.pendingTransferConfirmations?.total)} />
-          <StatCard label="Cash not yet banked" value={fmtMoney(unresolved.undepositedCash?.total || 0)} subtext={`${unresolved.undepositedCash?.count || 0} cash sale line${Number(unresolved.undepositedCash?.count || 0) !== 1 ? 's' : ''} still sit outside the bank`} tone={toneForCount(unresolved.undepositedCash?.count, unresolved.undepositedCash?.total)} />
-          <StatCard label="Cash deposits awaiting statement confirmation" value={fmtMoney(unresolved.pendingCashDeposits?.total || 0)} subtext={`${unresolved.pendingCashDeposits?.count || 0} pending deposit batch${Number(unresolved.pendingCashDeposits?.count || 0) !== 1 ? 'es' : ''}`} tone={toneForCount(unresolved.pendingCashDeposits?.count, unresolved.pendingCashDeposits?.total)} />
-          <StatCard label="Pending approval requests" value={String(unresolved.pendingApprovals?.count || 0)} subtext="Banking edit/delete requests still waiting for decision" tone={unresolved.pendingApprovals?.count > 0 ? 'warning' : 'default'} />
+          <div className="space-y-2">
+            <StatCard label="Accounts reviewed" value={String(accounts.length)} subtext={`${data.accountsMissingMonthEndBalance || 0} still missing a month-end balance entry`} tone={data.accountsMissingMonthEndBalance > 0 ? 'warning' : 'brand'} />
+            <ActionLink label="Review account snapshot" onClick={() => goToView('reports', { reportKey: 'balances' })} tone="surface" />
+          </div>
+          <div className="space-y-2">
+            <StatCard label="Hanging customer deposits" value={fmtMoney(unresolved.hangingDeposits?.total || 0)} subtext={`${unresolved.hangingDeposits?.count || 0} deposit${Number(unresolved.hangingDeposits?.count || 0) !== 1 ? 's' : ''} still not fully matched`} tone={toneForCount(unresolved.hangingDeposits?.count, unresolved.hangingDeposits?.total)} />
+            <ActionLink label="Open bookings desk" onClick={() => goToView('customer-bookings')} tone="warning" />
+          </div>
+          <div className="space-y-2">
+            <StatCard label="Transfer payments awaiting final truth" value={fmtMoney(unresolved.pendingTransferConfirmations?.total || 0)} subtext={`${unresolved.pendingTransferConfirmations?.count || 0} portal transfer${Number(unresolved.pendingTransferConfirmations?.count || 0) !== 1 ? 's' : ''} still need statement-backed confirmation`} tone={toneForCount(unresolved.pendingTransferConfirmations?.count, unresolved.pendingTransferConfirmations?.total)} />
+            <ActionLink label="Open transfer queue" onClick={() => goToView('portal-transfers')} tone="warning" />
+          </div>
+          <div className="space-y-2">
+            <StatCard label="Cash not yet banked" value={fmtMoney(unresolved.undepositedCash?.total || 0)} subtext={`${unresolved.undepositedCash?.count || 0} cash sale line${Number(unresolved.undepositedCash?.count || 0) !== 1 ? 's' : ''} still sit outside the bank`} tone={toneForCount(unresolved.undepositedCash?.count, unresolved.undepositedCash?.total)} />
+            <ActionLink label="Open cash deposits" onClick={() => goToView('cash-deposits')} tone="warning" />
+          </div>
+          <div className="space-y-2">
+            <StatCard label="Cash deposits awaiting statement confirmation" value={fmtMoney(unresolved.pendingCashDeposits?.total || 0)} subtext={`${unresolved.pendingCashDeposits?.count || 0} pending deposit batch${Number(unresolved.pendingCashDeposits?.count || 0) !== 1 ? 'es' : ''}`} tone={toneForCount(unresolved.pendingCashDeposits?.count, unresolved.pendingCashDeposits?.total)} />
+            <ActionLink label="Open cash deposits" onClick={() => goToView('cash-deposits')} tone="warning" />
+          </div>
+          <div className="space-y-2">
+            <StatCard label="Pending approval requests" value={String(unresolved.pendingApprovals?.count || 0)} subtext="Banking edit/delete requests still waiting for decision" tone={unresolved.pendingApprovals?.count > 0 ? 'warning' : 'default'} />
+            <ActionLink label="Open approvals" onClick={() => goToView('approvals')} tone={Number(unresolved.pendingApprovals?.count || 0) > 0 ? 'warning' : 'surface'} />
+          </div>
         </div>
 
-        <SectionCard title="Account snapshot" subtitle="System balances are calculated up to the end of the selected month. The month-end balance status shows whether someone recorded a statement balance for that month.">
+        <SectionCard
+          title="Account snapshot"
+          subtitle="System balances are calculated up to the end of the selected month. The month-end balance status shows whether someone recorded a statement balance for that month."
+          action={<ActionLink label="Open account balances report" onClick={() => goToView('reports', { reportKey: 'balances' })} tone="surface" />}
+        >
           {accounts.length === 0 ? (
             <EmptyMini title="No bank accounts found." />
           ) : (
@@ -429,7 +469,11 @@ export default function MonthEndReview() {
         </SectionCard>
 
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          <SectionCard title="Hanging customer deposits" subtitle="Customer money that had reached Banking by month end but was still not fully matched to bookings.">
+          <SectionCard
+            title="Hanging customer deposits"
+            subtitle="Customer money that had reached Banking by month end but was still not fully matched to bookings."
+            action={<ActionLink label="Open bookings desk" onClick={() => goToView('customer-bookings')} tone="warning" />}
+          >
             {(unresolved.hangingDeposits?.items || []).length === 0 ? (
               <EmptyMini title="No hanging customer deposits for this month." />
             ) : (
@@ -449,7 +493,11 @@ export default function MonthEndReview() {
             )}
           </SectionCard>
 
-          <SectionCard title="Transfer payments awaiting final confirmation" subtitle="Portal transfer orders where admin may have seen the money, but the bank statement had not yet become the final source of truth by this month end.">
+          <SectionCard
+            title="Transfer payments awaiting final confirmation"
+            subtitle="Portal transfer orders where admin may have seen the money, but the bank statement had not yet become the final source of truth by this month end."
+            action={<ActionLink label="Open transfer queue" onClick={() => goToView('portal-transfers')} tone="warning" />}
+          >
             {(unresolved.pendingTransferConfirmations?.items || []).length === 0 ? (
               <EmptyMini title="No portal transfers were waiting for final confirmation." />
             ) : (
@@ -472,7 +520,11 @@ export default function MonthEndReview() {
             )}
           </SectionCard>
 
-          <SectionCard title="Cash not yet banked" subtitle="Cash sale lines dated on or before this month end that were still not selected into a bank deposit batch.">
+          <SectionCard
+            title="Cash not yet banked"
+            subtitle="Cash sale lines dated on or before this month end that were still not selected into a bank deposit batch."
+            action={<ActionLink label="Open cash deposits" onClick={() => goToView('cash-deposits')} tone="warning" />}
+          >
             {(unresolved.undepositedCash?.items || []).length === 0 ? (
               <EmptyMini title="No undeposited cash remained for this month." />
             ) : (
@@ -495,7 +547,11 @@ export default function MonthEndReview() {
             )}
           </SectionCard>
 
-          <SectionCard title="Cash deposits awaiting statement confirmation" subtitle="Money already moved from cash to the bank account, but still waiting for the matching bank inflow line.">
+          <SectionCard
+            title="Cash deposits awaiting statement confirmation"
+            subtitle="Money already moved from cash to the bank account, but still waiting for the matching bank inflow line."
+            action={<ActionLink label="Open cash deposits" onClick={() => goToView('cash-deposits')} tone="warning" />}
+          >
             {(unresolved.pendingCashDeposits?.items || []).length === 0 ? (
               <EmptyMini title="No pending cash deposit confirmations for this month." />
             ) : (
@@ -516,7 +572,11 @@ export default function MonthEndReview() {
           </SectionCard>
         </div>
 
-        <SectionCard title="Pending approval requests" subtitle="Banking edits and deletes that still need a manager decision before the month can be treated as tidy.">
+        <SectionCard
+          title="Pending approval requests"
+          subtitle="Banking edits and deletes that still need a manager decision before the month can be treated as tidy."
+          action={<ActionLink label="Open approvals" onClick={() => goToView('approvals')} tone="warning" />}
+        >
           {(unresolved.pendingApprovals?.items || []).length === 0 ? (
             <EmptyMini title="No pending Banking approval requests for this month." />
           ) : (

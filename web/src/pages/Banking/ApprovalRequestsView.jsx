@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { EmptyPanel } from './shared/ui';
 import { categoryLabel, displayAccountName, fmtDate, fmtMoney } from './shared/constants';
 
@@ -63,9 +64,20 @@ export default function ApprovalRequestsView({
   onReject,
   onRefresh,
 }) {
+  const [filter, setFilter] = useState('PENDING');
+
   if (loading) {
     return <div className="rounded-lg border border-surface-200 bg-surface-0 px-6 py-20 text-center text-sm text-surface-500">Loading approval requests…</div>;
   }
+
+  const counts = {
+    ALL: requests.length,
+    PENDING: requests.filter((request) => request.status === 'PENDING').length,
+    APPROVED: requests.filter((request) => request.status === 'APPROVED').length,
+    REJECTED: requests.filter((request) => request.status === 'REJECTED').length,
+  };
+
+  const filteredRequests = requests.filter((request) => filter === 'ALL' ? true : request.status === filter);
 
   if (!requests.length) {
     return <EmptyPanel title="No approval requests" body="Edit and delete approval requests for Banking transactions will show here." />;
@@ -87,8 +99,30 @@ export default function ApprovalRequestsView({
         </button>
       </div>
 
+      <div className="flex flex-wrap gap-2">
+        {[
+          { key: 'PENDING', label: 'Pending' },
+          { key: 'APPROVED', label: 'Approved' },
+          { key: 'REJECTED', label: 'Rejected' },
+          { key: 'ALL', label: 'All' },
+        ].map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            onClick={() => setFilter(tab.key)}
+            className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors duration-fast ${
+              filter === tab.key
+                ? 'bg-brand-100 text-brand-700'
+                : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
+            }`}
+          >
+            {tab.label} ({counts[tab.key] || 0})
+          </button>
+        ))}
+      </div>
+
       <div className="space-y-3">
-        {requests.map((request) => {
+        {filteredRequests.map((request) => {
           const txn = request.entity || request.beforeData;
           const isPending = request.status === 'PENDING';
           const changes = changeRows(request, categoryMap);
@@ -164,6 +198,12 @@ export default function ApprovalRequestsView({
           );
         })}
       </div>
+
+      {filteredRequests.length === 0 ? (
+        <div className="rounded-lg border border-surface-200 bg-surface-0 px-6 py-12 text-center text-sm text-surface-500">
+          No {filter.toLowerCase()} approval requests right now.
+        </div>
+      ) : null}
     </div>
   );
 }
