@@ -17,10 +17,12 @@ import {
   addMinutes,
   buildPickupWindow,
   buildPortalReference,
-  getActivePortalBookingHoldQuantity,
-  getActivePortalBuyNowHoldQuantity,
   getCustomerDepositAccount,
 } from '../utils/portalCheckout.js';
+import {
+  getOpenBatchBookingAvailability,
+  getReceivedBatchSaleAvailability,
+} from '../utils/batchAvailability.js';
 import {
   getCustomerOrderLimitProfile,
 } from '../utils/customerOrderPolicy.js';
@@ -311,79 +313,6 @@ async function getCustomerFromUser(userId) {
     },
   });
   return { user, customer };
-}
-
-async function buildReceivedBatchAvailability(batchId) {
-  const [batch, writeOffAgg, sales] = await Promise.all([
-    prisma.batch.findUnique({
-      where: { id: batchId },
-      include: {
-        eggCodes: {
-          select: {
-            id: true,
-            code: true,
-            quantity: true,
-            freeQty: true,
-            costPrice: true,
-            wholesalePrice: true,
-            retailPrice: true,
-          },
-        },
-      },
-    }),
-    prisma.inventoryCount.aggregate({
-      where: { batchId },
-      _sum: { crackedWriteOff: true },
-    }),
-    prisma.sale.findMany({
-      where: {
-        lineItems: {
-          some: {
-            batchEggCode: { batchId },
-          },
-        },
-      },
-      select: {
-        lineItems: {
-          where: { batchEggCode: { batchId } },
-          select: { quantity: true },
-        },
-      },
-    }),
-  ]);
-
-  if (!batch) return null;
-
-  const [bookedAgg, heldForBuyNow] = await Promise.all([
-    prisma.booking.aggregate({
-      where: { batchId, status: { not: 'CANCELLED' } },
-      _sum: { quantity: true },
-    }),
-    getActivePortalBuyNowHoldQuantity(batchId),
-  ]);
-
-  const totalReceived = batch.actualQuantity ?? batch.eggCodes.reduce(
-    (sum, eggCode) => sum + eggCode.quantity + (eggCode.freeQty || 0),
-    0,
-  );
-  const totalBooked = bookedAgg._sum.quantity || 0;
-  const totalWrittenOff = writeOffAgg._sum.crackedWriteOff || 0;
-  const totalSold = sales.reduce(
-    (sum, sale) => sum + sale.lineItems.reduce((lineSum, line) => lineSum + line.quantity, 0),
-    0,
-  );
-  const onHand = Math.max(0, totalReceived - totalSold - totalWrittenOff);
-  const availableForSale = Math.max(0, onHand - totalBooked - heldForBuyNow);
-
-  return {
-    batch,
-    totalBooked,
-    totalSold,
-    totalWrittenOff,
-    heldForBuyNow,
-    onHand,
-    availableForSale,
-  };
 }
 
 async function initializePaystackTransaction({ email, amountKobo, reference, callbackUrl, metadata }) {
@@ -691,21 +620,15 @@ export default async function portalRoutes(fastify) {
 
       const result = [];
       for (const batch of batches) {
-        const [bookedAgg, heldQty] = await Promise.all([
-          prisma.booking.aggregate({
-            where: { batchId: batch.id, status: { not: 'CANCELLED' } },
-            _sum: { quantity: true },
-          }),
-          getActivePortalBookingHoldQuantity(batch.id),
-        ]);
-        const totalBooked = bookedAgg._sum.quantity || 0;
-        const remainingAvailable = Math.max(0, batch.availableForBooking - totalBooked - heldQty);
+        const availability = await getOpenBatchBookingAvailability(batch.id, { batch });
+        if (!availability) continue;
 
         result.push(mapPortalBatch(batch, eggTypes, {
-          totalBooked,
-          heldForCheckout: heldQty,
-          totalBookingCapacity: batch.availableForBooking,
-          remainingAvailable,
+          totalBooked: availability.confirmedBooked,
+          heldForCheckout: availability.heldForCheckout,
+          totalCommitted: availability.totalCommitted,
+          totalBookingCapacity: availability.totalBookingCapacity,
+          remainingAvailable: availability.remainingAvailable,
         }));
       }
 
@@ -739,18 +662,16 @@ export default async function portalRoutes(fastify) {
 
       const result = [];
       for (const batch of receivedBatches) {
-        const availability = await buildReceivedBatchAvailability(batch.id);
+        const availability = await getReceivedBatchSaleAvailability(batch.id, { batch });
         if (!availability || availability.availableForSale <= 0) continue;
 
         result.push(mapPortalBatch(batch, eggTypes, {
-          totalReceived: availability.batch.actualQuantity ?? availability.batch.eggCodes.reduce(
-            (sum, eggCode) => sum + eggCode.quantity + (eggCode.freeQty || 0),
-            0,
-          ),
-          totalBooked: availability.totalBooked,
+          totalReceived: availability.totalReceived,
+          totalBooked: availability.confirmedBooked,
           totalSold: availability.totalSold,
           totalWrittenOff: availability.totalWrittenOff,
-          heldForCheckout: availability.heldForBuyNow,
+          heldForCheckout: availability.heldForCheckout,
+          totalCommitted: availability.totalCommitted,
           onHand: availability.onHand,
           availableForSale: availability.availableForSale,
         }));
@@ -997,18 +918,8 @@ export default async function portalRoutes(fastify) {
           return reply.code(400).send({ error: 'This batch is not open for booking anymore.' });
         }
 
-        const [confirmedBookedAgg, heldForCheckout] = await Promise.all([
-          prisma.booking.aggregate({
-            where: { batchId, status: { not: 'CANCELLED' } },
-            _sum: { quantity: true },
-          }),
-          getActivePortalBookingHoldQuantity(batchId),
-        ]);
-
-        const remainingAvailable = Math.max(
-          0,
-          batch.availableForBooking - (confirmedBookedAgg._sum.quantity || 0) - heldForCheckout,
-        );
+        const openAvailability = await getOpenBatchBookingAvailability(batchId, { batch });
+        const remainingAvailable = openAvailability?.remainingAvailable ?? 0;
         if (quantity > remainingAvailable) {
           return reply.code(400).send({ error: `Only ${remainingAvailable} crates are still available to book.` });
         }
@@ -1033,7 +944,7 @@ export default async function portalRoutes(fastify) {
         if (batch.status !== 'RECEIVED') {
           return reply.code(400).send({ error: 'This batch is not ready for immediate buying yet.' });
         }
-        const availability = await buildReceivedBatchAvailability(batchId);
+        const availability = await getReceivedBatchSaleAvailability(batchId, { batch });
         if (!availability) {
           return reply.code(404).send({ error: 'Batch not found.' });
         }

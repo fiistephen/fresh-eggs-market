@@ -3,7 +3,7 @@ import { authenticate } from '../plugins/auth.js';
 import { authorize } from '../middleware/authorize.js';
 import { getCustomerEggTypeConfig, getCustomerEggTypeLabel, getOperationsPolicy } from '../utils/appSettings.js';
 import { buildCustomerOrderLimitProfile, getCustomerTrackedOrderCount } from '../utils/customerOrderPolicy.js';
-import { getActivePortalBuyNowHoldQuantity } from '../utils/portalCheckout.js';
+import { getReceivedBatchSaleAvailability } from '../utils/batchAvailability.js';
 
 const VALID_SALE_TYPES = ['WHOLESALE', 'RETAIL', 'CRACKED', 'WRITE_OFF'];
 const VALID_PAYMENT_METHODS = ['CASH', 'TRANSFER', 'POS_CARD', 'PRE_ORDER', 'MIXED'];
@@ -73,26 +73,7 @@ async function getBatchStockSnapshot(batchId, eggTypes = []) {
     soldByEggCodeRows.map((row) => [row.batchEggCodeId, row._sum.quantity || 0]),
   );
 
-  const soldAgg = await prisma.saleLineItem.aggregate({
-    where: { batchEggCode: { batchId } },
-    _sum: { quantity: true },
-  });
-  const totalSold = soldAgg._sum.quantity || 0;
-
-  const writeOffAgg = await prisma.inventoryCount.aggregate({
-    where: { batchId },
-    _sum: { crackedWriteOff: true },
-  });
-  const totalWrittenOff = writeOffAgg._sum.crackedWriteOff || 0;
-
-  const [bookedAgg, heldForPortal] = await Promise.all([
-    prisma.booking.aggregate({
-      where: { batchId, status: 'CONFIRMED' },
-      _sum: { quantity: true },
-    }),
-    getActivePortalBuyNowHoldQuantity(batchId),
-  ]);
-  const totalBooked = bookedAgg._sum.quantity || 0;
+  const availability = await getReceivedBatchSaleAvailability(batchId, { batch });
 
   const eggCodes = batch.eggCodes.map((eggCode) => {
     const receivedQuantity = eggCode.quantity + eggCode.freeQty;
@@ -115,12 +96,14 @@ async function getBatchStockSnapshot(batchId, eggTypes = []) {
 
   return {
     batch: mapBatchForSale(batch, eggTypes),
-    totalReceived,
-    totalSold,
-    totalWrittenOff,
-    totalBooked,
-    onHand: Math.max(0, totalReceived - totalSold - totalWrittenOff),
-    availableForSale: Math.max(0, totalReceived - totalSold - totalWrittenOff - totalBooked - heldForPortal),
+    totalReceived: availability?.totalReceived ?? totalReceived,
+    totalSold: availability?.totalSold ?? 0,
+    totalWrittenOff: availability?.totalWrittenOff ?? 0,
+    totalBooked: availability?.confirmedBooked ?? 0,
+    heldForCheckout: availability?.heldForCheckout ?? 0,
+    totalCommitted: availability?.totalCommitted ?? (availability?.confirmedBooked ?? 0),
+    onHand: availability?.onHand ?? Math.max(0, totalReceived),
+    availableForSale: availability?.availableForSale ?? Math.max(0, totalReceived),
     eggCodes,
   };
 }
@@ -1127,9 +1110,17 @@ export default async function salesRoutes(fastify) {
       });
 
       return reply.send({
-        batches: batches.map((batch) => ({
-          ...mapBatchForSale(batch),
-          salesCount: batch._count.sales,
+        batches: await Promise.all(batches.map(async (batch) => {
+          const snapshot = await getBatchStockSnapshot(batch.id);
+          return {
+            ...mapBatchForSale(batch),
+            salesCount: batch._count.sales,
+            totalBooked: snapshot?.totalBooked || 0,
+            heldForCheckout: snapshot?.heldForCheckout || 0,
+            totalCommitted: snapshot?.totalCommitted || 0,
+            onHand: snapshot?.onHand || 0,
+            availableForSale: snapshot?.availableForSale || 0,
+          };
         })),
       });
     },

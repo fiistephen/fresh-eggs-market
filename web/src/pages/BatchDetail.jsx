@@ -285,22 +285,53 @@ export default function BatchDetail() {
       {/* Overview cards */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 mb-8">
         <OverviewCard
-          label={batch.status === 'OPEN' ? 'Booked so far' : 'Confirmed bookings'}
+          label="Confirmed bookings"
           value={`${formatNumber(overview.totalBooked)} crates`}
           subtext={`${overview.confirmedBookingCount || 0} active booking${overview.confirmedBookingCount === 1 ? '' : 's'}`}
           tone="warning"
         />
         <OverviewCard
-          label={batch.status === 'OPEN' ? 'Still to receive' : 'Sale-ready stock'}
-          value={`${formatNumber(batch.status === 'OPEN' ? overview.remainingToReceive : overview.availableForSale)} crates`}
-          subtext={batch.status === 'OPEN' ? 'Expected quantity not yet received' : 'On hand minus confirmed bookings'}
-          tone={batch.status === 'OPEN' ? 'info' : 'success'}
+          label="Held in portal"
+          value={`${formatNumber(overview.heldForCheckout)} crates`}
+          subtext={batch.status === 'OPEN' ? 'Unfinished checkouts already reduce booking space' : 'Buy-now holds waiting to complete payment'}
+          tone="info"
+        />
+        <OverviewCard
+          label={batch.status === 'OPEN' ? 'Still open for booking' : 'Sale-ready stock'}
+          value={batch.status === 'OPEN' ? `${formatNumber(overview.remainingAvailableForBooking)} crates` : `${formatNumber(overview.availableForSale)} crates`}
+          subtext={batch.status === 'OPEN'
+            ? `${formatNumber(overview.totalCommitted)} already committed from this batch`
+            : 'On hand minus confirmed bookings and portal holds'}
+          tone={batch.status === 'OPEN' ? 'success' : 'success'}
         />
         <OverviewCard
           label={batch.status === 'OPEN' ? 'Booking space used' : 'On hand now'}
           value={batch.status === 'OPEN' ? formatPercent(overview.bookingUtilizationPercent) : `${formatNumber(overview.onHand)} crates`}
-          subtext={batch.status === 'OPEN' ? `${formatNumber(batch.availableForBooking)} crates open for booking` : `${formatNumber(overview.totalSold)} sold · ${formatNumber(overview.totalWrittenOff)} written off`}
+          subtext={batch.status === 'OPEN'
+            ? `${formatNumber(batch.availableForBooking)} crates total booking capacity`
+            : `${formatNumber(overview.totalSold)} sold · ${formatNumber(overview.totalWrittenOff)} written off`}
           tone="neutral"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 mb-8">
+        <OverviewCard
+          label={batch.status === 'OPEN' ? 'Still to receive' : 'Received'}
+          value={`${formatNumber(batch.status === 'OPEN' ? overview.remainingToReceive : overview.totalReceived)} crates`}
+          subtext={batch.status === 'OPEN' ? 'Expected quantity not yet received' : `${formatNumber(overview.totalPaidQuantity)} paid · ${formatNumber(overview.totalFreeQuantity)} free`}
+          tone={batch.status === 'OPEN' ? 'info' : 'neutral'}
+        />
+        <OverviewCard
+          label={batch.status === 'OPEN' ? 'Arrival status' : 'Sold so far'}
+          value={batch.status === 'OPEN'
+            ? (new Date(batch.expectedDate) < new Date(new Date().setHours(0, 0, 0, 0)) ? 'Awaiting receipt' : 'On schedule')
+            : `${formatNumber(overview.totalSold)} crates`}
+          subtext={batch.status === 'OPEN'
+            ? 'Receive this batch once eggs arrive at the depot'
+            : `${formatNumber(overview.totalWrittenOff)} written off`}
+          tone={batch.status === 'OPEN'
+            ? (new Date(batch.expectedDate) < new Date(new Date().setHours(0, 0, 0, 0)) ? 'warning' : 'success')
+            : 'brand'}
         />
         <OverviewCard
           label={batch.status === 'OPEN' ? 'Expected quantity' : 'Profit vs target'}
@@ -311,6 +342,18 @@ export default function BatchDetail() {
             ? 'FE mix and cost prices will be captured when the batch is received'
             : `${formatCurrency(overview.profitPerCrate)} per crate`}
           tone={batch.status === 'OPEN' ? 'neutral' : (overview.varianceToPolicy || 0) >= 0 ? 'success' : 'error'}
+        />
+        <OverviewCard
+          label={batch.status === 'OPEN' ? 'Portal holds included' : 'Crack rate'}
+          value={batch.status === 'OPEN'
+            ? `${formatNumber(overview.totalCommitted)} crates`
+            : formatPercent(overview.crackRatePercent)}
+          subtext={batch.status === 'OPEN'
+            ? 'Confirmed bookings plus unfinished portal checkouts'
+            : overview.crackAlert?.message || 'Within current allowance'}
+          tone={batch.status === 'OPEN'
+            ? 'warning'
+            : (overview.crackAlert?.level === 'ALERT' ? 'error' : overview.crackAlert?.level === 'WATCH' ? 'warning' : 'success')}
         />
       </div>
 
@@ -836,7 +879,7 @@ function AnalysisTab({ analysis }) {
         <div className="border-b border-surface-200 pb-4 mb-4">
           <h3 className="text-overline text-surface-600">Inventory Status</h3>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 sm:gap-4">
           <div>
             <p className="text-caption text-surface-600">Total Received</p>
             <p className="text-metric text-surface-900 font-medium">{inventory.totalReceived.toLocaleString()}</p>
@@ -852,6 +895,10 @@ function AnalysisTab({ analysis }) {
           <div>
             <p className="text-caption text-surface-600">Booked Portion</p>
             <p className="text-metric text-brand-600 font-medium">{inventory.bookedPortion.toLocaleString()}</p>
+          </div>
+          <div>
+            <p className="text-caption text-surface-600">Held in Portal</p>
+            <p className="text-metric text-warning-600 font-medium">{(inventory.heldForCheckout || 0).toLocaleString()}</p>
           </div>
           <div>
             <p className="text-caption text-surface-600">Available for Sale</p>

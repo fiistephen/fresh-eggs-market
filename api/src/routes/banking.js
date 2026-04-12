@@ -19,6 +19,7 @@ import {
 } from '../utils/appSettings.js';
 import { getCustomerTrackedOrderCount, getPerOrderCrateLimit } from '../utils/customerOrderPolicy.js';
 import { buildCleanDescription, parseProvidusStatement } from '../utils/providusStatement.js';
+import { getOpenBatchBookingAvailability } from '../utils/batchAvailability.js';
 
 const CUSTOMER_DEPOSIT_QUEUE_CATEGORIES = ['CUSTOMER_DEPOSIT', 'CUSTOMER_BOOKING', 'UNALLOCATED_INCOME'];
 
@@ -2729,11 +2730,7 @@ export default async function bankingRoutes(fastify) {
       }).filter((transaction) => transaction.availableAmount > 0.009 || !transaction.customerId);
 
       const openBatchRows = await Promise.all(openBatches.map(async (batch) => {
-        const bookedAgg = await prisma.booking.aggregate({
-          where: { batchId: batch.id, status: { not: 'CANCELLED' } },
-          _sum: { quantity: true },
-        });
-        const totalBooked = bookedAgg._sum.quantity || 0;
+        const availability = await getOpenBatchBookingAvailability(batch.id, { batch });
         return {
           id: batch.id,
           name: batch.name,
@@ -2742,7 +2739,10 @@ export default async function bankingRoutes(fastify) {
           eggTypeLabel: getCustomerEggTypeLabel(customerEggTypes, batch.eggTypeKey || 'REGULAR'),
           wholesalePrice: Number(batch.wholesalePrice),
           availableForBooking: batch.availableForBooking,
-          remainingAvailable: Math.max(0, batch.availableForBooking - totalBooked),
+          totalBooked: availability?.confirmedBooked || 0,
+          heldForCheckout: availability?.heldForCheckout || 0,
+          totalCommitted: availability?.totalCommitted || 0,
+          remainingAvailable: availability?.remainingAvailable ?? 0,
         };
       }));
 
@@ -2907,13 +2907,9 @@ export default async function bankingRoutes(fastify) {
       }
 
       for (const [batchId, requestedQty] of batchUsage.entries()) {
-        const bookedAgg = await prisma.booking.aggregate({
-          where: { batchId, status: { not: 'CANCELLED' } },
-          _sum: { quantity: true },
-        });
-        const alreadyBooked = bookedAgg._sum.quantity || 0;
         const batch = batchMap.get(batchId);
-        const remainingAvailable = batch.availableForBooking - alreadyBooked;
+        const availability = await getOpenBatchBookingAvailability(batchId, { batch });
+        const remainingAvailable = availability?.remainingAvailable ?? 0;
         if (requestedQty > remainingAvailable) {
           return reply.code(400).send({ error: `${batch.name} only has ${remainingAvailable} crates left for booking.` });
         }

@@ -152,15 +152,15 @@ function StatusDot({ tone }) {
   return <span className={`inline-block w-2 h-2 rounded-full ${colors[tone] || colors.neutral}`} />;
 }
 
-function AvailabilityBar({ used, total, className = '' }) {
+function AvailabilityBar({ used, total, className = '', availableLabel = 'available', usedLabel = 'taken' }) {
   const pct = total > 0 ? Math.min(100, (used / total) * 100) : 0;
   const remaining = total - used;
   const urgency = pct > 80 ? 'bg-error-500' : pct > 50 ? 'bg-warning-500' : 'bg-success-500';
   return (
     <div className={className}>
       <div className="flex items-center justify-between text-caption text-surface-600 mb-1">
-        <span>{fmt(remaining)} available</span>
-        <span>{Math.round(pct)}% taken</span>
+        <span>{fmt(remaining)} {availableLabel}</span>
+        <span>{Math.round(pct)}% {usedLabel}</span>
       </div>
       <div className="h-1.5 bg-surface-200 rounded-full overflow-hidden">
         <div className={`h-full rounded-full transition-all duration-normal ${urgency}`} style={{ width: `${pct}%` }} />
@@ -297,6 +297,9 @@ function BatchCard({ batch, signedIn, onAction, onRequireAuth }) {
     ? Number(batch.onHand || 0)
     : Number(batch.totalBookingCapacity || batch.availableForBooking || 0);
   const soldOut = available <= 0;
+  const commitmentCopy = isReady
+    ? `${fmt(Number(batch.totalBooked || 0))} booked · ${fmt(Number(batch.heldForCheckout || 0))} held in checkout`
+    : `${fmt(Number(batch.totalBooked || 0))} booked · ${fmt(Number(batch.heldForCheckout || 0))} being checked out`;
 
   function handleClick() {
     if (!signedIn) { onRequireAuth(isReady ? 'buy-now' : 'book-upcoming'); return; }
@@ -349,7 +352,14 @@ function BatchCard({ batch, signedIn, onAction, onRequireAuth }) {
       </div>
 
       {/* Availability */}
-      <AvailabilityBar used={used} total={Math.max(total, available, 1)} className="mt-4" />
+      <AvailabilityBar
+        used={used}
+        total={Math.max(total, available, 1)}
+        className="mt-4"
+        availableLabel={isReady ? 'available to buy' : 'still open to book'}
+        usedLabel={isReady ? 'committed' : 'reserved'}
+      />
+      <p className="mt-2 text-caption text-surface-500">{commitmentCopy}</p>
 
       {/* CTA */}
       <button

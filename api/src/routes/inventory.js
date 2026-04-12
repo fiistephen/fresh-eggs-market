@@ -7,6 +7,7 @@ import {
   safeDivide,
 } from '../utils/operationsPolicy.js';
 import { getOperationsPolicyHistory, resolveOperationsPolicyAt } from '../utils/appSettings.js';
+import { getReceivedBatchSaleAvailability } from '../utils/batchAvailability.js';
 
 // Helper: compute system count for a batch (received - sold - written off)
 async function computeSystemCount(batchId) {
@@ -54,19 +55,10 @@ export default async function inventoryRoutes(fastify) {
       const inventory = [];
       for (const batch of batches) {
         const policy = resolveOperationsPolicyAt(policyHistory, batch.createdAt || batch.expectedDate);
-        const totalReceived = batch.eggCodes.reduce((s, ec) => s + ec.quantity + ec.freeQty, 0);
-
-        const soldAgg = await prisma.saleLineItem.aggregate({
-          where: { batchEggCode: { batchId: batch.id } },
-          _sum: { quantity: true },
-        });
-        const totalSold = soldAgg._sum.quantity || 0;
-
-        const writeOffAgg = await prisma.inventoryCount.aggregate({
-          where: { batchId: batch.id },
-          _sum: { crackedWriteOff: true },
-        });
-        const totalWrittenOff = writeOffAgg._sum.crackedWriteOff || 0;
+        const availability = await getReceivedBatchSaleAvailability(batch.id, { batch });
+        const totalReceived = availability?.totalReceived || 0;
+        const totalSold = availability?.totalSold || 0;
+        const totalWrittenOff = availability?.totalWrittenOff || 0;
 
         const crackedSoldAgg = await prisma.saleLineItem.aggregate({
           where: {
@@ -77,14 +69,11 @@ export default async function inventoryRoutes(fastify) {
         });
         const crackedSoldQuantity = crackedSoldAgg._sum.quantity || 0;
 
-        const bookedAgg = await prisma.booking.aggregate({
-          where: { batchId: batch.id, status: 'CONFIRMED' },
-          _sum: { quantity: true },
-        });
-        const totalBooked = bookedAgg._sum.quantity || 0;
-
-        const onHand = totalReceived - totalSold - totalWrittenOff;
-        const available = onHand - totalBooked;
+        const totalBooked = availability?.confirmedBooked || 0;
+        const heldForCheckout = availability?.heldForCheckout || 0;
+        const totalCommitted = availability?.totalCommitted || totalBooked;
+        const onHand = availability?.onHand || 0;
+        const available = availability?.availableForSale || 0;
 
         // Latest count for this batch
         const latestCount = await prisma.inventoryCount.findFirst({
@@ -125,6 +114,8 @@ export default async function inventoryRoutes(fastify) {
           policy,
           onHand,
           booked: totalBooked,
+          heldForCheckout,
+          totalCommitted,
           available: Math.max(0, available),
           salesCount: batch._count.sales,
           countsRecorded: batch._count.inventory,
@@ -149,10 +140,12 @@ export default async function inventoryRoutes(fastify) {
           crackedSoldQuantity: acc.crackedSoldQuantity + i.crackedSoldQuantity,
           onHand: acc.onHand + i.onHand,
           booked: acc.booked + i.booked,
+          heldForCheckout: acc.heldForCheckout + (i.heldForCheckout || 0),
+          totalCommitted: acc.totalCommitted + (i.totalCommitted || 0),
           available: acc.available + i.available,
           alertCount: acc.alertCount + (i.crackAlert.level === 'ALERT' ? 1 : 0),
         }),
-        { totalReceived: 0, totalSold: 0, totalWrittenOff: 0, crackedSoldQuantity: 0, onHand: 0, booked: 0, available: 0, alertCount: 0 }
+        { totalReceived: 0, totalSold: 0, totalWrittenOff: 0, crackedSoldQuantity: 0, onHand: 0, booked: 0, heldForCheckout: 0, totalCommitted: 0, available: 0, alertCount: 0 }
       );
 
       return reply.send({
@@ -416,13 +409,12 @@ export default async function inventoryRoutes(fastify) {
       });
       if (!batch) return reply.code(404).send({ error: 'Batch not found' });
 
-      const computed = await computeSystemCount(batchId);
-
-      const bookedAgg = await prisma.booking.aggregate({
-        where: { batchId, status: 'CONFIRMED' },
-        _sum: { quantity: true },
-      });
-      const totalBooked = bookedAgg._sum.quantity || 0;
+      const [computed, availability] = await Promise.all([
+        computeSystemCount(batchId),
+        getReceivedBatchSaleAvailability(batchId, { batch }),
+      ]);
+      const totalBooked = availability?.confirmedBooked || 0;
+      const heldForCheckout = availability?.heldForCheckout || 0;
 
       // Per-egg-code breakdown
       const eggCodeBreakdown = [];
@@ -462,7 +454,9 @@ export default async function inventoryRoutes(fastify) {
           totalWrittenOff: computed.totalWrittenOff,
           onHand: computed.systemCount,
           booked: totalBooked,
-          available: Math.max(0, computed.systemCount - totalBooked),
+          heldForCheckout,
+          totalCommitted: totalBooked + heldForCheckout,
+          available: availability?.availableForSale ?? Math.max(0, computed.systemCount - totalBooked - heldForCheckout),
         },
         eggCodeBreakdown,
         recentCounts: recentCounts.map(c => ({

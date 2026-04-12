@@ -7,6 +7,10 @@ import {
   safeDivide,
 } from '../utils/operationsPolicy.js';
 import {
+  getOpenBatchBookingAvailability,
+  getReceivedBatchSaleAvailability,
+} from '../utils/batchAvailability.js';
+import {
   findCustomerEggTypeByKey,
   getCustomerEggTypeConfig,
   getOperationsPolicy,
@@ -98,9 +102,23 @@ async function buildBatchOverview(batch, policy, options = {}) {
   const bookings = batch.bookings || [];
   const confirmedBookings = bookings.filter((booking) => booking.status === 'CONFIRMED');
   const pickedUpBookings = bookings.filter((booking) => booking.status === 'PICKED_UP');
-  const totalBooked = confirmedBookings.reduce((sum, booking) => sum + booking.quantity, 0);
-  const onHand = Math.max(0, totalReceived - totalSold - totalWrittenOff);
-  const availableForSale = Math.max(0, onHand - totalBooked);
+  const openAvailability = batch.status === 'OPEN'
+    ? await getOpenBatchBookingAvailability(batch.id, { batch })
+    : null;
+  const receivedAvailability = batch.status !== 'OPEN'
+    ? await getReceivedBatchSaleAvailability(batch.id, { batch })
+    : null;
+  const totalBooked = receivedAvailability?.confirmedBooked
+    ?? openAvailability?.confirmedBooked
+    ?? confirmedBookings.reduce((sum, booking) => sum + booking.quantity, 0);
+  const heldForCheckout = receivedAvailability?.heldForCheckout
+    ?? openAvailability?.heldForCheckout
+    ?? 0;
+  const totalCommitted = receivedAvailability?.totalCommitted
+    ?? openAvailability?.totalCommitted
+    ?? totalBooked;
+  const onHand = receivedAvailability?.onHand ?? Math.max(0, totalReceived - totalSold - totalWrittenOff);
+  const availableForSale = receivedAvailability?.availableForSale ?? Math.max(0, onHand - totalCommitted);
   const crackRatePercent = roundTo2(safeDivide((totalWrittenOff + crackedSoldQuantity) * 100, totalReceived));
   const crackAlert = buildCrackAlert({
     ratePercent: crackRatePercent,
@@ -117,7 +135,8 @@ async function buildBatchOverview(batch, policy, options = {}) {
   const totalPaidQuantity = batch.eggCodes.reduce((sum, eggCode) => sum + eggCode.quantity, 0);
   const totalFreeQuantity = batch.eggCodes.reduce((sum, eggCode) => sum + (eggCode.freeQty || 0), 0);
   const remainingToReceive = Math.max(0, batch.expectedQuantity - totalReceived);
-  const bookingUtilizationPercent = roundTo2(safeDivide(totalBooked * 100, Math.max(batch.availableForBooking || 0, 1)));
+  const bookingUtilizationPercent = roundTo2(safeDivide(totalCommitted * 100, Math.max(batch.availableForBooking || 0, 1)));
+  const remainingAvailableForBooking = openAvailability?.remainingAvailable ?? Math.max(0, batch.availableForBooking - totalCommitted);
   const receivedVsExpectedPercent = roundTo2(safeDivide(totalReceived * 100, Math.max(batch.expectedQuantity || 0, 1)));
 
   return {
@@ -126,6 +145,8 @@ async function buildBatchOverview(batch, policy, options = {}) {
     totalFreeQuantity,
     totalSold,
     totalBooked,
+    heldForCheckout,
+    totalCommitted,
     totalWrittenOff,
     crackedSoldQuantity,
     onHand,
@@ -141,6 +162,7 @@ async function buildBatchOverview(batch, policy, options = {}) {
     confirmedBookingCount: confirmedBookings.length,
     pickedUpBookingCount: pickedUpBookings.length,
     bookingUtilizationPercent,
+    remainingAvailableForBooking,
     receivedVsExpectedPercent,
     remainingToReceive,
     latestCount: latestCount ? {
@@ -699,9 +721,9 @@ export default async function batchRoutes(fastify) {
       }
 
       // Booking summary
-      const totalBooked = batch.bookings
-        .filter(b => b.status === 'CONFIRMED')
-        .reduce((sum, b) => sum + b.quantity, 0);
+      const availability = await getReceivedBatchSaleAvailability(batch.id, { batch });
+      const totalBooked = availability?.confirmedBooked
+        ?? batch.bookings.filter(b => b.status === 'CONFIRMED').reduce((sum, b) => sum + b.quantity, 0);
       const totalBookingRevenue = batch.bookings
         .reduce((sum, b) => sum + Number(b.amountPaid), 0);
 
@@ -761,6 +783,8 @@ export default async function batchRoutes(fastify) {
         },
         bookings: {
           totalBooked,
+          heldForCheckout: availability?.heldForCheckout || 0,
+          totalCommitted: availability?.totalCommitted || totalBooked,
           totalBookingRevenue,
           count: batch.bookings.length,
         },
@@ -769,7 +793,9 @@ export default async function batchRoutes(fastify) {
           totalSold,
           remaining,
           bookedPortion: totalBooked,
-          availableForSale: remaining - totalBooked,
+          heldForCheckout: availability?.heldForCheckout || 0,
+          totalCommitted: availability?.totalCommitted || totalBooked,
+          availableForSale: availability?.availableForSale ?? Math.max(0, remaining - totalBooked),
         },
         cracks: {
           crackedSoldQuantity,

@@ -99,19 +99,21 @@ function StatCard({ label, value, sub, icon, color = 'neutral' }) {
 }
 
 // ─── STOCK BAR ───────────────────────────────────────────────────
-function StockBar({ sold, writeOff, booked, available, total }) {
+function StockBar({ sold, writeOff, booked, heldForCheckout = 0, available, total }) {
   if (total <= 0) return null;
   const pctSold = (sold / total) * 100;
   const pctWO = (writeOff / total) * 100;
   const pctBooked = (booked / total) * 100;
+  const pctHeld = (heldForCheckout / total) * 100;
   const pctAvail = (available / total) * 100;
 
   return (
     <div className="space-y-2">
-      <div className="w-full h-2.5 rounded-full overflow-hidden flex bg-surface-100" title={`Sold: ${sold}, Written-off: ${writeOff}, Booked: ${booked}, Available: ${available}`}>
+      <div className="w-full h-2.5 rounded-full overflow-hidden flex bg-surface-100" title={`Sold: ${sold}, Written-off: ${writeOff}, Booked: ${booked}, Held: ${heldForCheckout}, Available: ${available}`}>
         {pctSold > 0 && <div className="bg-success-500 h-full" style={{ width: `${pctSold}%` }} />}
         {pctWO > 0 && <div className="bg-error-400 h-full" style={{ width: `${pctWO}%` }} />}
         {pctBooked > 0 && <div className="bg-warning-400 h-full" style={{ width: `${pctBooked}%` }} />}
+        {pctHeld > 0 && <div className="bg-brand-400 h-full" style={{ width: `${pctHeld}%` }} />}
         {pctAvail > 0 && <div className="bg-info-400 h-full" style={{ width: `${pctAvail}%` }} />}
       </div>
       <div className="flex flex-wrap gap-3 text-caption text-surface-500">
@@ -126,6 +128,10 @@ function StockBar({ sold, writeOff, booked, available, total }) {
         <span className="flex items-center gap-1">
           <span className="w-2 h-2 rounded-full bg-warning-400" />
           Booked ({fmt(booked)})
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-2 h-2 rounded-full bg-brand-400" />
+          Held ({fmt(heldForCheckout)})
         </span>
         <span className="flex items-center gap-1">
           <span className="w-2 h-2 rounded-full bg-info-400" />
@@ -396,6 +402,12 @@ function BatchDetailModal({ batchId, onClose }) {
               <div className="text-caption text-warning-600 mt-1">Booked</div>
             </div>
           </Card>
+          <Card variant="outlined" tint="bg-brand-50 border border-brand-200">
+            <div className="text-center">
+              <div className="text-metric font-bold text-brand-700">{fmt(stock.heldForCheckout)}</div>
+              <div className="text-caption text-brand-600 mt-1">Held in portal</div>
+            </div>
+          </Card>
           <Card variant="outlined" tint="bg-info-50 border border-info-200">
             <div className="text-center">
               <div className="text-metric font-bold text-info-700">{fmt(stock.available)}</div>
@@ -404,7 +416,7 @@ function BatchDetailModal({ batchId, onClose }) {
           </Card>
         </div>
 
-        <StockBar sold={stock.totalSold} writeOff={stock.totalWrittenOff} booked={stock.booked} available={stock.available} total={stock.totalReceived} />
+        <StockBar sold={stock.totalSold} writeOff={stock.totalWrittenOff} booked={stock.booked} heldForCheckout={stock.heldForCheckout} available={stock.available} total={stock.totalReceived} />
 
         {/* Egg code breakdown */}
         <div>
@@ -513,6 +525,7 @@ function OverviewTab({ inventory, totals, policy, loading, onRefresh }) {
         <StatCard label="Written Off" value={fmt(totals.totalWrittenOff)} sub="crates" icon={<TrashIcon />} color="error" />
         <StatCard label="On Hand" value={fmt(totals.onHand)} sub="at depot" icon={<StoreIcon />} color="info" />
         <StatCard label="Booked" value={fmt(totals.booked)} sub="awaiting pickup" icon={<ClipboardIcon />} color="warning" />
+        <StatCard label="Held" value={fmt(totals.heldForCheckout)} sub="portal checkouts" icon={<PackageIcon />} color="brand" />
         <StatCard label="Available" value={fmt(totals.available)} sub="for walk-ins" icon={<ShoppingCartIcon />} color="brand" />
         {(totals.crackedSoldQuantity || 0) > 0 && (
           <StatCard label="Cracked Sold" value={fmt(totals.crackedSoldQuantity)} sub="discounted" icon={<AlertIcon />} color="warning" />
@@ -573,7 +586,7 @@ function OverviewTab({ inventory, totals, policy, loading, onRefresh }) {
                   </div>
                 </div>
 
-                <StockBar sold={item.totalSold} writeOff={item.totalWrittenOff} booked={item.booked} available={item.available} total={item.totalReceived} />
+                <StockBar sold={item.totalSold} writeOff={item.totalWrittenOff} booked={item.booked} heldForCheckout={item.heldForCheckout} available={item.available} total={item.totalReceived} />
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-caption">
                   <div>
@@ -591,6 +604,10 @@ function OverviewTab({ inventory, totals, policy, loading, onRefresh }) {
                   <div>
                     <div className="text-surface-500">Available</div>
                     <div className="font-medium text-info-700">{fmt(item.available)}</div>
+                  </div>
+                  <div>
+                    <div className="text-surface-500">Held in portal</div>
+                    <div className="font-medium text-brand-700">{fmt(item.heldForCheckout)}</div>
                   </div>
                   <div>
                     <div className="text-surface-500">Crack Rate</div>

@@ -1246,6 +1246,9 @@ function RecordSaleModal({ onClose, onRecorded }) {
                             <p className="text-caption text-surface-500 mt-1">
                               {batch.availableForSale?.toLocaleString?.() || 0} crates available for direct sale
                             </p>
+                            <p className="text-caption text-surface-500">
+                              {Number(batch.totalBooked || 0).toLocaleString('en-NG')} booked · {Number(batch.heldForCheckout || 0).toLocaleString('en-NG')} held in portal
+                            </p>
                           </div>
                           <span className="text-caption text-surface-500">{batch.eggCodes.length} code(s)</span>
                         </div>

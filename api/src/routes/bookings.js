@@ -3,7 +3,7 @@ import { authenticate } from '../plugins/auth.js';
 import { authorize } from '../middleware/authorize.js';
 import { getCustomerEggTypeConfig, getCustomerEggTypeLabel, getOperationsPolicy } from '../utils/appSettings.js';
 import { getCustomerOrderLimitProfile } from '../utils/customerOrderPolicy.js';
-import { getActivePortalBookingHoldQuantity } from '../utils/portalCheckout.js';
+import { getOpenBatchBookingAvailability } from '../utils/batchAvailability.js';
 
 const ELIGIBLE_BOOKING_PAYMENT_CATEGORIES = [
   'CUSTOMER_DEPOSIT',
@@ -147,19 +147,8 @@ function buildBookingInclude() {
 }
 
 async function getBookedQuantityForBatch(batchId, excludeBookingId = null) {
-  const [totalBooked, heldForPortal] = await Promise.all([
-    prisma.booking.aggregate({
-      where: {
-        batchId,
-        status: { not: 'CANCELLED' },
-        ...(excludeBookingId ? { id: { not: excludeBookingId } } : {}),
-      },
-      _sum: { quantity: true },
-    }),
-    getActivePortalBookingHoldQuantity(batchId),
-  ]);
-
-  return (totalBooked._sum.quantity || 0) + heldForPortal;
+  const availability = await getOpenBatchBookingAvailability(batchId, { excludeBookingId });
+  return availability?.totalCommitted || 0;
 }
 
 async function getAvailableCustomerPayments(customerId, options = {}) {
@@ -740,14 +729,18 @@ export default async function bookingRoutes(fastify) {
         },
       });
 
-      const totalBooked = bookings.reduce((sum, booking) => sum + booking.quantity, 0);
+      const availability = await getOpenBatchBookingAvailability(batch.id, { batch });
+      const totalBooked = availability?.confirmedBooked ?? bookings.reduce((sum, booking) => sum + booking.quantity, 0);
+      const heldForCheckout = availability?.heldForCheckout || 0;
 
       return reply.send({
         batch: { id: batch.id, name: batch.name, status: batch.status },
         expectedQuantity: batch.expectedQuantity,
         availableForBooking: batch.availableForBooking,
         totalBooked,
-        remainingAvailable: batch.availableForBooking - totalBooked,
+        heldForCheckout,
+        totalCommitted: totalBooked + heldForCheckout,
+        remainingAvailable: availability?.remainingAvailable ?? Math.max(0, batch.availableForBooking - totalBooked - heldForCheckout),
         bookers: bookings.map((booking) => ({
           id: booking.id,
           customer: booking.customer.name,
@@ -809,8 +802,7 @@ export default async function bookingRoutes(fastify) {
       });
 
       const result = await Promise.all(openBatches.map(async (batch) => {
-        const booked = await getBookedQuantityForBatch(batch.id);
-        const remaining = batch.availableForBooking - booked;
+        const availability = await getOpenBatchBookingAvailability(batch.id, { batch });
 
         return {
           id: batch.id,
@@ -822,8 +814,10 @@ export default async function bookingRoutes(fastify) {
           retailPrice: Number(batch.retailPrice),
           eggCodes: batch.eggCodes.map((eggCode) => mapBatchEggCode(eggCode, batch)),
           availableForBooking: batch.availableForBooking,
-          totalBooked: booked,
-          remainingAvailable: remaining,
+          totalBooked: availability?.confirmedBooked || 0,
+          heldForCheckout: availability?.heldForCheckout || 0,
+          totalCommitted: availability?.totalCommitted || 0,
+          remainingAvailable: availability?.remainingAvailable ?? 0,
         };
       }));
 

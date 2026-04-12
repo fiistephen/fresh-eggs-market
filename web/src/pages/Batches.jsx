@@ -133,34 +133,60 @@ function BatchCard({ batch, onOpen }) {
 
       <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricPill
-          label={isOpen ? 'Booked so far' : 'Confirmed bookings'}
+          label={isOpen ? 'Confirmed bookings' : 'Confirmed bookings'}
           value={`${formatNumber(batch.overview?.totalBooked)} crates`}
           tone="warning"
         />
         <MetricPill
-          label={isOpen ? 'Still to receive' : 'Sale-ready stock'}
-          value={`${formatNumber(isOpen ? batch.overview?.remainingToReceive : batch.overview?.availableForSale)} crates`}
-          tone={isOpen ? 'brand' : 'success'}
+          label={isOpen ? 'Held in portal' : 'Held in portal'}
+          value={`${formatNumber(batch.overview?.heldForCheckout)} crates`}
+          tone="brand"
+        />
+        <MetricPill
+          label={isOpen ? 'Still open for booking' : 'Sale-ready stock'}
+          value={isOpen ? `${formatNumber(batch.overview?.remainingAvailableForBooking)} crates` : `${formatNumber(batch.overview?.availableForSale)} crates`}
+          tone="neutral"
         />
         <MetricPill
           label={isOpen ? 'Booking space used' : 'On hand now'}
           value={isOpen ? formatPercent(batch.overview?.bookingUtilizationPercent) : `${formatNumber(batch.overview?.onHand)} crates`}
-          tone="neutral"
+          tone={isOpen ? statusTone : 'neutral'}
+        />
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <MetricPill
+          label={isOpen ? 'Still to receive' : 'Received'}
+          value={`${formatNumber(isOpen ? batch.overview?.remainingToReceive : batch.overview?.totalReceived)} crates`}
+          tone={isOpen ? 'brand' : 'neutral'}
         />
         <MetricPill
-          label={isOpen ? 'Expected quantity' : 'Profit vs target'}
+          label={isOpen ? 'Expected quantity' : 'Sold'}
           value={isOpen
             ? `${formatNumber(batch.expectedQuantity)} crates`
-            : `${(batch.overview?.varianceToPolicy || 0) >= 0 ? '+' : '-'}${formatCurrency(Math.abs(batch.overview?.varianceToPolicy || 0))}`}
-          tone={isOpen ? statusTone : (batch.overview?.varianceToPolicy || 0) >= 0 ? 'success' : 'error'}
+            : `${formatNumber(batch.overview?.totalSold)} crates`}
+          tone={isOpen ? 'neutral' : 'brand'}
+        />
+        {isReceived ? (
+          <MetricPill label="Write-off" value={`${formatNumber(batch.overview?.totalWrittenOff)} crates`} tone="error" />
+        ) : (
+          <MetricPill
+            label="Portal holds included"
+            value={`${formatNumber(batch.overview?.totalCommitted)} crates`}
+            tone="warning"
+          />
+        )}
+        <MetricPill
+          label={isReceived ? 'Profit vs target' : 'Arrival status'}
+          value={isReceived
+            ? `${(batch.overview?.varianceToPolicy || 0) >= 0 ? '+' : '-'}${formatCurrency(Math.abs(batch.overview?.varianceToPolicy || 0))}`
+            : isBatchOverdue(batch) ? 'Awaiting receipt' : 'On schedule'}
+          tone={isReceived ? ((batch.overview?.varianceToPolicy || 0) >= 0 ? 'success' : 'error') : (isBatchOverdue(batch) ? 'error' : 'success')}
         />
       </div>
 
       {isReceived && (
-        <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <MetricPill label="Received" value={`${formatNumber(batch.overview?.totalReceived)} crates`} tone="neutral" />
-          <MetricPill label="Sold" value={`${formatNumber(batch.overview?.totalSold)} crates`} tone="brand" />
-          <MetricPill label="Write-off" value={`${formatNumber(batch.overview?.totalWrittenOff)} crates`} tone="error" />
+        <div className="mt-4">
           <MetricPill
             label="Crack rate"
             value={formatPercent(batch.overview?.crackRatePercent)}
@@ -213,9 +239,9 @@ export default function Batches() {
   const openBatches = batches.filter((batch) => batch.status === 'OPEN');
   const receivedBatches = batches.filter((batch) => batch.status === 'RECEIVED');
   const summary = {
-    openForBooking: openBatches.reduce((sum, batch) => sum + (batch.availableForBooking || 0), 0),
+    openForBooking: openBatches.reduce((sum, batch) => sum + (batch.overview?.remainingAvailableForBooking || 0), 0),
     saleReady: receivedBatches.reduce((sum, batch) => sum + (batch.overview?.availableForSale || 0), 0),
-    confirmedBookings: batches.reduce((sum, batch) => sum + (batch.overview?.totalBooked || 0), 0),
+    confirmedBookings: batches.reduce((sum, batch) => sum + (batch.overview?.totalCommitted || 0), 0),
     attentionCount: batches.filter((batch) => getAttentionItems(batch).length > 0).length,
   };
 
@@ -266,9 +292,9 @@ export default function Batches() {
           tone="success"
         />
         <SummaryCard
-          label="Confirmed bookings"
+          label="Committed crates"
           value={`${formatNumber(summary.confirmedBookings)} crates`}
-          subtext="Still waiting to be picked up"
+          subtext="Bookings plus unfinished portal holds"
           tone="warning"
         />
         <SummaryCard
@@ -530,4 +556,3 @@ function CreateBatchModal({ onClose, onCreated }) {
     </Modal>
   );
 }
-
