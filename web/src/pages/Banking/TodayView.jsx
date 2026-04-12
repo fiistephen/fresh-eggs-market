@@ -1,22 +1,21 @@
 import { ACCOUNT_STYLES, DIRECTION_COLORS, SOURCE_LABELS, fmtMoney, fmtDate, displayAccountName, accountLabel, categoryLabel } from './shared/constants';
 
-export default function TodayView({ loading, accounts, imports, transactions, categoryMap, customerBookingQueue, portalTransferQueue, cashDeposits, approvalRequests, canViewReports, onNavigate, onOpenReport }) {
+export default function TodayView({ loading, accounts, imports, transactions, categoryMap, customerBookingQueue, portalTransferQueue, cashDeposits, approvalRequests, canViewReports, onNavigate, onOpenBookings, onOpenReport }) {
   if (loading) {
     return <div className="rounded-lg border border-surface-200 bg-surface-0 px-6 py-20 text-center text-sm text-surface-500">Loading…</div>;
   }
 
-  /* ── Compute attention items ─────────────────────────── */
   const attentionItems = [];
 
   if (customerBookingQueue?.length > 0) {
-    const total = customerBookingQueue.reduce((s, t) => s + Number(t.amount || 0), 0);
+    const total = customerBookingQueue.reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
     attentionItems.push({
       key: 'bookings',
       color: 'warning',
       count: customerBookingQueue.length,
-      title: `${customerBookingQueue.length} customer payment${customerBookingQueue.length === 1 ? '' : 's'} to allocate`,
-      subtitle: total > 0 ? fmtMoney(total) + ' waiting' : 'Needs attention',
-      action: () => onNavigate('customer-bookings'),
+      title: `${customerBookingQueue.length} customer deposit${customerBookingQueue.length === 1 ? '' : 's'} waiting in bookings`,
+      subtitle: total > 0 ? `${fmtMoney(total)} waiting to match` : 'Open Bookings to allocate',
+      action: () => onOpenBookings?.(),
     });
   }
 
@@ -25,9 +24,9 @@ export default function TodayView({ loading, accounts, imports, transactions, ca
       key: 'transfers',
       color: 'info',
       count: portalTransferQueue.length,
-      title: `${portalTransferQueue.length} portal transfer${portalTransferQueue.length === 1 ? '' : 's'} to review`,
-      subtitle: 'Approve or reject',
-      action: () => onNavigate('portal-transfers'),
+      title: `${portalTransferQueue.length} portal transfer${portalTransferQueue.length === 1 ? '' : 's'} waiting in bookings`,
+      subtitle: 'Open Bookings to confirm or decline',
+      action: () => onOpenBookings?.(),
     });
   }
 
@@ -69,7 +68,7 @@ export default function TodayView({ loading, accounts, imports, transactions, ca
     });
   }
 
-  const pendingImports = imports?.filter((i) => i.status !== 'POSTED') || [];
+  const pendingImports = imports?.filter((entry) => entry.status !== 'POSTED') || [];
   if (pendingImports.length > 0) {
     attentionItems.push({
       key: 'imports',
@@ -81,7 +80,7 @@ export default function TodayView({ loading, accounts, imports, transactions, ca
     });
   }
 
-  const unreconciledAccounts = accounts.filter((a) => !a.isVirtual && !a.latestReconciliation);
+  const unreconciledAccounts = accounts.filter((account) => !account.isVirtual && !account.latestReconciliation);
   if (canViewReports && unreconciledAccounts.length > 0) {
     attentionItems.push({
       key: 'reconcile',
@@ -108,7 +107,6 @@ export default function TodayView({ loading, accounts, imports, transactions, ca
 
   return (
     <div className="space-y-5">
-      {/* ── Account balance cards ─────────────────────────── */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {accounts.map((account) => {
           const recon = account.latestReconciliation;
@@ -118,7 +116,6 @@ export default function TodayView({ loading, accounts, imports, transactions, ca
               key={account.id}
               className={`group relative rounded-lg border p-4 transition-shadow duration-fast hover:shadow-md ${ACCOUNT_STYLES[account.accountType] || 'border-surface-200 bg-surface-0'}`}
             >
-              {/* Status dot */}
               <div className="flex items-center justify-between">
                 <p className="text-xs font-medium text-surface-500 truncate">{displayAccountName(account)}</p>
                 <span
@@ -146,7 +143,6 @@ export default function TodayView({ loading, accounts, imports, transactions, ca
         })}
       </div>
 
-      {/* ── Needs attention ───────────────────────────────── */}
       {attentionItems.length > 0 ? (
         <div className="space-y-2">
           <h2 className="text-heading text-surface-700">Needs attention</h2>
@@ -175,7 +171,6 @@ export default function TodayView({ loading, accounts, imports, transactions, ca
         </div>
       )}
 
-      {/* ── Recent activity ─────────────────────────────── */}
       <div className="rounded-lg border border-surface-200 bg-surface-0 shadow-sm">
         <div className="flex items-center justify-between border-b border-surface-100 px-4 py-3">
           <div>

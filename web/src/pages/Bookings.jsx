@@ -331,7 +331,7 @@ export default function Bookings() {
       setPortalCardBookings(data.recentCardBookings || []);
       setRecentTransferDecisions(data.recentTransferDecisions || []);
     } catch {
-      setPortalQueueError('Failed to load portal booking confirmations');
+      setPortalQueueError('Failed to load portal transfer confirmations');
     } finally {
       setPortalQueueLoading(false);
     }
@@ -357,7 +357,7 @@ export default function Bookings() {
       await api.post(`/portal/admin/booking-checkouts/${checkoutId}/admin-confirm`, {});
       await loadPortalBookingQueue();
     } catch (err) {
-      setPortalQueueError(err.error || 'Failed to confirm this portal booking transfer');
+      setPortalQueueError(err.error || 'Failed to confirm this portal transfer');
     } finally {
       setWorkingPortalCheckoutId('');
     }
@@ -843,7 +843,7 @@ function PortalBookingReviewSection({
   if (loading) {
     return (
       <Card className="p-4">
-        <p className="text-body text-surface-500">Loading portal booking payments…</p>
+        <p className="text-body text-surface-500">Loading portal transfer payments…</p>
       </Card>
     );
   }
@@ -855,9 +855,9 @@ function PortalBookingReviewSection({
   return (
     <div className="space-y-4">
       <Card variant="warning" className="p-4">
-        <h2 className="text-overline uppercase text-warning-900">Portal booking payments</h2>
+        <h2 className="text-overline uppercase text-warning-900">Portal transfer payments</h2>
         <p className="mt-2 text-body text-warning-900">
-          Transfer bookings have two checkpoints: first a staff admin confirmation when the money is seen, then a full confirmation when the matching bank statement line is linked in Banking. The statement is the final source of financial truth.
+          Portal transfer orders have two checkpoints: first a staff admin confirmation when the money is seen, then a full confirmation when the matching bank statement line is linked in Banking. The statement is the final source of financial truth.
         </p>
       </Card>
 
@@ -871,7 +871,7 @@ function PortalBookingReviewSection({
         <Card className="p-4 space-y-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-            <h3 className="text-heading font-semibold text-surface-900">Portal transfer bookings waiting for action</h3>
+            <h3 className="text-heading font-semibold text-surface-900">Portal transfers waiting for action</h3>
             <p className="mt-2 text-body text-surface-500">Use this to mark “money seen” first. The final financial confirmation still happens when the statement line is linked in Banking.</p>
             </div>
             <Button variant="secondary" size="sm" onClick={onRefresh}>
@@ -901,7 +901,7 @@ function PortalBookingReviewSection({
                   </div>
                   <div className="text-right space-y-1">
                     <p className="text-body-medium font-semibold text-surface-900">{formatCurrency(checkout.amountToPay)}</p>
-                    <p className="text-caption text-surface-500">Booking payment now</p>
+                    <p className="text-caption text-surface-500">Order payment now</p>
                   </div>
                 </div>
 
@@ -934,8 +934,8 @@ function PortalBookingReviewSection({
       {recentCardBookings?.length ? (
         <Card className="p-4 space-y-3">
           <div>
-            <h3 className="text-heading font-semibold text-surface-900">Recent portal card bookings</h3>
-            <p className="mt-2 text-body text-surface-500">These are portal bookings that already passed card verification and were created immediately.</p>
+            <h3 className="text-heading font-semibold text-surface-900">Recent portal card orders</h3>
+            <p className="mt-2 text-body text-surface-500">These are recent portal orders that already passed card verification and were created immediately.</p>
           </div>
 
           <div className="space-y-3">

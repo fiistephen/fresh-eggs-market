@@ -1184,7 +1184,6 @@ export default async function portalRoutes(fastify) {
       const [transferQueue, recentCardBookings, recentTransferDecisions] = await Promise.all([
         prisma.portalCheckout.findMany({
           where: {
-            checkoutType: 'BOOK_UPCOMING',
             paymentMethod: 'TRANSFER',
             status: { in: ['AWAITING_TRANSFER', 'ADMIN_CONFIRMED'] },
           },
@@ -1198,7 +1197,6 @@ export default async function portalRoutes(fastify) {
         }),
         prisma.portalCheckout.findMany({
           where: {
-            checkoutType: 'BOOK_UPCOMING',
             paymentMethod: 'CARD',
             status: 'PAID',
           },
@@ -1213,7 +1211,6 @@ export default async function portalRoutes(fastify) {
         prisma.portalCheckoutDecision.findMany({
           where: {
             portalCheckout: {
-              checkoutType: 'BOOK_UPCOMING',
               paymentMethod: 'TRANSFER',
             },
           },
@@ -1253,7 +1250,6 @@ export default async function portalRoutes(fastify) {
 
       const candidates = await prisma.portalCheckout.findMany({
         where: {
-          checkoutType: 'BOOK_UPCOMING',
           paymentMethod: 'TRANSFER',
           status: 'ADMIN_CONFIRMED',
           amountToPay: amountNumber ? amountNumber : undefined,
@@ -1282,14 +1278,14 @@ export default async function portalRoutes(fastify) {
       const checkout = await prisma.portalCheckout.findUnique({
         where: { id: request.params.id },
       });
-      if (!checkout || checkout.checkoutType !== 'BOOK_UPCOMING' || checkout.paymentMethod !== 'TRANSFER') {
-        return reply.code(404).send({ error: 'Portal booking transfer not found.' });
+      if (!checkout || checkout.paymentMethod !== 'TRANSFER') {
+        return reply.code(404).send({ error: 'Portal transfer booking not found.' });
       }
       if (checkout.status === 'ADMIN_CONFIRMED') {
         return reply.send({ confirmed: true, alreadyConfirmed: true, message: 'This transfer is already marked as seen. It still needs the bank statement line for final confirmation.' });
       }
       if (checkout.status !== 'AWAITING_TRANSFER') {
-        return reply.code(400).send({ error: 'This booking is no longer waiting for admin confirmation.' });
+        return reply.code(400).send({ error: 'This transfer is no longer waiting for admin confirmation.' });
       }
 
       await prisma.portalCheckout.update({
@@ -1322,11 +1318,11 @@ export default async function portalRoutes(fastify) {
       const checkout = await prisma.portalCheckout.findUnique({
         where: { id: request.params.id },
       });
-      if (!checkout || checkout.checkoutType !== 'BOOK_UPCOMING' || checkout.paymentMethod !== 'TRANSFER') {
-        return reply.code(404).send({ error: 'Portal booking transfer not found.' });
+      if (!checkout || checkout.paymentMethod !== 'TRANSFER') {
+        return reply.code(404).send({ error: 'Portal transfer booking not found.' });
       }
       if (!['AWAITING_TRANSFER', 'ADMIN_CONFIRMED'].includes(checkout.status)) {
-        return reply.code(400).send({ error: 'This booking transfer can no longer be rejected from the pending queue.' });
+        return reply.code(400).send({ error: 'This transfer can no longer be rejected from the pending queue.' });
       }
 
       const rejectionNotes = reason?.trim()

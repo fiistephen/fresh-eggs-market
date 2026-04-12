@@ -15,6 +15,13 @@ function toNumber(value) {
   return value == null ? null : Number(value);
 }
 
+function enrichTransaction(transaction) {
+  return {
+    ...transaction,
+    amount: Number(transaction.amount),
+  };
+}
+
 function mapBatchEggCode(eggCode, batch = null) {
   if (!eggCode) return null;
   return {

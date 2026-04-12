@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { api } from '../../lib/api';
 import { buildCategoryMap } from './shared/constants';
@@ -8,8 +9,6 @@ import { useToast } from '../../components/ui';
 import TodayView from './TodayView';
 import TransactionsView from './TransactionsView';
 import ImportsView from './StatementImport/ImportQueue';
-import QueueList from './BookingQueue/QueueList';
-import PortalTransferQueue from './PortalTransferQueue';
 import CashDepositsView from './CashDepositsView';
 import ApprovalRequestsView from './ApprovalRequestsView';
 import AccountBalances from './Reports/AccountBalances';
@@ -32,8 +31,6 @@ const TABS = [
   { key: 'today', label: 'Overview' },
   { key: 'transactions', label: 'Transactions' },
   { key: 'imports', label: 'Statements' },
-  { key: 'customer-bookings', label: 'Bookings', badge: true },
-  { key: 'portal-transfers', label: 'Transfers' },
   { key: 'cash-deposits', label: 'Cash deposits', badge: true },
   { key: 'approvals', label: 'Approvals', badge: true },
   { key: 'reports', label: 'Reports' },
@@ -55,6 +52,7 @@ const IMPORTS_PAGE_SIZE = 12;
 /* ── Main Banking page ─────────────────────────────────── */
 
 export default function Banking() {
+  const navigate = useNavigate();
   const { user } = useAuth();
 
   /* ── View state ──────────────────────────────────────── */
@@ -517,6 +515,7 @@ export default function Banking() {
           approvalRequests={approvalRequests}
           canViewReports={canViewReports}
           onNavigate={setActiveView}
+          onOpenBookings={() => navigate('/bookings')}
           onOpenReport={openReport}
         />
       )}
@@ -576,34 +575,6 @@ export default function Banking() {
         />
       )}
 
-      {activeView === 'customer-bookings' && (
-        <QueueList
-          loading={customerBookingLoading}
-          queue={customerBookingQueue}
-          openBatches={customerBookingBatches}
-          policy={bankingPolicy}
-          onRefresh={() => {
-            loadCustomerBookings();
-            loadTransactions();
-          }}
-        />
-      )}
-
-      {activeView === 'portal-transfers' && (
-        <PortalTransferQueue
-          loading={portalTransferLoading}
-          queue={portalTransferQueue}
-          history={portalTransferHistory}
-          onRefresh={() => {
-            loadPortalTransferQueue();
-            loadAccounts();
-            loadTransactions();
-            loadCustomerBookings();
-            loadCashDeposits();
-          }}
-        />
-      )}
-
       {activeView === 'cash-deposits' && (
         <CashDepositsView
           loading={cashDepositsLoading}
@@ -630,6 +601,10 @@ export default function Banking() {
       {activeView === 'reports' && activeReport === 'month-end' && (
         <MonthEndReview
           onNavigate={(view, options = {}) => {
+            if (view === 'customer-bookings' || view === 'portal-transfers') {
+              navigate('/bookings');
+              return;
+            }
             if (options.reportKey) setActiveReport(options.reportKey);
             setActiveView(view);
           }}
