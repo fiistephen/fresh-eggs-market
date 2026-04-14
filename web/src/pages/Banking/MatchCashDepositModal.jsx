@@ -23,28 +23,36 @@ export default function MatchCashDepositModal({ onClose, onMatched }) {
   const [selectedCashIds, setSelectedCashIds] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  // V3 Phase 2 Fix 3: track how many matches were completed in this modal
+  // session so the success banner reflects multi-inflow matching. The modal
+  // stays open after each successful match so the user can keep matching
+  // the next inflow without reopening.
+  const [matchedCount, setMatchedCount] = useState(0);
+  const [lastMatchMessage, setLastMatchMessage] = useState('');
+
+  // Extract the loader so we can call it again after each successful match
+  // to refresh the eligible inflows and unbanked cash sales lists.
+  async function loadData() {
+    setInflowsLoading(true);
+    setCashLoading(true);
+    try {
+      const [inflowsRes, cashRes] = await Promise.all([
+        api.get('/banking/cash-deposits/eligible-inflows'),
+        api.get('/banking/cash-deposits/available'),
+      ]);
+      setInflows(inflowsRes.inflows || []);
+      setAvailableCash(cashRes.transactions || []);
+    } catch (err) {
+      setError(err.error || 'Failed to load data.');
+    } finally {
+      setInflowsLoading(false);
+      setCashLoading(false);
+    }
+  }
 
   useEffect(() => {
-    let alive = true;
-    Promise.all([
-      api.get('/banking/cash-deposits/eligible-inflows'),
-      api.get('/banking/cash-deposits/available'),
-    ])
-      .then(([inflowsRes, cashRes]) => {
-        if (!alive) return;
-        setInflows(inflowsRes.inflows || []);
-        setAvailableCash(cashRes.transactions || []);
-      })
-      .catch((err) => {
-        if (!alive) return;
-        setError(err.error || 'Failed to load data.');
-      })
-      .finally(() => {
-        if (!alive) return;
-        setInflowsLoading(false);
-        setCashLoading(false);
-      });
-    return () => { alive = false; };
+    loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const selectedInflow = useMemo(
@@ -82,6 +90,7 @@ export default function MatchCashDepositModal({ onClose, onMatched }) {
       setError(`Selected cash sales total ${fmtMoney(selectedCashTotal)} but the bank inflow is ${fmtMoney(bankAmount)}. They must match.`);
       return;
     }
+    const inflowDescription = selectedInflow.description || fmtMoney(bankAmount);
     setSubmitting(true);
     setError('');
     try {
@@ -89,6 +98,14 @@ export default function MatchCashDepositModal({ onClose, onMatched }) {
         bankTransactionId: selectedInflow.id,
         cashSaleIds: selectedCashIds,
       });
+      // V3 Fix 3: stay open for more matches. Reset the selection, bump the
+      // counter, reload the lists so matched items disappear, and notify the
+      // parent to refresh the Cash Sales workspace + transactions list.
+      setMatchedCount((count) => count + 1);
+      setLastMatchMessage(`Matched ${fmtMoney(bankAmount)} — ${inflowDescription}`);
+      setSelectedInflowId('');
+      setSelectedCashIds([]);
+      await loadData();
       onMatched?.();
     } catch (err) {
       setError(err.error || 'Failed to record this deposit match.');
@@ -97,14 +114,34 @@ export default function MatchCashDepositModal({ onClose, onMatched }) {
     }
   }
 
+  // V3 Fix 3: separate close action so we can distinguish "done matching, keep
+  // working" (onMatched was already called during each match) from explicit dismiss.
+  function handleDone() {
+    onClose?.();
+  }
+
   return (
     <ModalShell title="Match a bank deposit" onClose={onClose} maxWidth="max-w-4xl">
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="rounded-lg border border-info-200 bg-info-50 px-4 py-3 text-sm text-info-800">
           Pick the bank inflow you already recorded for a cash deposit, then tick the cash
-          sales that made it up. The amounts must match exactly. Once saved, the selected
-          cash sales are marked as banked.
+          sales that made it up. The amounts must match exactly. The form stays open after
+          each match so you can process several deposits in one session.
         </div>
+
+        {/* V3 Fix 3: running success banner — shows after each match so the user
+            can see progress while continuing to match more inflows. */}
+        {matchedCount > 0 && (
+          <div className="rounded-lg border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-800">
+            <p className="font-semibold">
+              {matchedCount} deposit{matchedCount === 1 ? '' : 's'} matched this session.
+            </p>
+            {lastMatchMessage ? <p className="mt-1 text-caption">{lastMatchMessage}</p> : null}
+            {inflows.length === 0 && (
+              <p className="mt-1 text-caption">No more eligible inflows to match. You can close this window.</p>
+            )}
+          </div>
+        )}
 
         {error ? (
           <div className="rounded-lg border border-error-200 bg-error-50 px-4 py-3 text-sm text-error-700">
@@ -230,12 +267,29 @@ export default function MatchCashDepositModal({ onClose, onMatched }) {
           </div>
         </div>
 
-        <ModalActions
-          onClose={onClose}
-          submitting={submitting}
-          submitDisabled={!amountsMatch}
-          submitLabel={submitting ? 'Saving…' : 'Confirm deposit match'}
-        />
+        {/* V3 Fix 3: "Close" replaces "Cancel" once the user has matched at least
+            one deposit, since the work is already saved. Submit button is
+            disabled while amounts don't match. */}
+        <div className="flex flex-col-reverse gap-3 border-t border-surface-200 pt-4 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={handleDone}
+            className="text-body-medium rounded-md px-4 py-2 text-surface-600 transition-colors duration-fast hover:bg-surface-100"
+          >
+            {matchedCount > 0 ? 'Close' : 'Cancel'}
+          </button>
+          <button
+            type="submit"
+            disabled={submitting || !amountsMatch || inflows.length === 0}
+            className="text-body-medium rounded-md bg-brand-600 px-4 py-2 text-surface-0 transition-colors duration-fast hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-surface-300"
+          >
+            {submitting
+              ? 'Saving…'
+              : matchedCount > 0
+                ? 'Match the next one'
+                : 'Confirm deposit match'}
+          </button>
+        </div>
       </form>
     </ModalShell>
   );

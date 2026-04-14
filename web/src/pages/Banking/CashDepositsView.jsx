@@ -135,24 +135,18 @@ export default function CashDepositsView({ loading, data, onMoveMoney, onOpenSta
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {/* V3 Phase 2: primary flow — match a manually-entered bank inflow
-              to the cash sales that made it up. */}
+          {/* V3 Phase 2: primary (and only) flow — match a manually-entered
+              bank inflow to the cash sales that made it up. The V2 "Move cash
+              to bank" button was hidden per Chioma's feedback: the V3 match
+              flow replaces it entirely. The InternalTransferModal code is
+              preserved (still reachable programmatically via `onMoveMoney`
+              from the "More" menu if ever needed again). */}
           <button
             type="button"
             onClick={onMatchFromBank}
             className="rounded-lg bg-brand-500 px-4 py-2 text-body font-medium text-surface-900 transition-colors duration-fast hover:bg-brand-400"
           >
             Match a bank deposit
-          </button>
-          {/* Legacy V2 flow — staff first selects cash sales, then later a bank
-              statement import confirms them. Kept as a secondary path while the
-              V3 flow becomes the default. */}
-          <button
-            type="button"
-            onClick={onMoveMoney}
-            className="rounded-lg border border-surface-300 px-4 py-2 text-body font-medium text-surface-700 transition-colors duration-fast hover:bg-surface-50"
-          >
-            Move cash to bank (legacy)
           </button>
           <button
             type="button"

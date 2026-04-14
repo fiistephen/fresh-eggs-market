@@ -14,7 +14,14 @@ export default function RecordTransactionModal({
   embedded = false,
 }) {
   const defaultDirection = 'INFLOW';
-  const defaultCategory = categoryOptionsForDirection(defaultDirection, categoryMap, 'UNALLOCATED_INCOME')[0] || 'UNALLOCATED_INCOME';
+  // V3 Meeting 3: default category for a new manual inflow is always
+  // "Unallocated income". categoryOptionsForDirection sorts alphabetically,
+  // so its [0] is not reliable for defaults — pick UNALLOCATED_INCOME directly
+  // when it exists in the category map, otherwise fall back to the first option.
+  const inflowOptions = categoryOptionsForDirection(defaultDirection, categoryMap, 'UNALLOCATED_INCOME');
+  const defaultCategory = inflowOptions.includes('UNALLOCATED_INCOME')
+    ? 'UNALLOCATED_INCOME'
+    : inflowOptions[0] || 'UNALLOCATED_INCOME';
   const customerDepositAccount = accounts.find((a) => a.accountType === 'CUSTOMER_DEPOSIT');
   const defaultAccountId = customerDepositAccount?.id || accounts[0]?.id || '';
 
@@ -76,12 +83,18 @@ export default function RecordTransactionModal({
   const needsFarmer = form.category === 'FARMER_PAYMENT';
 
   function setDirection(direction) {
+    // V3: always prefer the "Unallocated" category when switching direction, regardless
+    // of alphabetical order. Only fall back to the first option if UNALLOCATED_* isn't
+    // configured for this direction.
     const preferredCategory = direction === 'INFLOW' ? 'UNALLOCATED_INCOME' : 'UNALLOCATED_EXPENSE';
     const nextCategories = categoryOptionsForDirection(direction, categoryMap, preferredCategory);
+    const nextCategory = nextCategories.includes(preferredCategory)
+      ? preferredCategory
+      : (nextCategories[0] || preferredCategory);
     setForm((current) => ({
       ...current,
       direction,
-      category: nextCategories.includes(preferredCategory) ? preferredCategory : nextCategories[0] || preferredCategory,
+      category: nextCategory,
     }));
     setSelectedCustomer(null);
     setCustomerSearch('');

@@ -20,7 +20,13 @@ function createRow(defaults = {}) {
 
 export default function BulkTransactionModal({ accounts, transactionCategories, categoryMap, onCategoriesChanged, onClose, onRecorded, embedded = false }) {
   const defaultAccountId = accounts.find((a) => a.accountType === 'CUSTOMER_DEPOSIT')?.id || accounts[0]?.id || '';
-  const defaultCategory = categoryOptionsForDirection('INFLOW', categoryMap, 'UNALLOCATED_INCOME')[0] || 'UNALLOCATED_INCOME';
+  // V3 Meeting 3: default category is always "Unallocated income" for inflows.
+  // categoryOptionsForDirection returns alphabetically-sorted options, so we
+  // can't rely on [0] — pick UNALLOCATED_INCOME explicitly when present.
+  const inflowOptions = categoryOptionsForDirection('INFLOW', categoryMap, 'UNALLOCATED_INCOME');
+  const defaultCategory = inflowOptions.includes('UNALLOCATED_INCOME')
+    ? 'UNALLOCATED_INCOME'
+    : inflowOptions[0] || 'UNALLOCATED_INCOME';
   const initialDefaults = { bankAccountId: defaultAccountId, direction: 'INFLOW', category: defaultCategory, transactionDate: todayStr() };
 
   const [rows, setRows] = useState([
@@ -167,13 +173,16 @@ export default function BulkTransactionModal({ accounts, transactionCategories, 
       <div className="overflow-x-auto custom-scrollbar rounded-lg border border-surface-200">
         <table className="w-full min-w-[1040px]">
           <thead className="sticky top-0 z-10 bg-surface-50">
+            {/* V3 Meeting 3 fix: Farmer column removed from bulk entry — it was
+                empty for most rows (only filled when category is FARMER_PAYMENT)
+                and cluttered the table. Farmer payments still work from the
+                single-entry "Record one" mode where the field is conditional. */}
             <tr className="border-b border-surface-200">
               <th className="px-3 py-2.5 text-left text-overline text-surface-500 w-[80px]">In / Out</th>
               <th className="px-3 py-2.5 text-left text-overline text-surface-500">Account</th>
               <th className="px-3 py-2.5 text-left text-overline text-surface-500">Category</th>
               <th className="px-3 py-2.5 text-left text-overline text-surface-500 w-[120px]">Date</th>
               <th className="px-3 py-2.5 text-right text-overline text-surface-500 w-[120px]">Amount</th>
-              <th className="px-3 py-2.5 text-left text-overline text-surface-500 w-[180px]">Farmer</th>
               <th className="px-3 py-2.5 text-left text-overline text-surface-500">Description</th>
               <th className="px-3 py-2.5 text-left text-overline text-surface-500 w-[160px]">Reference</th>
               <th className="px-3 py-2.5 text-left text-overline text-surface-500 w-[90px]"></th>
@@ -234,24 +243,7 @@ export default function BulkTransactionModal({ accounts, transactionCategories, 
                       placeholder="0"
                     />
                   </td>
-                  <td className="px-3 py-2">
-                    {row.category === 'FARMER_PAYMENT' ? (
-                      <select
-                        value={row.farmerId || ''}
-                        onChange={(e) => updateRow(index, { farmerId: e.target.value })}
-                        className="w-full rounded-md border border-surface-200 px-2 py-1.5 text-body outline-none focus:ring-2 focus:ring-brand-500"
-                      >
-                        <option value="">Choose farmer</option>
-                        {farmers.map((farmer) => (
-                          <option key={farmer.id} value={farmer.id}>
-                            {farmer.name}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <span className="text-caption text-surface-400">—</span>
-                    )}
-                  </td>
+                  {/* V3 Meeting 3 fix: Farmer cell removed — use single-entry mode for farmer payments. */}
                   <td className="px-3 py-2">
                     <input
                       type="text"
