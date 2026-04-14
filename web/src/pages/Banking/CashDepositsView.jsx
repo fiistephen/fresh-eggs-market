@@ -116,7 +116,7 @@ function BatchCard({ batch, title, subtitle, statusLabel, statusTone, entriesTit
   );
 }
 
-export default function CashDepositsView({ loading, data, onMoveMoney, onOpenStatements, onRefresh }) {
+export default function CashDepositsView({ loading, data, onMoveMoney, onOpenStatements, onRefresh, onMatchFromBank }) {
   const undepositedCash = data?.undepositedCash || { count: 0, total: 0, thresholdHours: 24, transactions: [] };
   const pendingDeposits = data?.pendingDeposits || { count: 0, total: 0, thresholdHours: 24, batches: [] };
   const confirmedRecently = data?.confirmedRecently || [];
@@ -129,25 +129,30 @@ export default function CashDepositsView({ loading, data, onMoveMoney, onOpenSta
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-surface-200 bg-surface-0 px-5 py-4">
         <div>
-          <h2 className="text-heading text-surface-900">Cash deposits</h2>
+          <h2 className="text-heading text-surface-900">Cash Sales</h2>
           <p className="mt-1 text-body text-surface-500">
-            Track cash already collected in store, money moved to the bank, and the exact cash sales inside each grouped deposit.
+            Track cash sales that have not yet been banked, and match each bank deposit to the exact cash sales it includes.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {/* V3 Phase 2: primary flow — match a manually-entered bank inflow
+              to the cash sales that made it up. */}
+          <button
+            type="button"
+            onClick={onMatchFromBank}
+            className="rounded-lg bg-brand-500 px-4 py-2 text-body font-medium text-surface-900 transition-colors duration-fast hover:bg-brand-400"
+          >
+            Match a bank deposit
+          </button>
+          {/* Legacy V2 flow — staff first selects cash sales, then later a bank
+              statement import confirms them. Kept as a secondary path while the
+              V3 flow becomes the default. */}
           <button
             type="button"
             onClick={onMoveMoney}
-            className="rounded-lg bg-brand-500 px-4 py-2 text-body font-medium text-surface-900 transition-colors duration-fast hover:bg-brand-400"
-          >
-            Create deposit from cash
-          </button>
-          <button
-            type="button"
-            onClick={onOpenStatements}
             className="rounded-lg border border-surface-300 px-4 py-2 text-body font-medium text-surface-700 transition-colors duration-fast hover:bg-surface-50"
           >
-            Open statements
+            Move cash to bank (legacy)
           </button>
           <button
             type="button"

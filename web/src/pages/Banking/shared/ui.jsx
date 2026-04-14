@@ -30,13 +30,13 @@ export function ModalShell({ title, onClose, children, maxWidth = 'max-w-3xl' })
   );
 }
 
-export function ModalActions({ onClose, submitting, submitLabel }) {
+export function ModalActions({ onClose, submitting, submitLabel, submitDisabled = false }) {
   return (
     <div className="flex flex-col-reverse gap-3 border-t border-surface-200 pt-4 sm:flex-row sm:justify-end">
       <button type="button" onClick={onClose} className="text-body-medium rounded-md px-4 py-2 text-surface-600 transition-colors duration-fast hover:bg-surface-100">
         Cancel
       </button>
-      <button type="submit" disabled={submitting} className="text-body-medium rounded-md bg-brand-600 px-4 py-2 text-surface-0 transition-colors duration-fast hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-surface-300">
+      <button type="submit" disabled={submitting || submitDisabled} className="text-body-medium rounded-md bg-brand-600 px-4 py-2 text-surface-0 transition-colors duration-fast hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-surface-300">
         {submitLabel}
       </button>
     </div>

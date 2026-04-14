@@ -20,6 +20,7 @@ import MonthEndReview from './Reports/MonthEndReview';
 // Modals
 import EntryModal from './EntryModal';
 import InternalTransferModal from './InternalTransferModal';
+import MatchCashDepositModal from './MatchCashDepositModal';
 import StatementImportModal from './StatementImportModal';
 import ReconciliationModal from './ReconciliationModal';
 import RequestDeleteApprovalModal from './RequestDeleteApprovalModal';
@@ -117,6 +118,8 @@ export default function Banking() {
   /* ── Modal visibility ────────────────────────────────── */
   const [showEntryModal, setShowEntryModal] = useState(false);
   const [showTransferModal, setShowTransferModal] = useState(false);
+  // V3 Phase 2: toggles the "Match a bank deposit" modal on the Cash Sales tab.
+  const [showMatchDepositModal, setShowMatchDepositModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showReconcileModal, setShowReconcileModal] = useState(false);
   const [postingImport, setPostingImport] = useState(false);
@@ -590,6 +593,7 @@ export default function Banking() {
           onMoveMoney={() => setShowTransferModal(true)}
           onOpenStatements={() => setActiveView('imports')}
           onRefresh={loadCashDeposits}
+          onMatchFromBank={() => setShowMatchDepositModal(true)}
         />
       )}
 
@@ -659,6 +663,20 @@ export default function Banking() {
           onRecorded={() => {
             setShowTransferModal(false);
             refreshAfterMutation();
+          }}
+        />
+      )}
+
+      {showMatchDepositModal && (
+        <MatchCashDepositModal
+          onClose={() => setShowMatchDepositModal(false)}
+          onMatched={() => {
+            setShowMatchDepositModal(false);
+            // Refresh the cash sales workspace + transactions list so the
+            // matched cash sales disappear from "Undeposited" and the new
+            // outflow + inflow pair shows up in the transaction list.
+            loadCashDeposits();
+            loadTransactions();
           }}
         />
       )}

@@ -1974,6 +1974,206 @@ export default async function bankingRoutes(fastify) {
     },
   });
 
+  // V3 Phase 2: List manually-entered bank inflows that could represent a pooled
+  // cash deposit. Used by the Cash Sales tab to let staff pick one and link it
+  // to the actual cash sales that made it up. Eligibility rules:
+  //   - sourceType MANUAL (user typed it from the bank statement)
+  //   - direction INFLOW
+  //   - NOT on a CASH_ON_HAND account (that's the cash side, not the bank side)
+  //   - category CASH_DEPOSIT_CONFIRMATION or UNALLOCATED_INCOME (most likely
+  //     categories for a freshly-entered cash banking)
+  //   - not already linked to a CashDepositBatch (cashDepositOutflow is null
+  //     and no cashDepositBatchLinks)
+  //   - not already part of an internalTransferGroup
+  //   - not already tied to another workflow (no allocations, no sale, etc.)
+  fastify.get('/banking/cash-deposits/eligible-inflows', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
+    handler: async () => {
+      const inflows = await prisma.bankTransaction.findMany({
+        where: {
+          sourceType: 'MANUAL',
+          direction: 'INFLOW',
+          category: { in: ['CASH_DEPOSIT_CONFIRMATION', 'UNALLOCATED_INCOME'] },
+          internalTransferGroupId: null,
+          cashDepositOutflow: null,
+          cashDepositBatchLinks: { none: {} },
+          bankAccount: { accountType: { not: 'CASH_ON_HAND' } },
+        },
+        include: {
+          bankAccount: {
+            select: { id: true, name: true, accountType: true, lastFour: true, isVirtual: true, supportsStatementImport: true },
+          },
+          enteredBy: { select: { firstName: true, lastName: true } },
+        },
+        orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }],
+        take: 100,
+      });
+      return { inflows: inflows.map((transaction) => enrichTransaction(transaction)) };
+    },
+  });
+
+  // V3 Phase 2: Confirm a cash deposit by linking a manually-entered bank
+  // inflow to the specific cash sale transactions that made it up.
+  // Creates:
+  //   - A matching outflow from CASH_ON_HAND (category INTERNAL_TRANSFER_OUT)
+  //   - A CashDepositBatch in CONFIRMED status linking to the outflow and the cash sales
+  //   - An internalTransferGroupId shared between the manual inflow and the new outflow
+  // Validates that the sum of the selected cash sales equals the bank inflow amount.
+  fastify.post('/banking/cash-deposits/confirm-from-bank', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
+    handler: async (request, reply) => {
+      const { bankTransactionId, cashSaleIds, notes } = request.body || {};
+
+      if (!bankTransactionId) {
+        return reply.code(400).send({ error: 'bankTransactionId is required.' });
+      }
+      if (!Array.isArray(cashSaleIds) || cashSaleIds.length === 0) {
+        return reply.code(400).send({ error: 'Select at least one cash sale to link.' });
+      }
+
+      const uniqueCashIds = [...new Set(cashSaleIds.filter(Boolean))];
+
+      const bankTransaction = await prisma.bankTransaction.findUnique({
+        where: { id: bankTransactionId },
+        include: {
+          bankAccount: true,
+          cashDepositOutflow: { select: { id: true } },
+          cashDepositBatchLinks: { select: { id: true } },
+        },
+      });
+
+      if (!bankTransaction) {
+        return reply.code(404).send({ error: 'Bank transaction not found.' });
+      }
+      if (bankTransaction.direction !== 'INFLOW' || bankTransaction.sourceType !== 'MANUAL') {
+        return reply.code(400).send({ error: 'Only manually-entered inflows can be matched.' });
+      }
+      if (bankTransaction.internalTransferGroupId) {
+        return reply.code(400).send({ error: 'This transaction is already part of an internal transfer.' });
+      }
+      if (bankTransaction.cashDepositOutflow || (bankTransaction.cashDepositBatchLinks?.length || 0) > 0) {
+        return reply.code(400).send({ error: 'This transaction is already linked to a cash deposit.' });
+      }
+      if (bankTransaction.bankAccount.accountType === 'CASH_ON_HAND') {
+        return reply.code(400).send({ error: 'The inflow must be on a real bank account, not Cash on Hand.' });
+      }
+
+      const availableCashTransactions = await getAvailableCashSaleTransactions();
+      const availableMap = new Map(availableCashTransactions.map((transaction) => [transaction.id, transaction]));
+      const selected = uniqueCashIds.map((id) => availableMap.get(id)).filter(Boolean);
+
+      if (selected.length !== uniqueCashIds.length) {
+        return reply.code(400).send({ error: 'One or more selected cash sales are no longer available.' });
+      }
+
+      const cashTotal = selected.reduce((sum, transaction) => sum + Number(transaction.availableAmount), 0);
+      const bankAmount = Number(bankTransaction.amount);
+      // Allow a 1-kobo rounding tolerance.
+      if (Math.abs(cashTotal - bankAmount) > 0.01) {
+        return reply.code(400).send({
+          error: `Selected cash sales total ${cashTotal.toFixed(2)} but the bank inflow is ${bankAmount.toFixed(2)}. They must match.`,
+        });
+      }
+
+      const cashAccount = await prisma.bankAccount.findFirst({
+        where: { accountType: 'CASH_ON_HAND', isActive: true },
+      });
+      if (!cashAccount) {
+        return reply.code(500).send({ error: 'Cash on Hand account is not configured.' });
+      }
+
+      const transferGroupId = crypto.randomUUID();
+      const effectiveDate = bankTransaction.transactionDate;
+      const allocations = selected.map((transaction) => ({
+        bankTransactionId: transaction.id,
+        amountIncluded: Number(transaction.availableAmount),
+      }));
+      const description = String(notes || '').trim() || `Cash deposit confirmed from ${cashAccount.name} to ${bankTransaction.bankAccount.name}`;
+
+      const result = await prisma.$transaction(async (tx) => {
+        // 1. Create the balancing outflow from Cash on Hand.
+        const outflowTransaction = await tx.bankTransaction.create({
+          data: {
+            bankAccountId: cashAccount.id,
+            direction: 'OUTFLOW',
+            category: 'INTERNAL_TRANSFER_OUT',
+            amount: bankAmount,
+            description,
+            reference: transferGroupId,
+            transactionDate: effectiveDate,
+            enteredById: request.user.sub,
+            sourceType: 'CASH_DEPOSIT',
+            internalTransferGroupId: transferGroupId,
+            postedAt: new Date(),
+          },
+        });
+
+        // 2. Stamp the existing manual inflow with the same group id and promote its
+        //    category to CASH_DEPOSIT_CONFIRMATION so reporting is consistent.
+        await tx.bankTransaction.update({
+          where: { id: bankTransaction.id },
+          data: {
+            internalTransferGroupId: transferGroupId,
+            category: 'CASH_DEPOSIT_CONFIRMATION',
+          },
+        });
+
+        // 3. Create the CashDepositBatch in CONFIRMED state, linking everything.
+        const batch = await tx.cashDepositBatch.create({
+          data: {
+            fromBankAccountId: cashAccount.id,
+            toBankAccountId: bankTransaction.bankAccountId,
+            outflowTransactionId: outflowTransaction.id,
+            amount: bankAmount,
+            depositDate: effectiveDate,
+            status: 'CONFIRMED',
+            createdById: request.user.sub,
+            confirmedById: request.user.sub,
+            confirmedAt: new Date(),
+            notes: description,
+            transactions: {
+              create: allocations.map((entry) => ({
+                bankTransactionId: entry.bankTransactionId,
+                amountIncluded: entry.amountIncluded,
+              })),
+            },
+          },
+          include: {
+            fromBankAccount: { select: { id: true, name: true, accountType: true, lastFour: true } },
+            toBankAccount: { select: { id: true, name: true, accountType: true, lastFour: true } },
+            transactions: {
+              include: {
+                bankTransaction: {
+                  include: {
+                    customer: { select: { id: true, name: true, phone: true } },
+                    sale: { select: { id: true, receiptNumber: true, saleDate: true } },
+                  },
+                },
+              },
+            },
+          },
+        });
+
+        return { outflowTransaction, batch };
+      });
+
+      return reply.code(201).send({
+        confirmed: true,
+        transferGroupId,
+        outflow: enrichTransaction(result.outflowTransaction),
+        cashDepositBatch: {
+          ...result.batch,
+          amount: Number(result.batch.amount),
+          transactions: result.batch.transactions.map((entry) => ({
+            ...entry,
+            amountIncluded: Number(entry.amountIncluded),
+            bankTransaction: entry.bankTransaction ? enrichTransaction(entry.bankTransaction) : null,
+          })),
+        },
+      });
+    },
+  });
+
   fastify.get('/banking/cash-deposits/available', {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
     handler: async (request, reply) => {
