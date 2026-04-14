@@ -691,10 +691,13 @@ export default async function portalRoutes(fastify) {
       if (!normalizedPhone) return reply.code(400).send({ error: 'Phone number is required' });
       if (!password || password.length < 8) return reply.code(400).send({ error: 'Password must be at least 8 characters' });
 
+      // findFirst for phone (both User and Customer) because older production
+      // databases predate the @unique constraint on those fields. findUnique
+      // throws PrismaClientValidationError against the older generated client.
       const [existingUserByEmail, existingUserByPhone, existingCustomerByPhone] = await Promise.all([
         normalizedEmail ? prisma.user.findUnique({ where: { email: normalizedEmail } }) : Promise.resolve(null),
-        prisma.user.findUnique({ where: { phone: normalizedPhone } }),
-        prisma.customer.findUnique({ where: { phone: normalizedPhone } }).catch(() => prisma.customer.findFirst({ where: { phone: normalizedPhone } })),
+        prisma.user.findFirst({ where: { phone: normalizedPhone } }),
+        prisma.customer.findFirst({ where: { phone: normalizedPhone } }),
       ]);
 
       if (existingUserByEmail) return reply.code(409).send({ error: 'Email already registered. Please sign in instead.' });

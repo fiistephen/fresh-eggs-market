@@ -49,10 +49,12 @@ export default async function authRoutes(fastify) {
         return reply.code(400).send({ error: 'Phone number is required' });
       }
 
-      // Check if user exists
+      // Check if user exists. Same reason as the login handler: use findFirst
+      // for phone because older production DBs may not have the unique
+      // constraint, which would make findUnique throw a Prisma validation error.
       const [existingByEmail, existingByPhone] = await Promise.all([
         normalizedEmail ? prisma.user.findUnique({ where: { email: normalizedEmail } }) : Promise.resolve(null),
-        prisma.user.findUnique({ where: { phone: normalizedPhone } }),
+        prisma.user.findFirst({ where: { phone: normalizedPhone } }),
       ]);
       if (existingByEmail) {
         return reply.code(409).send({ error: 'Email already registered' });
@@ -97,9 +99,17 @@ export default async function authRoutes(fastify) {
       const normalizedEmail = normalizeEmail(normalizedIdentifier);
       const normalizedPhone = normalizePhone(normalizedIdentifier);
 
+      // Use findFirst (not findUnique) for phone lookup because some deployed
+      // databases do not have a unique constraint on User.phone yet — the
+      // newer schema marks phone as @unique but older production databases
+      // predate that. findFirst works regardless; the subsequent isActive
+      // and bcrypt.compare checks still reject bad credentials. Email stays
+      // on findUnique since it's uniformly @unique everywhere.
       const user = normalizedIdentifier.includes('@')
         ? await prisma.user.findUnique({ where: { email: normalizedEmail } })
-        : await prisma.user.findUnique({ where: { phone: normalizedPhone } });
+        : await prisma.user.findFirst({
+            where: { phone: normalizedPhone, isActive: true },
+          });
       if (!user || !user.isActive) {
         return reply.code(401).send({ error: 'Invalid sign-in details or password' });
       }

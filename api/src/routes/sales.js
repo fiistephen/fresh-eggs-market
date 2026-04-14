@@ -625,7 +625,9 @@ export default async function salesRoutes(fastify) {
           return reply.code(400).send({ error: 'New customer name and phone are required' });
         }
 
-        const existingByPhone = await prisma.customer.findUnique({ where: { phone } });
+        // findFirst instead of findUnique: older production databases don't
+        // yet have the @unique constraint on Customer.phone.
+        const existingByPhone = await prisma.customer.findFirst({ where: { phone } });
         if (existingByPhone) {
           return reply.code(409).send({
             error: `Customer with phone ${phone} already exists`,
