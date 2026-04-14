@@ -14,6 +14,7 @@ export default function RequestEditApprovalModal({
   categoryMap,
   onClose,
   onRequested,
+  directMode = false,
 }) {
   const [form, setForm] = useState({
     bankAccountId: transaction.bankAccountId,
@@ -51,7 +52,7 @@ export default function RequestEditApprovalModal({
     setSubmitting(true);
     setError('');
     try {
-      await api.post(`/banking/transactions/${transaction.id}/request-edit`, {
+      const payload = {
         bankAccountId: form.bankAccountId,
         direction: form.direction,
         category: form.category,
@@ -59,18 +60,26 @@ export default function RequestEditApprovalModal({
         description: form.description,
         reference: form.reference,
         transactionDate: form.transactionDate,
-        reason: form.reason.trim() || undefined,
-      });
+      };
+      if (directMode) {
+        // V3: Admin edits directly — no approval queue.
+        await api.patch(`/banking/transactions/${transaction.id}`, payload);
+      } else {
+        await api.post(`/banking/transactions/${transaction.id}/request-edit`, {
+          ...payload,
+          reason: form.reason.trim() || undefined,
+        });
+      }
       onRequested();
     } catch (err) {
-      setError(err.error || 'Failed to request edit approval.');
+      setError(err.error || (directMode ? 'Failed to save changes.' : 'Failed to request edit approval.'));
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <ModalShell title="Request edit approval" onClose={onClose} maxWidth="max-w-3xl">
+    <ModalShell title={directMode ? 'Edit transaction' : 'Request edit approval'} onClose={onClose} maxWidth="max-w-3xl">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="rounded-lg border border-surface-200 bg-surface-50 p-4">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -176,21 +185,33 @@ export default function RequestEditApprovalModal({
           />
         </Field>
 
-        <Field label="Why does this entry need to be corrected?">
-          <textarea
-            value={form.reason}
-            onChange={(event) => updateField('reason', event.target.value)}
-            rows={4}
-            placeholder="Explain the correction you are asking for."
-            className="w-full rounded-md border border-surface-300 bg-surface-0 px-3 py-2 text-sm text-surface-900 outline-none transition-colors duration-fast placeholder:text-surface-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500"
-          />
-        </Field>
+        {!directMode && (
+          <Field label="Why does this entry need to be corrected?">
+            <textarea
+              value={form.reason}
+              onChange={(event) => updateField('reason', event.target.value)}
+              rows={4}
+              placeholder="Explain the correction you are asking for."
+              className="w-full rounded-md border border-surface-300 bg-surface-0 px-3 py-2 text-sm text-surface-900 outline-none transition-colors duration-fast placeholder:text-surface-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500"
+            />
+          </Field>
+        )}
 
-        <div className="rounded-lg border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-800">
-          This sends the corrected values to the approval queue. The live Banking transaction will stay unchanged until an admin approves the request.
+        <div className={`rounded-lg border px-4 py-3 text-sm ${
+          directMode
+            ? 'border-warning-200 bg-warning-50 text-warning-800'
+            : 'border-brand-200 bg-brand-50 text-brand-800'
+        }`}>
+          {directMode
+            ? 'Your changes will be applied immediately. Any pending edit request for this transaction will be closed automatically.'
+            : 'This sends the corrected values to the approval queue. The live Banking transaction will stay unchanged until an admin approves the request.'}
         </div>
 
-        <ModalActions onClose={onClose} submitting={submitting} submitLabel={submitting ? 'Sending…' : 'Send edit request'} />
+        <ModalActions
+          onClose={onClose}
+          submitting={submitting}
+          submitLabel={submitting ? (directMode ? 'Saving…' : 'Sending…') : (directMode ? 'Save changes' : 'Send edit request')}
+        />
       </form>
     </ModalShell>
   );

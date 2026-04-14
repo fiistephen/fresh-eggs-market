@@ -27,13 +27,18 @@ import RequestEditApprovalModal from './RequestEditApprovalModal';
 
 /* ── Tab config ────────────────────────────────────────── */
 
+// V3: Simplified 4-tab layout (Meeting 3 decisions).
+// - "Statements" tab hidden (V2 CSV import still works via "More → Import statement" and activeView='imports',
+//   but no top-level tab. Code preserved for future use.)
+// - "Approvals" tab hidden. The activeView='approvals' view still works and is reached via the
+//   pending-approvals alert in Overview. Admin can still manage approvals.
+// - "Cash deposits" renamed to "Cash Sales" per Meeting 3.
+// - "Reports" renamed to "Reconciliations" per Meeting 3.
 const TABS = [
   { key: 'today', label: 'Overview' },
   { key: 'transactions', label: 'Transactions' },
-  { key: 'imports', label: 'Statements' },
-  { key: 'cash-deposits', label: 'Cash deposits', badge: true },
-  { key: 'approvals', label: 'Approvals', badge: true },
-  { key: 'reports', label: 'Reports' },
+  { key: 'cash-deposits', label: 'Cash Sales', badge: true },
+  { key: 'reports', label: 'Reconciliations' },
 ];
 
 const REPORT_TABS = [
@@ -126,6 +131,8 @@ export default function Banking() {
   /* ── Derived ─────────────────────────────────────────── */
   const canRecord = ['ADMIN', 'MANAGER', 'RECORD_KEEPER'].includes(user?.role);
   const canViewReports = ['ADMIN', 'MANAGER'].includes(user?.role);
+  // V3: ADMIN acts directly (edit/delete without approval); others go through approval queue.
+  const isAdmin = user?.role === 'ADMIN';
   const categoryMap = buildCategoryMap(transactionCategories);
 
   /* ── Close menus on outside click ────────────────────── */
@@ -542,6 +549,7 @@ export default function Banking() {
           onRequestEdit={setRequestEditTransaction}
           canRequestDelete={canRecord}
           onRequestDelete={setRequestDeleteTransaction}
+          isAdmin={isAdmin}
         />
       )}
 
@@ -685,9 +693,12 @@ export default function Banking() {
         <RequestDeleteApprovalModal
           transaction={requestDeleteTransaction}
           categoryMap={categoryMap}
+          directMode={isAdmin}
           onClose={() => setRequestDeleteTransaction(null)}
           onRequested={() => {
             setRequestDeleteTransaction(null);
+            // Admin direct delete removes the row; reload the list + any pending approvals it resolved.
+            loadTransactions();
             loadApprovalRequests();
           }}
         />
@@ -698,9 +709,12 @@ export default function Banking() {
           transaction={requestEditTransaction}
           accounts={accounts}
           categoryMap={categoryMap}
+          directMode={isAdmin}
           onClose={() => setRequestEditTransaction(null)}
           onRequested={() => {
             setRequestEditTransaction(null);
+            // Admin direct edit mutates the transaction; reload the list + any pending approvals.
+            loadTransactions();
             loadApprovalRequests();
           }}
         />

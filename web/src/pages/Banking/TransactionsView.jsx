@@ -20,6 +20,10 @@ export default function TransactionsView({
   canRequestEdit = false,
   onRequestEdit,
   onRequestDelete,
+  // V3 Meeting 3: Admin can edit/delete directly without going through approval.
+  // When `isAdmin` is true, button labels become "Edit"/"Delete" and the same
+  // callbacks open a direct-action flow rather than a request-approval flow.
+  isAdmin = false,
 }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -210,7 +214,7 @@ export default function TransactionsView({
                                 onClick={() => onRequestEdit?.(t)}
                                 className="text-xs font-medium text-brand-700 transition-colors duration-fast hover:text-brand-900"
                               >
-                                Request edit
+                                {isAdmin ? 'Edit' : 'Request edit'}
                               </button>
                             ) : null}
                             {canRequestDelete ? (
@@ -219,7 +223,7 @@ export default function TransactionsView({
                                 onClick={() => onRequestDelete?.(t)}
                                 className="text-xs font-medium text-error-600 transition-colors duration-fast hover:text-error-800"
                               >
-                                Request delete
+                                {isAdmin ? 'Delete' : 'Request delete'}
                               </button>
                             ) : null}
                           </div>

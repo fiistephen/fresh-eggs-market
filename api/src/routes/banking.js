@@ -1315,6 +1315,175 @@ export default async function bankingRoutes(fastify) {
     },
   });
 
+  // Direct edit — ADMIN only, bypasses approval flow. Any pending approval request
+  // for this transaction is auto-cancelled with a resolution note.
+  fastify.patch('/banking/transactions/:id', {
+    preHandler: [authenticate, authorize('ADMIN')],
+    handler: async (request, reply) => {
+      const transaction = await prisma.bankTransaction.findUnique({
+        where: { id: request.params.id },
+        include: {
+          bankAccount: { select: { id: true, name: true, accountType: true, lastFour: true } },
+          customer: { select: { id: true, name: true, phone: true } },
+          farmer: { select: { id: true, name: true, phone: true } },
+          enteredBy: { select: { firstName: true, lastName: true } },
+          statementLine: { select: { id: true } },
+          allocations: { select: { id: true } },
+          cashDepositBatchLinks: { select: { id: true } },
+          cashDepositOutflow: { select: { id: true } },
+          farmerLedgerEntries: { select: { id: true } },
+        },
+      });
+
+      if (!transaction) return reply.code(404).send({ error: 'Transaction not found.' });
+
+      const permission = canManageManualBankTransaction(transaction, request.user);
+      if (!permission.allowed) {
+        return reply.code(400).send({ error: permission.error });
+      }
+
+      const categoryConfig = await getTransactionCategoryConfig();
+      const proposed = normalizeApprovalEditPayload(request.body);
+      const validationError = await validateManualBankTransactionEdit({
+        transaction,
+        proposed,
+        categoryConfig,
+      });
+      if (validationError) {
+        return reply.code(400).send({ error: validationError });
+      }
+
+      const beforeSnapshot = serializeApprovalTransaction(transaction);
+
+      // Auto-cancel any pending edit requests for this transaction (since admin is doing it directly)
+      const pendingEditRequests = await prisma.approvalRequest.findMany({
+        where: {
+          type: 'BANK_TRANSACTION_EDIT',
+          entityType: 'BANK_TRANSACTION',
+          entityId: transaction.id,
+          status: 'PENDING',
+        },
+      });
+
+      await prisma.$transaction([
+        prisma.bankTransaction.update({
+          where: { id: transaction.id },
+          data: {
+            bankAccountId: proposed.bankAccountId,
+            direction: proposed.direction,
+            category: proposed.category,
+            amount: Number(proposed.amount),
+            description: proposed.description,
+            reference: proposed.reference,
+            transactionDate: new Date(proposed.transactionDate),
+          },
+        }),
+        ...pendingEditRequests.map((pending) =>
+          prisma.approvalRequest.update({
+            where: { id: pending.id },
+            data: {
+              status: 'APPROVED',
+              approvedById: request.user.sub,
+              resolvedAt: new Date(),
+              afterData: {
+                ...(pending.afterData || {}),
+                resolution: 'EDITED_DIRECTLY',
+                note: 'Admin applied the edit directly, superseding this request.',
+                resolvedAt: new Date().toISOString(),
+              },
+            },
+          }),
+        ),
+      ]);
+
+      const updated = await prisma.bankTransaction.findUnique({
+        where: { id: transaction.id },
+        include: {
+          bankAccount: { select: { id: true, name: true, accountType: true, lastFour: true, isVirtual: true, supportsStatementImport: true } },
+          customer: { select: { id: true, name: true, phone: true } },
+          farmer: { select: { id: true, name: true, phone: true } },
+          enteredBy: { select: { firstName: true, lastName: true } },
+          statementLine: { select: { id: true } },
+          allocations: { select: { id: true } },
+          cashDepositBatchLinks: { select: { id: true } },
+          cashDepositOutflow: { select: { id: true } },
+          farmerLedgerEntries: { select: { id: true } },
+        },
+      });
+
+      return reply.send({
+        transaction: enrichTransactionForUser(updated, request.user),
+        before: beforeSnapshot,
+        pendingRequestsResolved: pendingEditRequests.length,
+      });
+    },
+  });
+
+  // Direct delete — ADMIN only, bypasses approval flow. Any pending approval request
+  // for this transaction is auto-cancelled.
+  fastify.delete('/banking/transactions/:id', {
+    preHandler: [authenticate, authorize('ADMIN')],
+    handler: async (request, reply) => {
+      const transaction = await prisma.bankTransaction.findUnique({
+        where: { id: request.params.id },
+        include: {
+          bankAccount: { select: { id: true, name: true, accountType: true, lastFour: true } },
+          customer: { select: { id: true, name: true, phone: true } },
+          farmer: { select: { id: true, name: true, phone: true } },
+          enteredBy: { select: { firstName: true, lastName: true } },
+          statementLine: { select: { id: true } },
+          allocations: { select: { id: true } },
+          cashDepositBatchLinks: { select: { id: true } },
+          cashDepositOutflow: { select: { id: true } },
+          farmerLedgerEntries: { select: { id: true } },
+        },
+      });
+
+      if (!transaction) return reply.code(404).send({ error: 'Transaction not found.' });
+
+      const permission = canManageManualBankTransaction(transaction, request.user);
+      if (!permission.allowed) {
+        return reply.code(400).send({ error: permission.error });
+      }
+
+      const beforeSnapshot = serializeApprovalTransaction(transaction);
+
+      const pendingRequests = await prisma.approvalRequest.findMany({
+        where: {
+          entityType: 'BANK_TRANSACTION',
+          entityId: transaction.id,
+          status: 'PENDING',
+        },
+      });
+
+      await prisma.$transaction([
+        prisma.bankTransaction.delete({ where: { id: transaction.id } }),
+        ...pendingRequests.map((pending) =>
+          prisma.approvalRequest.update({
+            where: { id: pending.id },
+            data: {
+              status: 'APPROVED',
+              approvedById: request.user.sub,
+              resolvedAt: new Date(),
+              afterData: {
+                ...(pending.afterData || {}),
+                resolution: 'DELETED_DIRECTLY',
+                note: 'Admin deleted the transaction directly, superseding this request.',
+                resolvedAt: new Date().toISOString(),
+              },
+            },
+          }),
+        ),
+      ]);
+
+      return reply.send({
+        deleted: true,
+        before: beforeSnapshot,
+        pendingRequestsResolved: pendingRequests.length,
+      });
+    },
+  });
+
   fastify.post('/banking/approval-requests/:id/approve', {
     preHandler: [authenticate, authorize('ADMIN')],
     handler: async (request, reply) => {
