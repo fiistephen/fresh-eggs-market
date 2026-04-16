@@ -200,38 +200,32 @@ function CloseMonthModal({ month, review, onClose, onClosed }) {
         {error ? <div className="rounded-lg border border-error-100 bg-error-50 px-3 py-2 text-body text-error-700">{error}</div> : null}
 
         <div className="rounded-lg border border-brand-100 bg-brand-50 px-4 py-3 text-body text-brand-700">
-          Closing this month stores the current balance picture and unresolved review counts as the formal month-end record. It does not erase hanging deposits or operational alerts.
+          Closing this month stores the current balance picture as the formal month-end record. Unallocated transactions and unbanked cash must be resolved first.
         </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="rounded-lg bg-surface-50 px-4 py-3">
             <p className="text-overline text-surface-500">Accounts missing balance</p>
             <p className="mt-1 text-body-medium font-semibold text-surface-900">{review.accountsMissingMonthEndBalance}</p>
           </div>
           <div className="rounded-lg bg-surface-50 px-4 py-3">
-            <p className="text-overline text-surface-500">Unresolved review items</p>
-            <p className="mt-1 text-body-medium font-semibold text-surface-900">
-              {Number(review.unresolved?.hangingDeposits?.count || 0)
-                + Number(review.unresolved?.pendingTransferConfirmations?.count || 0)
-                + Number(review.unresolved?.undepositedCash?.count || 0)
-                + Number(review.unresolved?.pendingCashDeposits?.count || 0)
-                + Number(review.unresolved?.pendingApprovals?.count || 0)}
-            </p>
+            <p className="text-overline text-surface-500">Unallocated transactions</p>
+            <p className="mt-1 text-body-medium font-semibold text-surface-900">{review.unresolved?.unallocatedTransactions?.count || 0}</p>
+          </div>
+          <div className="rounded-lg bg-surface-50 px-4 py-3">
+            <p className="text-overline text-surface-500">Cash not yet banked</p>
+            <p className="mt-1 text-body-medium font-semibold text-surface-900">{review.unresolved?.undepositedCash?.count || 0}</p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="rounded-lg border border-surface-100 px-4 py-3">
-            <p className="text-overline text-surface-500">Hanging deposits</p>
+            <p className="text-overline text-surface-500">Hanging customer deposits</p>
             <p className="mt-1 text-body-medium font-semibold text-warning-700">{fmtMoney(review.unresolved?.hangingDeposits?.total || 0)}</p>
           </div>
           <div className="rounded-lg border border-surface-100 px-4 py-3">
-            <p className="text-overline text-surface-500">Pending transfer confirmations</p>
-            <p className="mt-1 text-body-medium font-semibold text-warning-700">{fmtMoney(review.unresolved?.pendingTransferConfirmations?.total || 0)}</p>
-          </div>
-          <div className="rounded-lg border border-surface-100 px-4 py-3">
-            <p className="text-overline text-surface-500">Cash not yet banked</p>
-            <p className="mt-1 text-body-medium font-semibold text-warning-700">{fmtMoney(review.unresolved?.undepositedCash?.total || 0)}</p>
+            <p className="text-overline text-surface-500">Pending approval requests</p>
+            <p className="mt-1 text-body-medium font-semibold text-warning-700">{review.unresolved?.pendingApprovals?.count || 0}</p>
           </div>
         </div>
 
@@ -286,17 +280,15 @@ export default function MonthEndReview({ onNavigate }) {
 
     const unresolvedCount =
       Number(data.unresolved?.hangingDeposits?.count || 0)
-      + Number(data.unresolved?.pendingTransferConfirmations?.count || 0)
       + Number(data.unresolved?.undepositedCash?.count || 0)
-      + Number(data.unresolved?.pendingCashDeposits?.count || 0)
+      + Number(data.unresolved?.unallocatedTransactions?.count || 0)
       + Number(data.unresolved?.pendingApprovals?.count || 0)
       + Number(data.accountsMissingMonthEndBalance || 0);
 
     const unresolvedAmount =
       Number(data.unresolved?.hangingDeposits?.total || 0)
-      + Number(data.unresolved?.pendingTransferConfirmations?.total || 0)
       + Number(data.unresolved?.undepositedCash?.total || 0)
-      + Number(data.unresolved?.pendingCashDeposits?.total || 0);
+      + Number(data.unresolved?.unallocatedTransactions?.total || 0);
 
     return { unresolvedCount, unresolvedAmount };
   }, [data]);
@@ -308,7 +300,10 @@ export default function MonthEndReview({ onNavigate }) {
   const unresolved = data.unresolved || {};
   const monthClose = data.monthClose;
   const recentMonthCloses = data.recentMonthCloses || [];
-  const canCloseMonth = !monthClose && Number(data.accountsMissingMonthEndBalance || 0) === 0;
+  const canCloseMonth = !monthClose
+    && Number(data.accountsMissingMonthEndBalance || 0) === 0
+    && Number(unresolved.unallocatedTransactions?.count || 0) === 0
+    && Number(unresolved.undepositedCash?.count || 0) === 0;
   const goToView = (view, options = {}) => onNavigate?.(view, options);
 
   return (
@@ -356,9 +351,15 @@ export default function MonthEndReview({ onNavigate }) {
             <p className="font-semibold">{data.label} was closed on {fmtDate(monthClose.closedAt, true)}.</p>
             <p className="mt-1 opacity-80">Closed by {monthClose.closedBy?.firstName || '—'} {monthClose.closedBy?.lastName || ''}.{monthClose.notes ? ` Note: ${monthClose.notes}` : ''}</p>
           </div>
-        ) : Number(data.accountsMissingMonthEndBalance || 0) > 0 ? (
+        ) : !canCloseMonth ? (
           <div className="rounded-lg border border-warning-100 bg-warning-50 px-4 py-4 text-body text-warning-700">
-            Enter a month-end balance for all active accounts before you close {data.label}.
+            {Number(data.accountsMissingMonthEndBalance || 0) > 0
+              ? `Enter a month-end balance for all active accounts before you close ${data.label}.`
+              : Number(unresolved.unallocatedTransactions?.count || 0) > 0
+                ? `Re-categorize ${unresolved.unallocatedTransactions.count} unallocated transaction(s) before closing ${data.label}.`
+                : Number(unresolved.undepositedCash?.count || 0) > 0
+                  ? `Match ${unresolved.undepositedCash.count} unbanked cash sale(s) to a bank deposit before closing ${data.label}.`
+                  : `Resolve outstanding items before closing ${data.label}.`}
           </div>
         ) : null}
 
@@ -366,10 +367,10 @@ export default function MonthEndReview({ onNavigate }) {
           tone={summary.unresolvedCount > 0 ? 'warning' : 'brand'}
           title={summary.unresolvedCount > 0
             ? `${summary.unresolvedCount} review item${summary.unresolvedCount !== 1 ? 's' : ''} still need attention for ${data.label}`
-            : `${data.label} looks ready for manager close review`}
+            : `${data.label} looks ready for manager close`}
           body={summary.unresolvedCount > 0
-            ? `${fmtMoney(summary.unresolvedAmount)} is tied up across unresolved deposits, transfer confirmations, or undeposited cash.`
-            : 'Balances and operational exceptions for this month are clear from the current data.'}
+            ? `${fmtMoney(summary.unresolvedAmount)} is tied up across unallocated transactions, unbanked cash, or hanging deposits.`
+            : 'All balances entered, transactions categorized, and cash matched. Ready to close.'}
         />
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -378,20 +379,16 @@ export default function MonthEndReview({ onNavigate }) {
             <ActionLink label="Review account snapshot" onClick={() => goToView('reports', { reportKey: 'balances' })} tone="surface" />
           </div>
           <div className="space-y-2">
-            <StatCard label="Hanging customer deposits" value={fmtMoney(unresolved.hangingDeposits?.total || 0)} subtext={`${unresolved.hangingDeposits?.count || 0} deposit${Number(unresolved.hangingDeposits?.count || 0) !== 1 ? 's' : ''} still not fully matched`} tone={toneForCount(unresolved.hangingDeposits?.count, unresolved.hangingDeposits?.total)} />
+            <StatCard label="Unallocated transactions" value={String(unresolved.unallocatedTransactions?.count || 0)} subtext={Number(unresolved.unallocatedTransactions?.count || 0) > 0 ? `${fmtMoney(unresolved.unallocatedTransactions?.total || 0)} needs re-categorizing before close` : 'All transactions categorized'} tone={toneForCount(unresolved.unallocatedTransactions?.count)} />
+            <ActionLink label="Open transactions" onClick={() => goToView('transactions')} tone={Number(unresolved.unallocatedTransactions?.count || 0) > 0 ? 'warning' : 'surface'} />
+          </div>
+          <div className="space-y-2">
+            <StatCard label="Cash not yet banked" value={fmtMoney(unresolved.undepositedCash?.total || 0)} subtext={`${unresolved.undepositedCash?.count || 0} cash sale${Number(unresolved.undepositedCash?.count || 0) !== 1 ? 's' : ''} still not matched to a deposit`} tone={toneForCount(unresolved.undepositedCash?.count, unresolved.undepositedCash?.total)} />
+            <ActionLink label="Open cash sales" onClick={() => goToView('cash-deposits')} tone={Number(unresolved.undepositedCash?.count || 0) > 0 ? 'warning' : 'surface'} />
+          </div>
+          <div className="space-y-2">
+            <StatCard label="Hanging customer deposits" value={fmtMoney(unresolved.hangingDeposits?.total || 0)} subtext={`${unresolved.hangingDeposits?.count || 0} deposit${Number(unresolved.hangingDeposits?.count || 0) !== 1 ? 's' : ''} still not fully matched to bookings`} tone={toneForCount(unresolved.hangingDeposits?.count, unresolved.hangingDeposits?.total)} />
             <ActionLink label="Open bookings desk" onClick={() => goToView('customer-bookings')} tone="warning" />
-          </div>
-          <div className="space-y-2">
-            <StatCard label="Transfer payments awaiting final truth" value={fmtMoney(unresolved.pendingTransferConfirmations?.total || 0)} subtext={`${unresolved.pendingTransferConfirmations?.count || 0} portal transfer${Number(unresolved.pendingTransferConfirmations?.count || 0) !== 1 ? 's' : ''} still need statement-backed confirmation`} tone={toneForCount(unresolved.pendingTransferConfirmations?.count, unresolved.pendingTransferConfirmations?.total)} />
-            <ActionLink label="Open transfer queue" onClick={() => goToView('portal-transfers')} tone="warning" />
-          </div>
-          <div className="space-y-2">
-            <StatCard label="Cash not yet banked" value={fmtMoney(unresolved.undepositedCash?.total || 0)} subtext={`${unresolved.undepositedCash?.count || 0} cash sale line${Number(unresolved.undepositedCash?.count || 0) !== 1 ? 's' : ''} still sit outside the bank`} tone={toneForCount(unresolved.undepositedCash?.count, unresolved.undepositedCash?.total)} />
-            <ActionLink label="Open cash deposits" onClick={() => goToView('cash-deposits')} tone="warning" />
-          </div>
-          <div className="space-y-2">
-            <StatCard label="Cash deposits awaiting statement confirmation" value={fmtMoney(unresolved.pendingCashDeposits?.total || 0)} subtext={`${unresolved.pendingCashDeposits?.count || 0} pending deposit batch${Number(unresolved.pendingCashDeposits?.count || 0) !== 1 ? 'es' : ''}`} tone={toneForCount(unresolved.pendingCashDeposits?.count, unresolved.pendingCashDeposits?.total)} />
-            <ActionLink label="Open cash deposits" onClick={() => goToView('cash-deposits')} tone="warning" />
           </div>
           <div className="space-y-2">
             <StatCard label="Pending approval requests" value={String(unresolved.pendingApprovals?.count || 0)} subtext="Banking edit/delete requests still waiting for decision" tone={unresolved.pendingApprovals?.count > 0 ? 'warning' : 'default'} />
@@ -494,39 +491,41 @@ export default function MonthEndReview({ onNavigate }) {
           </SectionCard>
 
           <SectionCard
-            title="Transfer payments awaiting final confirmation"
-            subtitle="Portal transfer orders where admin may have seen the money, but the bank statement had not yet become the final source of truth by this month end."
-            action={<ActionLink label="Open transfer queue" onClick={() => goToView('portal-transfers')} tone="warning" />}
+            title="Unallocated transactions"
+            subtitle={`Transactions still categorized as "Unallocated Income" or "Unallocated Expense" for ${data.label}. Re-categorize these before closing.`}
+            action={<ActionLink label="Open transactions" onClick={() => goToView('transactions')} tone={Number(unresolved.unallocatedTransactions?.count || 0) > 0 ? 'warning' : 'surface'} />}
           >
-            {(unresolved.pendingTransferConfirmations?.items || []).length === 0 ? (
-              <EmptyMini title="No portal transfers were waiting for final confirmation." />
+            {(unresolved.unallocatedTransactions?.items || []).length === 0 ? (
+              <EmptyMini title="All transactions are categorized for this month." />
             ) : (
               <div className="space-y-3">
-                {unresolved.pendingTransferConfirmations.items.slice(0, 8).map((item) => (
+                {unresolved.unallocatedTransactions.items.slice(0, 8).map((item) => (
                   <div key={item.id} className="rounded-lg border border-surface-100 p-3">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="text-body-medium font-semibold text-surface-900">{item.customer?.name || 'Unknown customer'} • {item.reference}</p>
-                        <p className="mt-1 text-caption text-surface-500">{item.batch?.name || 'Unknown batch'} • {fmtDate(item.createdAt, true)}</p>
+                        <p className="text-body-medium font-semibold text-surface-900">{item.customer?.name || item.description || 'No description'}</p>
+                        <p className="mt-1 text-caption text-surface-500">{fmtDate(item.transactionDate)} • {displayAccountName(item.bankAccount)} • {item.direction.toLowerCase()}</p>
                       </div>
-                      <div className="text-right">
-                        <p className="text-body-medium font-semibold text-warning-700">{fmtMoney(item.amountToPay)}</p>
-                        <p className="mt-1 text-caption text-surface-500">{item.status.replaceAll('_', ' ').toLowerCase()}</p>
-                      </div>
+                      <p className="text-body-medium font-semibold text-warning-700">{fmtMoney(item.amount)}</p>
                     </div>
                   </div>
                 ))}
+                {(unresolved.unallocatedTransactions?.items || []).length > 8 && (
+                  <p className="text-center text-caption text-surface-500">
+                    + {unresolved.unallocatedTransactions.items.length - 8} more — open Transactions to see all.
+                  </p>
+                )}
               </div>
             )}
           </SectionCard>
 
           <SectionCard
             title="Cash not yet banked"
-            subtitle="Cash sale lines dated on or before this month end that were still not selected into a bank deposit batch."
-            action={<ActionLink label="Open cash deposits" onClick={() => goToView('cash-deposits')} tone="warning" />}
+            subtitle="Cash sales that have not been matched to a bank deposit via the Cash Sales tab."
+            action={<ActionLink label="Open cash sales" onClick={() => goToView('cash-deposits')} tone={Number(unresolved.undepositedCash?.count || 0) > 0 ? 'warning' : 'surface'} />}
           >
             {(unresolved.undepositedCash?.items || []).length === 0 ? (
-              <EmptyMini title="No undeposited cash remained for this month." />
+              <EmptyMini title="All cash sales have been matched to bank deposits." />
             ) : (
               <div className="space-y-3">
                 {unresolved.undepositedCash.items.slice(0, 8).map((item) => (
@@ -540,30 +539,6 @@ export default function MonthEndReview({ onNavigate }) {
                         <p className="text-body-medium font-semibold text-warning-700">{fmtMoney(item.availableAmount)}</p>
                         <p className="mt-1 text-caption text-surface-500">{Math.max(0, Math.round(item.ageHours))}h old</p>
                       </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </SectionCard>
-
-          <SectionCard
-            title="Cash deposits awaiting statement confirmation"
-            subtitle="Money already moved from cash to the bank account, but still waiting for the matching bank inflow line."
-            action={<ActionLink label="Open cash deposits" onClick={() => goToView('cash-deposits')} tone="warning" />}
-          >
-            {(unresolved.pendingCashDeposits?.items || []).length === 0 ? (
-              <EmptyMini title="No pending cash deposit confirmations for this month." />
-            ) : (
-              <div className="space-y-3">
-                {unresolved.pendingCashDeposits.items.slice(0, 8).map((item) => (
-                  <div key={item.id} className="rounded-lg border border-surface-100 p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-body-medium font-semibold text-surface-900">{fmtDate(item.depositDate)} • {item.createdBy?.firstName || 'Unknown staff'}</p>
-                        <p className="mt-1 text-caption text-surface-500">{item.status.replaceAll('_', ' ').toLowerCase()} • {item.transactions?.length || 0} cash line{Number(item.transactions?.length || 0) !== 1 ? 's' : ''}</p>
-                      </div>
-                      <p className="text-body-medium font-semibold text-warning-700">{fmtMoney(item.amount)}</p>
                     </div>
                   </div>
                 ))}

@@ -754,7 +754,7 @@ async function getCashDepositMatchCandidates({ amount, transactionDate, bankAcco
 async function buildMonthEndReviewData(monthKey) {
   const { start, nextStart, end, label } = getMonthWindow(monthKey);
 
-  const [accountsRaw, hangingDepositTransactions, pendingPortalTransfers, pendingCashDeposits, pendingApprovals, undepositedCash] = await Promise.all([
+  const [accountsRaw, hangingDepositTransactions, pendingPortalTransfers, pendingCashDeposits, pendingApprovals, undepositedCash, unallocatedTransactions] = await Promise.all([
     prisma.bankAccount.findMany({
       where: { isActive: true },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
@@ -809,6 +809,20 @@ async function buildMonthEndReviewData(monthKey) {
       orderBy: [{ createdAt: 'desc' }],
     }),
     getAvailableCashSaleTransactions({ upToDate: end }),
+    // V3 Phase 3: count transactions still categorized as UNALLOCATED_INCOME or
+    // UNALLOCATED_EXPENSE for the month — these must be re-categorized before closing.
+    prisma.bankTransaction.findMany({
+      where: {
+        category: { in: ['UNALLOCATED_INCOME', 'UNALLOCATED_EXPENSE'] },
+        transactionDate: { gte: start, lt: nextStart },
+      },
+      include: {
+        bankAccount: { select: { id: true, name: true, accountType: true, lastFour: true } },
+        customer: { select: { id: true, name: true } },
+        enteredBy: { select: { firstName: true, lastName: true } },
+      },
+      orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }],
+    }),
   ]);
 
   const hangingAllocationMap = hangingDepositTransactions.length > 0
@@ -919,6 +933,11 @@ async function buildMonthEndReviewData(monthKey) {
       pendingApprovals: {
         count: pendingApprovals.length,
         items: pendingApprovals,
+      },
+      unallocatedTransactions: {
+        count: unallocatedTransactions.length,
+        total: unallocatedTransactions.reduce((sum, t) => sum + Number(t.amount || 0), 0),
+        items: unallocatedTransactions.map(enrichTransaction),
       },
     },
   };
@@ -3445,6 +3464,18 @@ export default async function bankingRoutes(fastify) {
         if (review.accountsMissingMonthEndBalance > 0) {
           return reply.code(400).send({ error: 'Enter a month-end balance for every active account before closing the month.' });
         }
+        // V3 Phase 3: block close if unallocated transactions exist for the month
+        if (review.unresolved.unallocatedTransactions?.count > 0) {
+          return reply.code(400).send({
+            error: `${review.unresolved.unallocatedTransactions.count} transaction(s) still categorized as "Unallocated". Re-categorize them before closing.`,
+          });
+        }
+        // V3 Phase 3: block close if unbanked cash sales exist for the month
+        if (review.unresolved.undepositedCash?.count > 0) {
+          return reply.code(400).send({
+            error: `${review.unresolved.undepositedCash.count} cash sale(s) have not been matched to a bank deposit. Match them in Cash Sales before closing.`,
+          });
+        }
 
         const unresolvedSnapshot = {
           hangingDeposits: { count: review.unresolved.hangingDeposits.count, total: review.unresolved.hangingDeposits.total },
@@ -3452,6 +3483,7 @@ export default async function bankingRoutes(fastify) {
           undepositedCash: { count: review.unresolved.undepositedCash.count, total: review.unresolved.undepositedCash.total },
           pendingCashDeposits: { count: review.unresolved.pendingCashDeposits.count, total: review.unresolved.pendingCashDeposits.total },
           pendingApprovals: { count: review.unresolved.pendingApprovals.count },
+          unallocatedTransactions: { count: review.unresolved.unallocatedTransactions.count, total: review.unresolved.unallocatedTransactions.total },
           accountsMissingMonthEndBalance: review.accountsMissingMonthEndBalance,
         };
 

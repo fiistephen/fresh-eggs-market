@@ -91,7 +91,7 @@ export default function Banking() {
   });
   const [approvalRequests, setApprovalRequests] = useState([]);
   const [bankingPolicy, setBankingPolicy] = useState({ bookingMinimumPaymentPercent: 80 });
-  const [activeReport, setActiveReport] = useState('balances');
+  const [activeReport, setActiveReport] = useState('month-end');
 
   /* ── Loading / error state ───────────────────────────── */
   const [loading, setLoading] = useState(true);
