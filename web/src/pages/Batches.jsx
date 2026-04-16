@@ -83,125 +83,44 @@ function MetricPill({ label, value, tone = 'neutral' }) {
 }
 
 function BatchCard({ batch, onOpen }) {
-  const attentionItems = getAttentionItems(batch);
-  const hasAttention = attentionItems.length > 0;
   const isOpen = batch.status === 'OPEN';
   const isReceived = batch.status === 'RECEIVED';
-  const statusTone = hasAttention ? 'error' : isReceived ? 'success' : isOpen ? 'brand' : 'neutral';
+  const overdue = isBatchOverdue(batch);
 
   return (
     <Card variant="interactive" padding="comfortable" onClick={onOpen}>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex-1">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-heading text-surface-800">{batch.name}</h2>
             <Badge status={batch.status} />
-            {hasAttention && (
-              <Badge color="error">Needs attention</Badge>
-            )}
+            {overdue && <Badge color="error">Overdue</Badge>}
           </div>
           <p className="mt-1 text-caption text-surface-600">
-            Expected {formatDate(batch.expectedDate)}
-            {batch.receivedDate && <> · Received {formatDate(batch.receivedDate)}</>}
-            {batch.closedDate && <> · Closed {formatDate(batch.closedDate)}</>}
-          </p>
-          <p className="mt-2 text-body-medium text-surface-700">
             {batch.eggTypeLabel || 'Regular Size Eggs'}
+            {' · '}
+            {isOpen ? `Arriving ${formatDate(batch.expectedDate)}` : `Received ${formatDate(batch.receivedDate)}`}
+            {batch.closedDate && ` · Closed ${formatDate(batch.closedDate)}`}
           </p>
-          {batch.farmer?.name ? (
-            <p className="mt-2 text-caption text-surface-600">
-              Farmer: <span className="font-medium text-surface-900">{batch.farmer.name}</span>
-              {batch.farmer.phone ? <> · {batch.farmer.phone}</> : null}
-            </p>
-          ) : batch.status === 'OPEN' ? (
-            <p className="mt-2 text-caption text-surface-500">Farmer will be selected when the batch is received</p>
-          ) : null}
-          {batch.eggCodes?.length > 0 ? (
-            <p className="mt-2 text-caption text-surface-600">
-              FE mix: <span className="font-medium">{batch.eggCodes.map((eggCode) => eggCode.code).join(', ')}</span>
-            </p>
-          ) : (
-            <p className="mt-2 text-caption text-surface-500">FE mix will be added at receipt</p>
-          )}
         </div>
-
-        <div className="sm:text-right">
-          <p className="text-overline text-surface-400">Quick view</p>
-          <p className="mt-1 text-body-medium text-brand-600">Open workspace</p>
-        </div>
+        <p className="text-body-medium text-brand-600 shrink-0">View details</p>
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <MetricPill
-          label={isOpen ? 'Confirmed bookings' : 'Confirmed bookings'}
-          value={`${formatNumber(batch.overview?.totalBooked)} crates`}
-          tone="warning"
-        />
-        <MetricPill
-          label={isOpen ? 'Held in portal' : 'Held in portal'}
-          value={`${formatNumber(batch.overview?.heldForCheckout)} crates`}
-          tone="brand"
-        />
-        <MetricPill
-          label={isOpen ? 'Still open for booking' : 'Sale-ready stock'}
-          value={isOpen ? `${formatNumber(batch.overview?.remainingAvailableForBooking)} crates` : `${formatNumber(batch.overview?.availableForSale)} crates`}
-          tone="neutral"
-        />
-        <MetricPill
-          label={isOpen ? 'Booking space used' : 'On hand now'}
-          value={isOpen ? formatPercent(batch.overview?.bookingUtilizationPercent) : `${formatNumber(batch.overview?.onHand)} crates`}
-          tone={isOpen ? statusTone : 'neutral'}
-        />
-      </div>
-
-      <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <MetricPill
-          label={isOpen ? 'Still to receive' : 'Received'}
-          value={`${formatNumber(isOpen ? batch.overview?.remainingToReceive : batch.overview?.totalReceived)} crates`}
-          tone={isOpen ? 'brand' : 'neutral'}
-        />
-        <MetricPill
-          label={isOpen ? 'Expected quantity' : 'Sold'}
-          value={isOpen
-            ? `${formatNumber(batch.expectedQuantity)} crates`
-            : `${formatNumber(batch.overview?.totalSold)} crates`}
-          tone={isOpen ? 'neutral' : 'brand'}
-        />
-        {isReceived ? (
-          <MetricPill label="Write-off" value={`${formatNumber(batch.overview?.totalWrittenOff)} crates`} tone="error" />
+      <div className="mt-3 grid grid-cols-3 gap-3">
+        {isOpen ? (
+          <>
+            <MetricPill label="Expected" value={`${formatNumber(batch.expectedQuantity)} crates`} tone="neutral" />
+            <MetricPill label="Booked" value={`${formatNumber(batch.overview?.totalBooked)} crates`} tone="warning" />
+            <MetricPill label="Open for booking" value={`${formatNumber(batch.overview?.remainingAvailableForBooking)} crates`} tone="brand" />
+          </>
         ) : (
-          <MetricPill
-            label="Portal holds included"
-            value={`${formatNumber(batch.overview?.totalCommitted)} crates`}
-            tone="warning"
-          />
+          <>
+            <MetricPill label="Received" value={`${formatNumber(batch.overview?.totalReceived)} crates`} tone="neutral" />
+            <MetricPill label="Sold" value={`${formatNumber(batch.overview?.totalSold)} crates`} tone="brand" />
+            <MetricPill label="Available" value={`${formatNumber(batch.overview?.availableForSale)} crates`} tone={Number(batch.overview?.availableForSale || 0) > 0 ? 'success' : 'neutral'} />
+          </>
         )}
-        <MetricPill
-          label={isReceived ? 'Profit vs target' : 'Arrival status'}
-          value={isReceived
-            ? `${(batch.overview?.varianceToPolicy || 0) >= 0 ? '+' : '-'}${formatCurrency(Math.abs(batch.overview?.varianceToPolicy || 0))}`
-            : isBatchOverdue(batch) ? 'Awaiting receipt' : 'On schedule'}
-          tone={isReceived ? ((batch.overview?.varianceToPolicy || 0) >= 0 ? 'success' : 'error') : (isBatchOverdue(batch) ? 'error' : 'success')}
-        />
       </div>
-
-      {isReceived && (
-        <div className="mt-4">
-          <MetricPill
-            label="Crack rate"
-            value={formatPercent(batch.overview?.crackRatePercent)}
-            tone={batch.overview?.crackAlert?.level === 'ALERT' ? 'error' : batch.overview?.crackAlert?.level === 'WATCH' ? 'warning' : 'success'}
-          />
-        </div>
-      )}
-
-      {attentionItems.length > 0 && (
-        <div className="mt-4 flex flex-wrap gap-2">
-          {attentionItems.map((item) => (
-            <Badge key={item} color="error">{item}</Badge>
-          ))}
-        </div>
-      )}
     </Card>
   );
 }
@@ -242,7 +161,6 @@ export default function Batches() {
     openForBooking: openBatches.reduce((sum, batch) => sum + (batch.overview?.remainingAvailableForBooking || 0), 0),
     saleReady: receivedBatches.reduce((sum, batch) => sum + (batch.overview?.availableForSale || 0), 0),
     confirmedBookings: batches.reduce((sum, batch) => sum + (batch.overview?.totalCommitted || 0), 0),
-    attentionCount: batches.filter((batch) => getAttentionItems(batch).length > 0).length,
   };
 
   const PlusIcon = (
@@ -263,7 +181,7 @@ export default function Batches() {
         <div>
           <h1 className="text-display text-surface-900">Batches</h1>
           <p className="text-caption text-surface-600 mt-2">
-            Track incoming batches, bookings, receipt, stock levels, crack losses, and profit in one place.
+            Manage incoming egg deliveries and bookings.
           </p>
         </div>
         {canCreate && (
@@ -278,30 +196,24 @@ export default function Batches() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 mb-6">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 mb-6">
         <SummaryCard
           label="Open for booking"
           value={`${formatNumber(summary.openForBooking)} crates`}
-          subtext={`${openBatches.length} batch${openBatches.length === 1 ? '' : 'es'} not yet received`}
+          subtext={`Across ${openBatches.length} open batch${openBatches.length === 1 ? '' : 'es'}`}
           tone="brand"
         />
         <SummaryCard
           label="Ready to sell"
           value={`${formatNumber(summary.saleReady)} crates`}
-          subtext={`${receivedBatches.length} received batch${receivedBatches.length === 1 ? '' : 'es'}`}
+          subtext={`Across ${receivedBatches.length} received batch${receivedBatches.length === 1 ? '' : 'es'}`}
           tone="success"
         />
         <SummaryCard
-          label="Committed crates"
+          label="Booked"
           value={`${formatNumber(summary.confirmedBookings)} crates`}
-          subtext="Bookings plus unfinished portal holds"
+          subtext="Confirmed bookings across all batches"
           tone="warning"
-        />
-        <SummaryCard
-          label="Needs attention"
-          value={formatNumber(summary.attentionCount)}
-          subtext="Overdue, crack loss, or below target"
-          tone={summary.attentionCount > 0 ? 'error' : 'neutral'}
         />
       </div>
 
@@ -469,10 +381,6 @@ function CreateBatchModal({ onClose, onCreated }) {
       }
     >
       <form onSubmit={handleSubmit} className="space-y-4">
-        <p className="text-caption text-surface-600">
-          Batch name will be auto-generated from the expected date. Use this step to open the batch for bookings first, then enter FE mix and real cost prices when the eggs arrive.
-        </p>
-
         {error && (
           <div className="bg-error-50 text-error-700 px-3 py-2 rounded-md text-caption border border-error-100">
             {error}
@@ -549,9 +457,6 @@ function CreateBatchModal({ onClose, onCreated }) {
           />
         </div>
 
-        <div className="rounded-lg border border-brand-100 bg-brand-50 px-4 py-3 text-caption text-brand-700">
-          FE item codes, cost prices, and actual received quantities are no longer needed here. Capture them at <span className="font-medium">Receive Batch</span>, when the farm delivery is physically in hand.
-        </div>
       </form>
     </Modal>
   );
