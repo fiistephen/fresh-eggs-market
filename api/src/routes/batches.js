@@ -214,41 +214,55 @@ export default async function batchRoutes(fastify) {
   fastify.get('/batches', {
     preHandler: [authenticate],
     handler: async (request, reply) => {
-      const { status, search } = request.query;
+      const { status, search, limit = '25', offset = '0' } = request.query;
       const [policyHistory, eggTypes] = await Promise.all([
         getOperationsPolicyHistory(),
         getCustomerEggTypeConfig(),
       ]);
       const where = {};
-      if (status) where.status = status;
+      if (status) {
+        if (status === 'ACTIVE') {
+          where.status = { in: ['OPEN', 'RECEIVED'] };
+        } else {
+          where.status = status;
+        }
+      }
       if (search) where.name = { contains: search, mode: 'insensitive' };
 
-      const batches = await prisma.batch.findMany({
-        where,
-        include: {
-          eggCodes: {
-            include: {
-              item: {
-                select: {
-                  id: true,
-                  name: true,
-                  category: true,
+      const parsedLimit = Math.min(200, Math.max(1, Number(limit) || 25));
+      const parsedOffset = Math.max(0, Number(offset) || 0);
+
+      const [batches, total] = await Promise.all([
+        prisma.batch.findMany({
+          where,
+          include: {
+            eggCodes: {
+              include: {
+                item: {
+                  select: {
+                    id: true,
+                    name: true,
+                    category: true,
+                  },
                 },
               },
             },
-          },
-          bookings: {
-            select: {
-              id: true,
-              quantity: true,
-              status: true,
+            bookings: {
+              select: {
+                id: true,
+                quantity: true,
+                status: true,
+              },
             },
+            _count: { select: { bookings: true, sales: true, inventory: true } },
+            farmer: { select: { id: true, name: true, phone: true } },
           },
-          _count: { select: { bookings: true, sales: true, inventory: true } },
-          farmer: { select: { id: true, name: true, phone: true } },
-        },
-        orderBy: { expectedDate: 'desc' },
-      });
+          orderBy: { expectedDate: 'desc' },
+          take: parsedLimit,
+          skip: parsedOffset,
+        }),
+        prisma.batch.count({ where }),
+      ]);
 
       const enriched = await Promise.all(batches.map(async (batch) => {
         const batchPolicy = resolveOperationsPolicyAt(policyHistory, batch.createdAt || batch.expectedDate);
@@ -267,7 +281,7 @@ export default async function batchRoutes(fastify) {
         };
       }));
 
-      return reply.send({ batches: enriched });
+      return reply.send({ batches: enriched, total });
     },
   });
 

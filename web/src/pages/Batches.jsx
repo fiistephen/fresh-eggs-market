@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
-import { Button, Card, Badge, Modal, Input, EmptyState, useToast } from '../components/ui';
+import { Button, Card, Badge, Modal, Input, EmptyState, useToast, Pagination } from '../components/ui';
 import { Select } from '../components/ui/Input';
 
 const STATUS_LABELS = {
@@ -130,14 +130,18 @@ export default function Batches() {
   const navigate = useNavigate();
   const toast = useToast();
   const [batches, setBatches] = useState([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('');
+  const [filter, setFilter] = useState('ACTIVE');
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const pageSize = 25;
   const [showCreate, setShowCreate] = useState(false);
 
   const canCreate = ['ADMIN', 'MANAGER'].includes(user?.role);
 
-  useEffect(() => { loadBatches(); }, [filter, search]);
+  useEffect(() => { setPage(1); }, [filter, search]);
+  useEffect(() => { loadBatches(); }, [filter, search, page]);
 
   async function loadBatches() {
     setLoading(true);
@@ -145,9 +149,12 @@ export default function Batches() {
       const params = new URLSearchParams();
       if (filter) params.set('status', filter);
       if (search.trim()) params.set('search', search.trim());
+      params.set('limit', String(pageSize));
+      params.set('offset', String((page - 1) * pageSize));
       const query = params.toString();
       const data = await api.get(`/batches${query ? `?${query}` : ''}`);
       setBatches(data.batches);
+      setTotal(data.total || 0);
     } catch (err) {
       toast.error('Failed to load batches');
     } finally {
@@ -234,6 +241,7 @@ export default function Batches() {
             <label className="block text-body-medium text-surface-700 mb-2">Filter</label>
             <div className="flex gap-0.5 bg-surface-100 rounded-md p-1 w-fit">
               {[
+                { value: 'ACTIVE', label: 'Active' },
                 { value: '', label: 'All' },
                 { value: 'OPEN', label: 'Open' },
                 { value: 'RECEIVED', label: 'Received' },
@@ -275,6 +283,7 @@ export default function Batches() {
               onOpen={() => navigate(`/batches/${batch.id}`)}
             />
           ))}
+          <Pagination page={page} pageSize={pageSize} total={total} onChange={setPage} noun="batches" />
         </div>
       )}
 

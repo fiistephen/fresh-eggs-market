@@ -1006,7 +1006,7 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
     }
 
     if (!farmerId) {
-      setError('Choose the farmer this batch came from before saving the receipt.');
+      setError('Select the farmer for this batch.');
       setSubmitting(false);
       return;
     }
@@ -1048,22 +1048,12 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
       <div className="bg-surface-0 rounded-lg shadow-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto custom-scrollbar" onClick={(event) => event.stopPropagation()}>
         <div className="px-4 sm:px-6 py-4 border-b border-surface-200">
           <h2 className="text-title text-surface-900">Receive Batch: {batch.name}</h2>
-          <p className="text-body text-surface-600 mt-1">Record what actually arrived from the farm, choose the farmer, then save the FE mix, paid crates, and any extra free crates.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-5">
           {error ? (
             <div className="bg-error-50 text-error-700 px-3 py-2 rounded-md text-body">{error}</div>
           ) : null}
-
-          <div className="rounded-md border border-info-200 bg-info-50 p-4">
-            <p className="text-body-medium font-medium text-info-900">What to enter here</p>
-            <div className="mt-2 space-y-2 text-body text-info-800">
-              <p>1. Choose the farmer this batch came from.</p>
-              <p>2. Add one row for each FE code that arrived in this batch.</p>
-              <p>3. Enter the paid crates for each FE code and any extra free crates from the farm.</p>
-            </div>
-          </div>
 
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <div className="rounded-md border border-surface-200 bg-surface-50 p-3 shadow-xs">
@@ -1088,7 +1078,7 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
           </div>
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <Select label="Farmer this batch came from" required value={farmerId} onChange={(event) => setFarmerId(event.target.value)}>
+            <Select label="Farmer" required value={farmerId} onChange={(event) => setFarmerId(event.target.value)}>
               <option value="">Select farmer</option>
               {farmers.map((farmer) => (
                 <option key={farmer.id} value={farmer.id}>
@@ -1097,29 +1087,21 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
               ))}
             </Select>
 
-            <div className="rounded-md border border-surface-200 bg-surface-50 p-4 shadow-xs">
-              <p className="text-overline text-surface-600">Farmer ledger impact</p>
-              {selectedFarmer ? (
-                <div className="mt-2 space-y-2 text-body text-surface-700">
-                  <p>
-                    Current prepaid balance: <span className="font-medium text-surface-900">{formatCurrency(selectedFarmer.currentBalance)}</span>
-                  </p>
-                  <p>
-                    This receipt drawdown: <span className="font-medium text-surface-900">{formatCurrency(projectedFarmerDrawdown)}</span>
-                  </p>
-                  <p>
-                    Projected balance after receipt: <span className="font-medium text-surface-900">{formatCurrency(projectedFarmerBalance)}</span>
-                  </p>
+            {selectedFarmer && (
+              <div className="rounded-md border border-surface-200 bg-surface-50 p-4 shadow-xs">
+                <p className="text-overline text-surface-600">Farmer ledger</p>
+                <div className="mt-2 space-y-1 text-body text-surface-700">
+                  <p>Balance: <span className="font-medium text-surface-900">{formatCurrency(selectedFarmer.currentBalance)}</span></p>
+                  <p>Drawdown: <span className="font-medium text-surface-900">{formatCurrency(projectedFarmerDrawdown)}</span></p>
+                  <p>After: <span className={'font-medium ' + (projectedFarmerBalance < 0 ? 'text-error-600' : 'text-surface-900')}>{formatCurrency(projectedFarmerBalance)}</span></p>
                 </div>
-              ) : (
-                <p className="mt-2 text-body text-surface-600">Choose the farmer first so you can see how this receipt will affect the farmer ledger.</p>
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Input
-              label="Wholesale price for this batch"
+              label="Wholesale price (₦/crate)"
               type="number"
               required
               min="1"
@@ -1127,7 +1109,7 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
               onChange={(event) => setWholesalePrice(event.target.value)}
             />
             <Input
-              label="Retail price for this batch"
+              label="Retail price (₦/crate)"
               type="number"
               required
               min="1"
@@ -1136,25 +1118,9 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
             />
           </div>
 
-          <div className={
-            'rounded-md border px-3 py-3 text-body ' +
-            (expectedGap === 0
-              ? 'border-success-200 bg-success-50 text-success-800'
-              : expectedGap > 0
-                ? 'border-info-200 bg-info-50 text-info-800'
-                : 'border-warning-200 bg-warning-50 text-warning-800')
-          }>
-            {expectedGap === 0 ? 'The total received matches the expected batch quantity exactly.' : null}
-            {expectedGap > 0 ? 'This batch arrived with ' + formatNumber(expectedGap) + ' more crate' + (expectedGap === 1 ? '' : 's') + ' than expected.' : null}
-            {expectedGap < 0 ? 'This batch is short by ' + formatNumber(Math.abs(expectedGap)) + ' crate' + (Math.abs(expectedGap) === 1 ? '' : 's') + ' compared with what was expected.' : null}
-          </div>
-
           <div>
             <div className="flex items-center justify-between mb-3">
-              <div>
-                <label className="text-body-medium font-medium text-surface-900">FE mix that arrived</label>
-                <p className="mt-1 text-body text-surface-600">Known FE items will auto-fill their usual price when possible. New FE codes are allowed.</p>
-              </div>
+              <label className="text-body-medium font-medium text-surface-900">Egg codes</label>
               <button
                 type="button"
                 onClick={addEggCode}
@@ -1227,21 +1193,8 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
                       ) : null}
                     </div>
                   </div>
-                  <div className="mt-3 flex flex-col gap-2 text-caption sm:flex-row sm:items-center sm:justify-between">
-                    <div className="text-surface-600">
-                      {knownItemsByCode.get(normalizeEggCode(ec.code)) ? (
-                        <>
-                          Matched item: <span className="font-medium text-surface-900">{knownItemsByCode.get(normalizeEggCode(ec.code)).displayName || knownItemsByCode.get(normalizeEggCode(ec.code)).name}</span>
-                        </>
-                      ) : normalizeEggCode(ec.code) ? (
-                        <>This FE code will be created as a new item if it does not already exist.</>
-                      ) : (
-                        <>Enter the FE code from the farm sheet.</>
-                      )}
-                    </div>
-                    <div className="text-surface-600">
-                      Row total: <span className="font-medium text-surface-900">{formatNumber((Number(ec.quantity) || 0) + (Number(ec.freeQty) || 0))} crates</span>
-                    </div>
+                  <div className="mt-2 flex items-center justify-end text-caption text-surface-500">
+                    <span>{formatNumber((Number(ec.quantity) || 0) + (Number(ec.freeQty) || 0))} crates total</span>
                   </div>
                 </div>
               ))}
@@ -1262,7 +1215,7 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
               Cancel
             </Button>
             <Button variant="primary" size="md" disabled={submitting || farmers.length === 0} onClick={handleSubmit}>
-              {submitting ? 'Receiving...' : 'Save Receipt Details'}
+              {submitting ? 'Saving...' : 'Receive Batch'}
             </Button>
           </div>
         </form>
