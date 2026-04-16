@@ -468,7 +468,11 @@ export default async function batchRoutes(fastify) {
           if (plainMatch) {
             await prisma.batch.update({ where: { id: plainMatch.id }, data: { name: `${baseName}A` } });
           }
-          const letters = others.map((b) => b.name.replace(baseName, '')).filter(Boolean).sort();
+          // Re-query to get the current state of names after any renames
+          const updatedOthers = await prisma.batch.findMany({
+            where: { name: { startsWith: baseName }, id: { not: existing.id } },
+          });
+          const letters = updatedOthers.map((b) => b.name.replace(baseName, '')).filter(Boolean).sort();
           const nextLetter = String.fromCharCode(
             (letters.length > 0 ? letters[letters.length - 1].charCodeAt(0) : 64) + 1,
           );
