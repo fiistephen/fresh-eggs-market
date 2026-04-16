@@ -212,7 +212,58 @@ export default async function alertRoutes(fastify) {
         });
       }
 
-      // ── 6. Batches arriving today (info alert) ──
+      // ── 6. Unallocated transactions ──
+      const unallocatedTransactions = await prisma.bankTransaction.findMany({
+        where: {
+          category: { in: ['UNALLOCATED_INCOME', 'UNALLOCATED_EXPENSE'] },
+        },
+        orderBy: { transactionDate: 'desc' },
+      });
+
+      if (unallocatedTransactions.length > 0) {
+        const totalAmount = unallocatedTransactions.reduce((sum, t) => sum + Number(t.amount), 0);
+        alerts.push({
+          id: 'unallocated-transactions',
+          type: 'UNALLOCATED_TRANSACTIONS',
+          severity: unallocatedTransactions.length > 5 ? 'high' : 'medium',
+          title: 'Unallocated transactions',
+          message: `${unallocatedTransactions.length} transaction${unallocatedTransactions.length !== 1 ? 's' : ''} totalling ₦${totalAmount.toLocaleString()} ${unallocatedTransactions.length !== 1 ? 'have' : 'has'} not been categorized.`,
+          date: unallocatedTransactions[0].transactionDate,
+          data: {
+            count: unallocatedTransactions.length,
+            totalAmount,
+          },
+        });
+      }
+
+      // ── 7. Pending approval requests ──
+      const pendingApprovals = await prisma.approvalRequest.findMany({
+        where: { status: 'PENDING' },
+        include: {
+          requestedBy: { select: { firstName: true, lastName: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (pendingApprovals.length > 0) {
+        const oldestDate = pendingApprovals[pendingApprovals.length - 1].createdAt;
+        const daysSinceOldest = Math.floor((Date.now() - new Date(oldestDate).getTime()) / (1000 * 60 * 60 * 24));
+        alerts.push({
+          id: 'pending-approval-requests',
+          type: 'PENDING_APPROVALS',
+          severity: daysSinceOldest > 3 ? 'high' : pendingApprovals.length > 0 ? 'medium' : 'low',
+          title: 'Pending approval requests',
+          message: `${pendingApprovals.length} edit/delete request${pendingApprovals.length !== 1 ? 's' : ''} waiting for admin approval.${daysSinceOldest > 1 ? ` Oldest is ${daysSinceOldest} days old.` : ''}`,
+          date: pendingApprovals[0].createdAt,
+          data: {
+            count: pendingApprovals.length,
+            oldestDate,
+            daysSinceOldest,
+          },
+        });
+      }
+
+      // ── 8. Batches arriving today (info alert) ──
       const arrivingToday = await prisma.batch.findMany({
         where: {
           status: 'OPEN',

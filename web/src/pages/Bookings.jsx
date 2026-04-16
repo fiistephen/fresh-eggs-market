@@ -502,9 +502,11 @@ export default function Bookings() {
       )}
 
       {loading ? (
-        <Card className="px-6 py-24 text-center">
-          <p className="text-body text-surface-500">Loading bookings…</p>
-        </Card>
+        <div className="space-y-3">
+          {[1,2,3,4,5].map(i => (
+            <div key={i} className="h-14 bg-surface-100 rounded-lg animate-pulse" />
+          ))}
+        </div>
       ) : bookings.length === 0 ? (
         <Card className="px-6 py-24">
           <EmptyState

@@ -449,7 +449,11 @@ export default function Sales() {
       )}
 
       {loading ? (
-        <div className="text-center py-12 text-surface-400">Loading sales...</div>
+        <div className="space-y-3">
+          {[1,2,3,4,5].map(i => (
+            <div key={i} className="h-14 bg-surface-100 rounded-lg animate-pulse" />
+          ))}
+        </div>
       ) : sales.length === 0 ? (
         <EmptyState
           icon={
@@ -1614,7 +1618,7 @@ function SaleDetailModal({ sale, onClose }) {
 
   function customerLineItems(currentSale) {
     return (currentSale.lineItems || []).map((lineItem) => ({
-      label: `Crate of Eggs${lineItem.batchEggCode?.code ? ` (${lineItem.batchEggCode.code})` : ''} (${SALE_TYPE_LABELS[lineItem.saleType] || lineItem.saleType})`,
+      label: `Crate of Eggs (${SALE_TYPE_LABELS[lineItem.saleType] || lineItem.saleType})`,
       quantity: lineItem.quantity,
       unitPrice: lineItem.unitPrice,
       lineTotal: lineItem.lineTotal,
@@ -1741,6 +1745,21 @@ function SaleDetailModal({ sale, onClose }) {
         </head>
         <body>
           <div class="receipt">
+            <!-- Business header with logo -->
+            <div class="center" style="margin-bottom:8px;">
+              <img src="/logo.webp" alt="Fresh Eggs" style="width:80px;height:auto;margin:0 auto 6px;" onerror="this.style.display='none'" />
+              <div style="font-size:16px;font-weight:700;letter-spacing:0.5px;">Fresh Eggs Market</div>
+              <div style="font-size:12px;color:#6b7280;margin-top:2px;">SALES RECEIPT</div>
+              <div style="font-size:11px;color:#6b7280;margin-top:6px;line-height:1.5;">
+                Spring Valley Estate, Alasia Bus-stop,<br/>
+                Lekki-Epe Expressway, Lagos<br/>
+                0916-000-7184 &nbsp; info@fresheggsmarket.ng<br/>
+                www.fresheggsmarket.ng
+              </div>
+            </div>
+
+            <div class="rule"></div>
+
             <div class="center">
               <div class="hero-amount">${formatCurrency(sale.totalAmount)}</div>
               <div class="hero-label">Total</div>
@@ -1749,7 +1768,7 @@ function SaleDetailModal({ sale, onClose }) {
             <div class="rule"></div>
 
             <div class="meta-stack">
-              <div class="meta-stack-label">Staff: ${sale.recordedBy ? `${sale.recordedBy.firstName} ${sale.recordedBy.lastName}` : '—'}</div>
+              <div class="meta-stack-label">Employee: ${sale.recordedBy ? `${sale.recordedBy.firstName} ${sale.recordedBy.lastName}` : '—'}</div>
               <div class="meta-stack-value">POS: Shop Floor POS</div>
             </div>
 

@@ -425,28 +425,57 @@ function CustomerDetailModal({ customerId, canEdit, onClose, onUpdated }) {
           )}
 
           {stats && depositSummary && (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-              <Card tint="bg-brand-50">
-                <p className="text-overline text-surface-500">Active orders</p>
-                <p className="text-metric text-brand-700 mt-1">{stats.activeBookings}</p>
-                <p className="text-caption text-surface-500 mt-0.5">{stats.totalBookedCrates.toLocaleString()} crates booked overall</p>
+            <>
+              {/* CRM overview */}
+              <Card variant="outlined">
+                <h3 className="text-heading text-surface-800 mb-4">Customer overview</h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+                  <div>
+                    <p className="text-overline text-surface-500">Lifetime spend</p>
+                    <p className="text-title font-bold text-surface-900 mt-1">{formatCurrency(stats.lifetimeSpend || stats.totalSpent)}</p>
+                  </div>
+                  <div>
+                    <p className="text-overline text-surface-500">Total visits</p>
+                    <p className="text-title font-bold text-surface-900 mt-1">{stats.totalVisits ?? stats.totalSales}</p>
+                  </div>
+                  <div>
+                    <p className="text-overline text-surface-500">Crates purchased</p>
+                    <p className="text-title font-bold text-surface-900 mt-1">{(stats.lifetimeCrates ?? stats.totalPurchasedCrates).toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-overline text-surface-500">First visit</p>
+                    <p className="text-body font-medium text-surface-900 mt-1">{stats.firstVisitDate ? new Date(stats.firstVisitDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'No visits yet'}</p>
+                  </div>
+                  <div>
+                    <p className="text-overline text-surface-500">Last visit</p>
+                    <p className="text-body font-medium text-surface-900 mt-1">{stats.lastVisitDate ? new Date(stats.lastVisitDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'No visits yet'}</p>
+                  </div>
+                  <div>
+                    <p className="text-overline text-surface-500">Member since</p>
+                    <p className="text-body font-medium text-surface-900 mt-1">{new Date(stats.memberSince || customer.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                  </div>
+                </div>
               </Card>
-              <Card tint="bg-success-50">
-                <p className="text-overline text-surface-500">Deposit available</p>
-                <p className="text-metric text-success-700 mt-1">{formatCurrency(depositSummary.availableAmount)}</p>
-                <p className="text-caption text-surface-500 mt-0.5">{depositSummary.hangingDepositCount} hanging deposit {depositSummary.hangingDepositCount === 1 ? 'line' : 'lines'}</p>
-              </Card>
-              <Card tint="bg-info-50">
-                <p className="text-overline text-surface-500">Total spent</p>
-                <p className="text-metric text-info-700 mt-1">{formatCurrency(stats.totalSpent)}</p>
-                <p className="text-caption text-surface-500 mt-0.5">{stats.totalSales} completed pickup {stats.totalSales === 1 ? 'sale' : 'sales'}</p>
-              </Card>
-              <Card tint="bg-warning-50">
-                <p className="text-overline text-surface-500">Transfer follow-up</p>
-                <p className="text-metric text-warning-700 mt-1">{stats.pendingPortalTransfers}</p>
-                <p className="text-caption text-surface-500 mt-0.5">portal transfer {stats.pendingPortalTransfers === 1 ? 'payment' : 'payments'} waiting</p>
-              </Card>
-            </div>
+
+              {/* Operational stats */}
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                <Card tint="bg-brand-50">
+                  <p className="text-overline text-surface-500">Active orders</p>
+                  <p className="text-metric text-brand-700 mt-1">{stats.activeBookings}</p>
+                  <p className="text-caption text-surface-500 mt-0.5">{stats.totalBookedCrates.toLocaleString()} crates booked overall</p>
+                </Card>
+                <Card tint="bg-success-50">
+                  <p className="text-overline text-surface-500">Deposit available</p>
+                  <p className="text-metric text-success-700 mt-1">{formatCurrency(depositSummary.availableAmount)}</p>
+                  <p className="text-caption text-surface-500 mt-0.5">{depositSummary.hangingDepositCount} hanging deposit {depositSummary.hangingDepositCount === 1 ? 'line' : 'lines'}</p>
+                </Card>
+                <Card tint="bg-warning-50">
+                  <p className="text-overline text-surface-500">Transfer follow-up</p>
+                  <p className="text-metric text-warning-700 mt-1">{stats.pendingPortalTransfers}</p>
+                  <p className="text-caption text-surface-500 mt-0.5">portal transfer {stats.pendingPortalTransfers === 1 ? 'payment' : 'payments'} waiting</p>
+                </Card>
+              </div>
+            </>
           )}
 
           {attentionItems.length > 0 && (

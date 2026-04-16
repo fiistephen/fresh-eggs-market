@@ -385,6 +385,11 @@ export default async function customerRoutes(fastify) {
         ? new Date(Math.max(...activityDates.map((value) => new Date(value).getTime()))).toISOString()
         : customer.createdAt;
 
+      // CRM fields — first visit, last visit, total visits (pickup sales), lifetime spend
+      const saleDates = allSales.map((sale) => new Date(sale.saleDate).getTime()).sort((a, b) => a - b);
+      const firstVisitDate = saleDates.length > 0 ? new Date(saleDates[0]).toISOString() : null;
+      const lastVisitDate = saleDates.length > 0 ? new Date(saleDates[saleDates.length - 1]).toISOString() : null;
+
       const stats = {
         totalBookings: allBookings.length,
         totalBookedCrates: allBookings.reduce((sum, booking) => sum + booking.quantity, 0),
@@ -395,6 +400,13 @@ export default async function customerRoutes(fastify) {
         activeBookings: allBookings.filter((booking) => booking.status === 'CONFIRMED').length,
         pendingPortalTransfers,
         lastActivityAt,
+        // CRM
+        firstVisitDate,
+        lastVisitDate,
+        totalVisits: allSales.length,
+        lifetimeSpend: allSales.reduce((sum, sale) => sum + toNumber(sale.totalAmount), 0),
+        lifetimeCrates: allSales.reduce((sum, sale) => sum + sale.totalQuantity, 0),
+        memberSince: customer.createdAt,
       };
 
       const depositSummary = {

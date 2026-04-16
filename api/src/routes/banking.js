@@ -1430,6 +1430,24 @@ export default async function bankingRoutes(fastify) {
         },
       });
 
+      // Audit log
+      const afterSnapshot = serializeApprovalTransaction(updated);
+      const changes = {};
+      for (const key of Object.keys(proposed)) {
+        const before = String(beforeSnapshot[key] ?? '');
+        const after = String(afterSnapshot[key] ?? '');
+        if (before !== after) changes[key] = { from: beforeSnapshot[key], to: afterSnapshot[key] };
+      }
+      await prisma.auditLog.create({
+        data: {
+          entityType: 'BANK_TRANSACTION',
+          entityId: transaction.id,
+          action: 'UPDATE',
+          changes,
+          performedById: request.user.sub,
+        },
+      }).catch(() => {}); // best-effort
+
       return reply.send({
         transaction: enrichTransactionForUser(updated, request.user),
         before: beforeSnapshot,
@@ -1494,6 +1512,17 @@ export default async function bankingRoutes(fastify) {
           }),
         ),
       ]);
+
+      // Audit log
+      await prisma.auditLog.create({
+        data: {
+          entityType: 'BANK_TRANSACTION',
+          entityId: transaction.id,
+          action: 'DELETE',
+          changes: beforeSnapshot,
+          performedById: request.user.sub,
+        },
+      }).catch(() => {});
 
       return reply.send({
         deleted: true,
@@ -1708,6 +1737,17 @@ export default async function bankingRoutes(fastify) {
         });
         return created;
       });
+
+      // Audit log
+      await prisma.auditLog.create({
+        data: {
+          entityType: 'BANK_TRANSACTION',
+          entityId: transaction.id,
+          action: 'CREATE',
+          changes: { amount: Number(amount), direction, category, bankAccountId, description: description || null },
+          performedById: request.user.sub,
+        },
+      }).catch(() => {});
 
       return reply.code(201).send({ transaction: enrichTransaction(transaction) });
     },
@@ -3803,6 +3843,42 @@ export default async function bankingRoutes(fastify) {
         netFlow: totalInflows - totalOutflows,
         transactionCount: transactions.length,
         transactions: transactions.map(enrichTransaction),
+      });
+    },
+  });
+
+  // ────────────────────────────────────────────────────────────
+  // GET /banking/audit-log — audit trail for banking transactions
+  // ────────────────────────────────────────────────────────────
+  fastify.get('/banking/audit-log', {
+    preHandler: [authenticate, authorize('ADMIN')],
+    handler: async (request, reply) => {
+      const { entityId, limit = 50, offset = 0 } = request.query;
+      const where = { entityType: 'BANK_TRANSACTION' };
+      if (entityId) where.entityId = entityId;
+
+      const [entries, total] = await Promise.all([
+        prisma.auditLog.findMany({
+          where,
+          include: {
+            performedBy: { select: { firstName: true, lastName: true, role: true } },
+          },
+          orderBy: { performedAt: 'desc' },
+          take: parseInt(limit),
+          skip: parseInt(offset),
+        }),
+        prisma.auditLog.count({ where }),
+      ]);
+
+      return reply.send({
+        entries: entries.map((e) => ({
+          ...e,
+          performedByName: e.performedBy
+            ? `${e.performedBy.firstName} ${e.performedBy.lastName}`.trim()
+            : 'System',
+          performedByRole: e.performedBy?.role || null,
+        })),
+        total,
       });
     },
   });
