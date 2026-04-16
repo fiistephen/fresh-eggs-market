@@ -37,6 +37,56 @@ const isPaystackReadyEmail = (value) => {
   return true;
 };
 
+/* ─── Google Places Autocomplete ─── */
+function AddressAutocomplete({ value, onChange, placeholder }) {
+  const inputRef = useRef(null);
+  const autocompleteRef = useRef(null);
+
+  useEffect(() => {
+    if (!inputRef.current || autocompleteRef.current) return;
+    const tryInit = () => {
+      if (!window.google?.maps?.places) return false;
+      const ac = new window.google.maps.places.Autocomplete(inputRef.current, {
+        types: ['address'],
+        componentRestrictions: { country: 'ng' },
+      });
+      // Bias to Lagos / Lekki area
+      ac.setBounds(new window.google.maps.LatLngBounds(
+        { lat: 6.4, lng: 3.4 },   // SW corner (Lagos Island south)
+        { lat: 6.6, lng: 3.65 },   // NE corner (Lekki / Sangotedo)
+      ));
+      ac.addListener('place_changed', () => {
+        const place = ac.getPlace();
+        if (place?.formatted_address) onChange(place.formatted_address);
+        else if (place?.name) onChange(place.name);
+      });
+      autocompleteRef.current = ac;
+      return true;
+    };
+    if (!tryInit()) {
+      // Google Maps might not be loaded yet — poll briefly
+      const id = setInterval(() => { if (tryInit()) clearInterval(id); }, 300);
+      const timeout = setTimeout(() => clearInterval(id), 5000);
+      return () => { clearInterval(id); clearTimeout(timeout); };
+    }
+  }, [onChange]);
+
+  return (
+    <div>
+      <label className="block text-body text-surface-700 mb-1">Delivery address</label>
+      <input
+        ref={inputRef}
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder || 'Start typing your address...'}
+        className="w-full rounded-md border border-surface-300 bg-surface-0 px-3 py-2 text-body text-surface-900 placeholder:text-surface-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+        autoComplete="off"
+      />
+    </div>
+  );
+}
+
 /* ─── Constants ─── */
 const TRANSFER_DETAILS = {
   bankName: 'Providus Bank',
@@ -799,13 +849,10 @@ function CheckoutModal({ batch, profile, policy, onClose, onFinished }) {
                 </label>
                 {deliveryOption.enabled && (
                   <>
-                    <Input
-                      label="Delivery address"
-                      type="text"
-                      required
+                    <AddressAutocomplete
                       value={deliveryOption.address}
-                      onChange={(e) => setDeliveryOption(prev => ({ ...prev, address: e.target.value }))}
-                      placeholder="Enter your delivery address"
+                      onChange={(addr) => setDeliveryOption(prev => ({ ...prev, address: addr }))}
+                      placeholder="Start typing your address..."
                     />
                     <p className="text-caption text-surface-500">
                       <span className="font-medium">Note:</span> We deliver to island locations from Sangotedo to Lekki Phase 1 only. Minimum 50 crates. Do not request delivery beyond this location.
