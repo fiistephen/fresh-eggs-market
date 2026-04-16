@@ -36,12 +36,6 @@ const IconTrash = () => (
   </svg>
 );
 
-const STATUS_TOKENS = {
-  OPEN: { bg: 'bg-info-50', border: 'border-info-200', text: 'text-info-700' },
-  RECEIVED: { bg: 'bg-success-50', border: 'border-success-200', text: 'text-success-700' },
-  CLOSED: { bg: 'bg-surface-100', border: 'border-surface-200', text: 'text-surface-600' },
-};
-
 const STATUS_LABELS = {
   OPEN: 'Open',
   RECEIVED: 'Received',
@@ -60,10 +54,6 @@ function formatCurrency(n) {
 
 function formatNumber(n) {
   return Number(n || 0).toLocaleString('en-NG');
-}
-
-function formatPercent(n) {
-  return `${Number(n || 0).toFixed(1)}%`;
 }
 
 function normalizeEggCode(code) {
@@ -153,9 +143,9 @@ export default function BatchDetail() {
   }
 
   const overview = batch.overview || {};
-  const hasCrackWatch = ['WATCH', 'ALERT'].includes(overview.crackAlert?.level);
-  const isBelowPolicy = batch.status !== 'OPEN' && (overview.varianceToPolicy || 0) < 0;
-  const showPolicyBanner = batch.status !== 'OPEN' && overview.totalReceived > 0;
+  const isOpen = batch.status === 'OPEN';
+  const isReceived = batch.status === 'RECEIVED';
+  const overdue = isOpen && batch.expectedDate && new Date(batch.expectedDate) < new Date(new Date().setHours(0, 0, 0, 0));
 
   const tabs = [
     { key: 'details', label: 'Details' },
@@ -164,8 +154,6 @@ export default function BatchDetail() {
     ...(batch.sales?.length > 0 ? [{ key: 'sales', label: `Sales (${batch._count?.sales || batch.sales.length})` }] : []),
     ...((analysis && canManage) ? [{ key: 'analysis', label: 'Analysis' }] : []),
   ];
-
-  const statusToken = STATUS_TOKENS[batch.status];
 
   return (
     <div>
@@ -178,38 +166,35 @@ export default function BatchDetail() {
       </button>
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 sm:gap-0 mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 sm:gap-0 mb-6">
         <div className="flex-1">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-2">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-2">
             <h1 className="text-display text-surface-900">{batch.name}</h1>
             <Badge
-              variant={batch.status === 'OPEN' ? 'info' : batch.status === 'RECEIVED' ? 'success' : 'neutral'}
+              variant={isOpen ? 'info' : isReceived ? 'success' : 'neutral'}
               size="md"
             >
               {STATUS_LABELS[batch.status]}
             </Badge>
+            {overdue && <Badge variant="error" size="md">Overdue</Badge>}
           </div>
-          <p className="text-caption text-surface-600 mb-3">
-            Expected {formatDate(batch.expectedDate)}
+          <p className="text-caption text-surface-600">
+            {batch.eggTypeLabel || 'Regular Size Eggs'}
+            {' · '}Expected {formatDate(batch.expectedDate)}
             {batch.receivedDate && <> · Received {formatDate(batch.receivedDate)}</>}
             {batch.closedDate && <> · Closed {formatDate(batch.closedDate)}</>}
           </p>
-          <p className="text-body-medium text-surface-700">
-            Customer-facing type: {batch.eggTypeLabel || 'Regular Size Eggs'}
-          </p>
-          {batch.farmer?.name ? (
-            <p className="mt-2 text-caption text-surface-600">
+          {batch.farmer?.name && (
+            <p className="mt-1 text-caption text-surface-600">
               Farmer: <span className="font-medium text-surface-900">{batch.farmer.name}</span>
               {batch.farmer.phone ? <> · {batch.farmer.phone}</> : null}
             </p>
-          ) : batch.status === 'OPEN' ? (
-            <p className="mt-2 text-caption text-surface-500">Farmer will be selected when this batch is received.</p>
-          ) : null}
+          )}
         </div>
 
         {/* Action buttons */}
-        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-          {canManage && batch.status === 'OPEN' && (
+        <div className="flex flex-wrap gap-2">
+          {canManage && isOpen && (
             <>
               <Button variant="secondary" size="md" onClick={() => setShowEdit(true)}>
                 Edit
@@ -219,17 +204,17 @@ export default function BatchDetail() {
               </Button>
             </>
           )}
-          {canCount && batch.status === 'RECEIVED' && (
+          {canCount && isReceived && (
             <Button variant="secondary" size="md" onClick={() => setShowCount(true)}>
               Record Count
             </Button>
           )}
-          {canManage && batch.status === 'RECEIVED' && (
+          {canManage && isReceived && (
             <Button variant="secondary" size="md" onClick={() => setShowClose(true)}>
               Close Batch
             </Button>
           )}
-          {canDelete && batch.status === 'OPEN' && (batch._count?.bookings || 0) === 0 && (
+          {canDelete && isOpen && (batch._count?.bookings || 0) === 0 && (
             <Button variant="destructive" size="md" onClick={() => setShowDelete(true)}>
               Delete
             </Button>
@@ -237,124 +222,23 @@ export default function BatchDetail() {
         </div>
       </div>
 
-      {/* Status banners */}
-      {batch.status === 'OPEN' && (
-        <div className="mb-4 rounded-lg border border-info-200 bg-info-50 p-4 shadow-xs">
-          <p className="text-body-medium font-medium text-info-900">This batch is still waiting to be received.</p>
-          <p className="mt-1 text-body text-info-700">
-            Keep taking bookings here, then use <span className="font-medium">Receive Batch</span> when the eggs arrive so you can choose the farmer, enter the FE mix, actual quantities, and real cost prices.
-          </p>
-        </div>
-      )}
-
-      {hasCrackWatch && (
-        <div className={`mb-4 rounded-lg border p-4 shadow-xs ${
-          overview.crackAlert?.level === 'ALERT'
-            ? 'border-error-200 bg-error-50'
-            : 'border-warning-200 bg-warning-50'
-        }`}>
-          <p className={`text-body-medium font-medium ${
-            overview.crackAlert?.level === 'ALERT' ? 'text-error-900' : 'text-warning-900'
-          }`}>
-            {overview.crackAlert?.label}
-          </p>
-          <p className={`mt-1 text-body ${
-            overview.crackAlert?.level === 'ALERT' ? 'text-error-700' : 'text-warning-700'
-          }`}>
-            Crack impact is {formatPercent(overview.crackRatePercent)} for this batch. Review damaged write-off and discounted cracked sales.
-          </p>
-        </div>
-      )}
-
-      {showPolicyBanner && (
-        <div className={`mb-6 rounded-lg border p-4 shadow-xs ${
-          isBelowPolicy ? 'border-error-200 bg-error-50' : 'border-success-200 bg-success-50'
-        }`}>
-          <p className={`text-body-medium font-medium ${isBelowPolicy ? 'text-error-900' : 'text-success-900'}`}>
-            {isBelowPolicy ? 'This batch is below the company profit target.' : 'This batch is above the company profit target.'}
-          </p>
-          <p className={`mt-1 text-body ${isBelowPolicy ? 'text-error-700' : 'text-success-700'}`}>
-            Profit per crate is {formatCurrency(overview.profitPerCrate)}. Variance to target is{' '}
-            <span className="font-medium">
-              {(overview.varianceToPolicy || 0) >= 0 ? '+' : '-'}{formatCurrency(Math.abs(overview.varianceToPolicy || 0))}
-            </span>.
-          </p>
-        </div>
-      )}
-
-      {/* Overview cards */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 mb-8">
-        <OverviewCard
-          label="Confirmed bookings"
-          value={`${formatNumber(overview.totalBooked)} crates`}
-          subtext={`${overview.confirmedBookingCount || 0} active booking${overview.confirmedBookingCount === 1 ? '' : 's'}`}
-          tone="warning"
-        />
-        <OverviewCard
-          label="Held in portal"
-          value={`${formatNumber(overview.heldForCheckout)} crates`}
-          subtext={batch.status === 'OPEN' ? 'Unfinished checkouts already reduce booking space' : 'Buy-now holds waiting to complete payment'}
-          tone="info"
-        />
-        <OverviewCard
-          label={batch.status === 'OPEN' ? 'Still open for booking' : 'Sale-ready stock'}
-          value={batch.status === 'OPEN' ? `${formatNumber(overview.remainingAvailableForBooking)} crates` : `${formatNumber(overview.availableForSale)} crates`}
-          subtext={batch.status === 'OPEN'
-            ? `${formatNumber(overview.totalCommitted)} already committed from this batch`
-            : 'On hand minus confirmed bookings and portal holds'}
-          tone={batch.status === 'OPEN' ? 'success' : 'success'}
-        />
-        <OverviewCard
-          label={batch.status === 'OPEN' ? 'Booking space used' : 'On hand now'}
-          value={batch.status === 'OPEN' ? formatPercent(overview.bookingUtilizationPercent) : `${formatNumber(overview.onHand)} crates`}
-          subtext={batch.status === 'OPEN'
-            ? `${formatNumber(batch.availableForBooking)} crates total booking capacity`
-            : `${formatNumber(overview.totalSold)} sold · ${formatNumber(overview.totalWrittenOff)} written off`}
-          tone="neutral"
-        />
-      </div>
-
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 mb-8">
-        <OverviewCard
-          label={batch.status === 'OPEN' ? 'Still to receive' : 'Received'}
-          value={`${formatNumber(batch.status === 'OPEN' ? overview.remainingToReceive : overview.totalReceived)} crates`}
-          subtext={batch.status === 'OPEN' ? 'Expected quantity not yet received' : `${formatNumber(overview.totalPaidQuantity)} paid · ${formatNumber(overview.totalFreeQuantity)} free`}
-          tone={batch.status === 'OPEN' ? 'info' : 'neutral'}
-        />
-        <OverviewCard
-          label={batch.status === 'OPEN' ? 'Arrival status' : 'Sold so far'}
-          value={batch.status === 'OPEN'
-            ? (new Date(batch.expectedDate) < new Date(new Date().setHours(0, 0, 0, 0)) ? 'Awaiting receipt' : 'On schedule')
-            : `${formatNumber(overview.totalSold)} crates`}
-          subtext={batch.status === 'OPEN'
-            ? 'Receive this batch once eggs arrive at the depot'
-            : `${formatNumber(overview.totalWrittenOff)} written off`}
-          tone={batch.status === 'OPEN'
-            ? (new Date(batch.expectedDate) < new Date(new Date().setHours(0, 0, 0, 0)) ? 'warning' : 'success')
-            : 'brand'}
-        />
-        <OverviewCard
-          label={batch.status === 'OPEN' ? 'Expected quantity' : 'Profit vs target'}
-          value={batch.status === 'OPEN'
-            ? `${formatNumber(batch.expectedQuantity)} crates`
-            : `${(overview.varianceToPolicy || 0) >= 0 ? '+' : '-'}${formatCurrency(Math.abs(overview.varianceToPolicy || 0))}`}
-          subtext={batch.status === 'OPEN'
-            ? 'FE mix and cost prices will be captured when the batch is received'
-            : `${formatCurrency(overview.profitPerCrate)} per crate`}
-          tone={batch.status === 'OPEN' ? 'neutral' : (overview.varianceToPolicy || 0) >= 0 ? 'success' : 'error'}
-        />
-        <OverviewCard
-          label={batch.status === 'OPEN' ? 'Portal holds included' : 'Crack rate'}
-          value={batch.status === 'OPEN'
-            ? `${formatNumber(overview.totalCommitted)} crates`
-            : formatPercent(overview.crackRatePercent)}
-          subtext={batch.status === 'OPEN'
-            ? 'Confirmed bookings plus unfinished portal checkouts'
-            : overview.crackAlert?.message || 'Within current allowance'}
-          tone={batch.status === 'OPEN'
-            ? 'warning'
-            : (overview.crackAlert?.level === 'ALERT' ? 'error' : overview.crackAlert?.level === 'WATCH' ? 'warning' : 'success')}
-        />
+      {/* Key metrics — one clean row */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-8">
+        {isOpen ? (
+          <>
+            <OverviewCard label="Expected" value={`${formatNumber(batch.expectedQuantity)} crates`} tone="neutral" />
+            <OverviewCard label="Booked" value={`${formatNumber(overview.totalBooked)} crates`} subtext={`${overview.confirmedBookingCount || 0} booking${(overview.confirmedBookingCount || 0) === 1 ? '' : 's'}`} tone="warning" />
+            <OverviewCard label="Open for booking" value={`${formatNumber(overview.remainingAvailableForBooking)} crates`} subtext={`of ${formatNumber(batch.availableForBooking)} available`} tone="info" />
+            <OverviewCard label="Wholesale / Retail" value={`${formatCurrency(batch.wholesalePrice)}`} subtext={`Retail ${formatCurrency(batch.retailPrice)}`} tone="neutral" />
+          </>
+        ) : (
+          <>
+            <OverviewCard label="Received" value={`${formatNumber(overview.totalReceived)} crates`} subtext={`${formatNumber(overview.totalPaidQuantity)} paid · ${formatNumber(overview.totalFreeQuantity)} free`} tone="neutral" />
+            <OverviewCard label="Sold" value={`${formatNumber(overview.totalSold)} crates`} subtext={`${formatNumber(overview.totalWrittenOff)} written off`} tone="success" />
+            <OverviewCard label="Available" value={`${formatNumber(overview.availableForSale)} crates`} subtext={`${formatNumber(overview.totalBooked)} booked for pickup`} tone={Number(overview.availableForSale || 0) > 0 ? 'info' : 'neutral'} />
+            <OverviewCard label="Profit per crate" value={formatCurrency(overview.profitPerCrate)} subtext={overview.varianceToPolicy != null ? `${(overview.varianceToPolicy || 0) >= 0 ? '+' : ''}${formatCurrency(overview.varianceToPolicy)} vs target` : undefined} tone={(overview.varianceToPolicy || 0) >= 0 ? 'success' : 'error'} />
+          </>
+        )}
       </div>
 
       {/* Tab navigation */}
@@ -375,7 +259,7 @@ export default function BatchDetail() {
       </div>
 
       {/* Tab content */}
-      {activeTab === 'details' && <DetailsTab batch={batch} analysis={analysis} />}
+      {activeTab === 'details' && <DetailsTab batch={batch} />}
       {activeTab === 'eggcodes' && <EggCodesTab batch={batch} />}
       {activeTab === 'bookings' && <BookingsTab batch={batch} />}
       {activeTab === 'sales' && <SalesTab batch={batch} />}
@@ -423,13 +307,8 @@ export default function BatchDetail() {
 
 // ─── DETAILS TAB ──────────────────────────────────────────────
 
-function DetailsTab({ batch, analysis }) {
+function DetailsTab({ batch }) {
   const overview = batch.overview || {};
-  const bookings = batch.bookings || [];
-  const confirmedBookings = bookings.filter((booking) => booking.status === 'CONFIRMED');
-  const pickedUpBookings = bookings.filter((booking) => booking.status === 'PICKED_UP');
-  const cancelledBookings = bookings.filter((booking) => booking.status === 'CANCELLED');
-  const bookingRevenue = bookings.reduce((sum, booking) => sum + Number(booking.amountPaid || 0), 0);
   const feMix = batch.eggCodes || [];
   const costPrices = feMix.map((item) => Number(item.costPrice || 0)).filter((value) => value > 0);
 
@@ -437,170 +316,67 @@ function DetailsTab({ batch, analysis }) {
     if (!values.length) return '—';
     const min = Math.min(...values);
     const max = Math.max(...values);
-    return min === max ? formatCurrency(min) : `${formatCurrency(min)} to ${formatCurrency(max)}`;
+    return min === max ? formatCurrency(min) : `${formatCurrency(min)} – ${formatCurrency(max)}`;
   }
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+      {/* Pricing + Quantities side by side */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card>
-          <div className="border-b border-surface-200 pb-4 mb-4">
-            <h3 className="text-overline text-surface-600">Batch Snapshot</h3>
+          <h3 className="text-overline text-surface-600 mb-4">Pricing</h3>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div>
+              <p className="text-caption text-surface-500">Wholesale</p>
+              <p className="mt-1 text-2xl font-bold text-surface-900">{formatCurrency(batch.wholesalePrice)}</p>
+            </div>
+            <div>
+              <p className="text-caption text-surface-500">Retail</p>
+              <p className="mt-1 text-2xl font-bold text-surface-900">{formatCurrency(batch.retailPrice)}</p>
+            </div>
+            <div>
+              <p className="text-caption text-surface-500">Cost range</p>
+              <p className="mt-1 text-2xl font-bold text-surface-900">{priceRangeLabel(costPrices)}</p>
+            </div>
           </div>
+        </Card>
+
+        <Card>
+          <h3 className="text-overline text-surface-600 mb-4">Quantities</h3>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
             <div>
-              <p className="text-caption text-surface-500">Expected quantity</p>
-              <p className="mt-1 text-metric text-surface-900">{formatNumber(batch.expectedQuantity)} crates</p>
+              <p className="text-caption text-surface-500">Expected</p>
+              <p className="mt-1 text-metric text-surface-900">{formatNumber(batch.expectedQuantity)}</p>
             </div>
             <div>
-              <p className="text-caption text-surface-500">Available for booking</p>
-              <p className="mt-1 text-metric text-surface-900">{formatNumber(batch.availableForBooking)} crates</p>
-            </div>
-            <div>
-              <p className="text-caption text-surface-500">Actual received</p>
+              <p className="text-caption text-surface-500">Received</p>
               <p className="mt-1 text-metric text-surface-900">
-                {batch.actualQuantity != null ? `${formatNumber(batch.actualQuantity)} crates` : '—'}
+                {batch.actualQuantity != null ? formatNumber(batch.actualQuantity) : '—'}
               </p>
             </div>
             <div>
-              <p className="text-caption text-surface-500">Paid crates</p>
-              <p className="mt-1 text-metric text-surface-900">{formatNumber(overview.totalPaidQuantity)} crates</p>
-            </div>
-            <div>
               <p className="text-caption text-surface-500">Free crates</p>
-              <p className="mt-1 text-metric text-success-700">{formatNumber(overview.totalFreeQuantity || batch.freeCrates)} crates</p>
-            </div>
-            <div>
-              <p className="text-caption text-surface-500">FE codes in batch</p>
-              <p className="mt-1 text-metric text-surface-900">{feMix.length}</p>
-            </div>
-            <div>
-              <p className="text-caption text-surface-500">Customer-facing type</p>
-              <p className="mt-1 text-metric text-surface-900">{batch.eggTypeLabel || 'Regular Size Eggs'}</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card>
-          <div className="border-b border-surface-200 pb-4 mb-4">
-            <h3 className="text-overline text-surface-600">Batch Selling Price</h3>
-          </div>
-          <div className="space-y-4">
-            <div>
-              <p className="text-caption text-surface-500">Cost price range</p>
-              <p className="mt-1 text-2xl font-bold text-surface-900">{priceRangeLabel(costPrices)}</p>
-            </div>
-            <div>
-              <p className="text-caption text-surface-500">Wholesale price</p>
-              <p className="mt-1 text-2xl font-bold text-info-600">{formatCurrency(batch.wholesalePrice)}</p>
-            </div>
-            <div>
-              <p className="text-caption text-surface-500">Retail price</p>
-              <p className="mt-1 text-2xl font-bold text-success-600">{formatCurrency(batch.retailPrice)}</p>
+              <p className="mt-1 text-metric text-success-700">{formatNumber(overview.totalFreeQuantity || batch.freeCrates)}</p>
             </div>
           </div>
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+      {/* FE Mix + Latest Count side by side */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card>
-          <div className="flex items-start justify-between gap-3 mb-4">
-            <div>
-              <h3 className="text-overline text-surface-600">Booking Pressure</h3>
-              <p className="mt-1 text-body text-surface-600">See how much of this batch is already promised to customers.</p>
-            </div>
-            <Badge variant="warning" size="sm">
-              {formatPercent(overview.bookingUtilizationPercent)} of booking space used
-            </Badge>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <div>
-              <p className="text-caption text-surface-500">Confirmed</p>
-              <p className="mt-1 text-metric text-surface-900">{confirmedBookings.length}</p>
-            </div>
-            <div>
-              <p className="text-caption text-surface-500">Picked up</p>
-              <p className="mt-1 text-metric text-info-700">{pickedUpBookings.length}</p>
-            </div>
-            <div>
-              <p className="text-caption text-surface-500">Cancelled</p>
-              <p className="mt-1 text-metric text-surface-700">{cancelledBookings.length}</p>
-            </div>
-            <div>
-              <p className="text-caption text-surface-500">Booking value received</p>
-              <p className="mt-1 text-metric text-success-700">{formatCurrency(bookingRevenue)}</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card>
-          <div className="flex items-start justify-between gap-3 mb-4">
-            <div>
-              <h3 className="text-overline text-surface-600">Latest Count Check</h3>
-              <p className="mt-1 text-body text-surface-600">Use this to compare what the system expects with what the floor team counted.</p>
-            </div>
-          </div>
-
-          {overview.latestCount ? (
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-caption text-surface-500">Count date</p>
-                  <p className="mt-1 text-body font-medium text-surface-900">{formatDate(overview.latestCount.countDate)}</p>
-                </div>
-                <div>
-                  <p className="text-caption text-surface-500">Entered by</p>
-                  <p className="mt-1 text-body font-medium text-surface-900">{overview.latestCount.enteredBy}</p>
-                </div>
-                <div>
-                  <p className="text-caption text-surface-500">System count</p>
-                  <p className="mt-1 text-body font-medium text-surface-900">{formatNumber(overview.latestCount.systemCount)} crates</p>
-                </div>
-                <div>
-                  <p className="text-caption text-surface-500">Physical count</p>
-                  <p className="mt-1 text-body font-medium text-surface-900">{formatNumber(overview.latestCount.physicalCount)} crates</p>
-                </div>
-              </div>
-              <div className={`rounded-md border px-3 py-3 text-body ${
-                overview.latestCount.discrepancy === 0
-                  ? 'border-success-200 bg-success-50 text-success-800'
-                  : 'border-error-200 bg-error-50 text-error-800'
-              }`}>
-                {overview.latestCount.discrepancy === 0
-                  ? 'The last physical count matched the system count.'
-                  : `The last count had a discrepancy of ${formatNumber(overview.latestCount.discrepancy)} crates.`}
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-md border border-dashed border-surface-300 bg-surface-50 px-4 py-5 text-body text-surface-500">
-              No physical count has been recorded for this batch yet.
-            </div>
-          )}
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-        <Card>
-          <div className="border-b border-surface-200 pb-4 mb-4">
-            <h3 className="text-overline text-surface-600">FE Mix</h3>
-          </div>
+          <h3 className="text-overline text-surface-600 mb-4">FE Mix</h3>
           {feMix.length === 0 ? (
-            <p className="text-body text-surface-600">The final FE codes will appear here after this batch is received.</p>
+            <p className="text-body text-surface-500">FE codes will appear here after this batch is received.</p>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2">
               {feMix.map((eggCode) => (
-                <div key={eggCode.id} className="rounded-md border border-surface-200 p-3 shadow-xs">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="font-mono text-body-medium font-semibold text-brand-600">{eggCode.code}</p>
-                      <p className="mt-1 text-caption text-surface-600">{eggCode.item?.name || 'Catalog item linked'}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-body-medium font-semibold text-surface-900">{formatNumber(eggCode.quantity + (eggCode.freeQty || 0))} crates</p>
-                      <p className="text-caption text-surface-600">{formatCurrency(eggCode.costPrice)} cost price</p>
-                    </div>
+                <div key={eggCode.id} className="flex items-center justify-between rounded-md border border-surface-200 px-3 py-2.5">
+                  <div className="flex items-center gap-3">
+                    <span className="font-mono text-body-medium font-semibold text-brand-600">{eggCode.code}</span>
+                    <span className="text-caption text-surface-500">{formatCurrency(eggCode.costPrice)}/crate</span>
                   </div>
+                  <span className="text-body-medium font-medium text-surface-900">{formatNumber(eggCode.quantity + (eggCode.freeQty || 0))} crates</span>
                 </div>
               ))}
             </div>
@@ -608,20 +384,40 @@ function DetailsTab({ batch, analysis }) {
         </Card>
 
         <Card>
-          <div className="border-b border-surface-200 pb-4 mb-4">
-            <h3 className="text-overline text-surface-600">Operational Notes</h3>
-          </div>
-          <div className="space-y-3 text-body text-surface-600">
-            <div className="rounded-md bg-surface-50 px-4 py-3">
-              <span className="font-medium text-surface-900">Bookings do not reduce batch stock.</span> Stock reduces only when a sale happens or when damaged crates are written off.
+          <h3 className="text-overline text-surface-600 mb-4">Latest Count</h3>
+          {overview.latestCount ? (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-caption text-surface-500">Date</p>
+                  <p className="mt-1 text-body font-medium text-surface-900">{formatDate(overview.latestCount.countDate)}</p>
+                </div>
+                <div>
+                  <p className="text-caption text-surface-500">By</p>
+                  <p className="mt-1 text-body font-medium text-surface-900">{overview.latestCount.enteredBy}</p>
+                </div>
+                <div>
+                  <p className="text-caption text-surface-500">System</p>
+                  <p className="mt-1 text-body font-medium text-surface-900">{formatNumber(overview.latestCount.systemCount)}</p>
+                </div>
+                <div>
+                  <p className="text-caption text-surface-500">Physical</p>
+                  <p className="mt-1 text-body font-medium text-surface-900">{formatNumber(overview.latestCount.physicalCount)}</p>
+                </div>
+              </div>
+              <div className={`rounded-md border px-3 py-2.5 text-body ${
+                overview.latestCount.discrepancy === 0
+                  ? 'border-success-200 bg-success-50 text-success-800'
+                  : 'border-error-200 bg-error-50 text-error-800'
+              }`}>
+                {overview.latestCount.discrepancy === 0
+                  ? 'Counts match.'
+                  : `Discrepancy: ${formatNumber(overview.latestCount.discrepancy)} crates.`}
+              </div>
             </div>
-            <div className="rounded-md bg-surface-50 px-4 py-3">
-              <span className="font-medium text-surface-900">Crack impact is tracked in crates.</span> Mildly cracked crates sold at discount and badly damaged write-offs are shown separately in analysis.
-            </div>
-            <div className="rounded-md bg-surface-50 px-4 py-3">
-              <span className="font-medium text-surface-900">Company target for this batch:</span> about {formatCurrency(analysis?.policy?.targetProfitPerCrate || 500)} profit per crate.
-            </div>
-          </div>
+          ) : (
+            <p className="text-body text-surface-500">No count recorded yet.</p>
+          )}
         </Card>
       </div>
     </div>
@@ -879,13 +675,13 @@ function AnalysisTab({ analysis }) {
         <div className="border-b border-surface-200 pb-4 mb-4">
           <h3 className="text-overline text-surface-600">Inventory Status</h3>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 sm:gap-4">
           <div>
-            <p className="text-caption text-surface-600">Total Received</p>
+            <p className="text-caption text-surface-600">Received</p>
             <p className="text-metric text-surface-900 font-medium">{inventory.totalReceived.toLocaleString()}</p>
           </div>
           <div>
-            <p className="text-caption text-surface-600">Total Sold</p>
+            <p className="text-caption text-surface-600">Sold</p>
             <p className="text-metric text-surface-900 font-medium">{inventory.totalSold.toLocaleString()}</p>
           </div>
           <div>
@@ -893,15 +689,11 @@ function AnalysisTab({ analysis }) {
             <p className="text-metric text-info-600 font-medium">{inventory.remaining.toLocaleString()}</p>
           </div>
           <div>
-            <p className="text-caption text-surface-600">Booked Portion</p>
+            <p className="text-caption text-surface-600">Booked for pickup</p>
             <p className="text-metric text-brand-600 font-medium">{inventory.bookedPortion.toLocaleString()}</p>
           </div>
           <div>
-            <p className="text-caption text-surface-600">Held in Portal</p>
-            <p className="text-metric text-warning-600 font-medium">{(inventory.heldForCheckout || 0).toLocaleString()}</p>
-          </div>
-          <div>
-            <p className="text-caption text-surface-600">Available for Sale</p>
+            <p className="text-caption text-surface-600">Available for sale</p>
             <p className="text-metric text-success-600 font-medium">{inventory.availableForSale.toLocaleString()}</p>
           </div>
         </div>
