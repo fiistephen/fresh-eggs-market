@@ -108,7 +108,7 @@ export default function Customers() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const pageSize = 25;
+  const [pageSize, setPageSize] = useState(25);
   const [showCreate, setShowCreate] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [error, setError] = useState('');
@@ -228,7 +228,7 @@ export default function Customers() {
         </Card>
       )}
 
-      <Pagination page={page} pageSize={pageSize} total={total} onChange={setPage} noun="customers" />
+      <Pagination page={page} pageSize={pageSize} total={total} onChange={setPage} onPageSizeChange={(s) => { setPageSize(s); setPage(1); }} noun="customers" />
 
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="New Customer" size="md">
         <CreateCustomerModal

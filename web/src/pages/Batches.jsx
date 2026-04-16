@@ -135,7 +135,7 @@ export default function Batches() {
   const [filter, setFilter] = useState('ACTIVE');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const pageSize = 25;
+  const [pageSize, setPageSize] = useState(25);
   const [showCreate, setShowCreate] = useState(false);
 
   const canCreate = ['ADMIN', 'MANAGER'].includes(user?.role);
@@ -283,7 +283,7 @@ export default function Batches() {
               onOpen={() => navigate(`/batches/${batch.id}`)}
             />
           ))}
-          <Pagination page={page} pageSize={pageSize} total={total} onChange={setPage} noun="batches" />
+          <Pagination page={page} pageSize={pageSize} total={total} onChange={setPage} onPageSizeChange={(s) => { setPageSize(s); setPage(1); }} noun="batches" />
         </div>
       )}
 

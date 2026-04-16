@@ -222,6 +222,34 @@ Future improvements Codex should consider when appropriate:
 
 ---
 
+## 33. 2026-04-09 Cash Deposit Reconciliation Direction
+
+New financial-control direction agreed with the business:
+
+- cash sales should continue to hit `Cash Account` immediately
+- moving cash from `Cash Account` to `Customer Deposit Account` should not count as fully complete yet
+- that cash movement should remain pending until a bank statement inflow confirms it
+- undeposited cash older than the allowed window should be flagged
+- pending cash deposits not confirmed by statement inflow should be flagged separately
+
+Recommended implementation direction:
+
+- introduce a dedicated `CashDepositBatch` workflow for cash-to-bank lodgements
+- keep one deposit batch capable of grouping many cash sales into one real-world bank deposit
+- add a statement category such as `Cash deposit confirmation` for matching the bank inflow to the pending deposit batch
+- add a Banking workspace section for `Cash deposits` with:
+  - undeposited cash
+  - pending confirmation
+  - confirmed recently
+- add alerting for:
+  - cash not yet deposited
+  - pending cash deposit not confirmed
+
+Spec saved in:
+
+- `/Users/fiistephen/Downloads/Fresh Eggs Operations/BANKING_CASH_DEPOSIT_RECONCILIATION_SPEC.md`
+- `/Users/fiistephen/Downloads/Fresh Eggs Operations/fresh-eggs-ops/BANKING_CASH_DEPOSIT_RECONCILIATION_SPEC.md`
+
 ## 32. 2026-04-08 Customer-Facing Egg Types Layer
 
 New product clarification from the business:

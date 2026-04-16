@@ -349,9 +349,8 @@ export default function Sales() {
       </div>
 
       <Card variant="outlined" padding="comfortable" className="mb-6">
-        <p className="text-heading text-surface-900">How to use this page</p>
-        <p className="text-body text-surface-600 mt-2">
-          Start with the customer. If they already have a paid booking, finish the pickup here. If not, record a direct sale.
+        <p className="text-body text-surface-600">
+          Start with the customer. If they have a paid booking, finish the pickup. Otherwise, record a direct sale.
         </p>
       </Card>
 
@@ -928,38 +927,28 @@ function RecordSaleModal({ onClose, onRecorded }) {
 
       {step === 1 && (
         <div className="space-y-4">
-          <div>
-            <Input
-              label="Search Customer"
-              placeholder="Type the customer name or phone number"
-              value={customerSearch}
-              onChange={(e) => setCustomerSearch(e.target.value)}
-              autoFocus
-              size="md"
-            />
-            <p className="text-caption text-surface-600 mt-2">
-              Start with the customer so the app can surface any existing booking or portal order before you create a new sale.
-            </p>
-          </div>
+          <Input
+            label="Search Customer"
+            placeholder="Name or phone number"
+            value={customerSearch}
+            onChange={(e) => setCustomerSearch(e.target.value)}
+            autoFocus
+            size="md"
+          />
 
           <Card variant="outlined" padding="comfortable" className="border-dashed">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div>
-                <p className="text-heading text-surface-900">Need a new customer?</p>
-                <p className="text-body text-surface-600 mt-1">
-                  Create the customer here first, then continue with the sale.
-                </p>
-              </div>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-body text-surface-600">Customer not found?</p>
               <Button
                 type="button"
                 variant="secondary"
-                size="md"
+                size="sm"
                 onClick={() => {
                   setShowCreateCustomer((current) => !current);
                   setError('');
                 }}
               >
-                {showCreateCustomer ? 'Hide form' : 'Create customer'}
+                {showCreateCustomer ? 'Hide' : 'Create new'}
               </Button>
             </div>
 
@@ -995,11 +984,9 @@ function RecordSaleModal({ onClose, onRecorded }) {
                     size="md"
                   />
                 </div>
-                <Card variant="outlined" padding="comfortable" className="border-warning-200 bg-warning-50">
-                  <p className="text-body text-warning-900">
-                    New customers start under the early-order limit. If this sale goes above that limit later, a staff note will be required and saved with the sale.
-                  </p>
-                </Card>
+                <p className="text-caption text-warning-700 bg-warning-50 border border-warning-200 rounded-lg px-3 py-2">
+                  New customers have an early-order limit. A staff note is required if the sale exceeds it.
+                </p>
                 <div className="flex justify-end">
                   <Button
                     type="submit"
@@ -1044,248 +1031,170 @@ function RecordSaleModal({ onClose, onRecorded }) {
       )}
 
       {step === 2 && (
-        <div className="space-y-5">
-          <Card variant="outlined" padding="comfortable" className="bg-surface-50">
-            <div className="flex items-center gap-3">
-              <span className="text-body text-surface-600">Customer:</span>
-              <span className="text-body-medium font-semibold text-surface-900">{selectedCustomer?.name}</span>
-              {selectedCustomer?.phone && <span className="text-body text-surface-500">{selectedCustomer.phone}</span>}
-              <button
-                onClick={() => {
-                  setStep(1);
-                  setSelectedBatch(null);
-                  setSelectedBooking(null);
-                  setWorkflow('');
-                  setLineItems([]);
-                }}
-                className="ml-auto text-caption text-surface-500 hover:text-surface-700"
-              >
-                Change
-              </button>
-            </div>
-          </Card>
-
-          {orderLimitProfile && (
-            <Card
-              variant="outlined"
-              padding="comfortable"
-              className={orderLimitProfile.isUsingEarlyOrderLimit ? 'border-warning-200 bg-warning-50' : 'border-surface-200 bg-surface-50'}
+        <div className="space-y-4">
+          {/* Customer bar */}
+          <div className="flex items-center gap-3 bg-surface-50 rounded-lg px-4 py-3">
+            <span className="text-body-medium font-semibold text-surface-900">{selectedCustomer?.name}</span>
+            {selectedCustomer?.phone && <span className="text-body text-surface-500">{selectedCustomer.phone}</span>}
+            {orderLimitProfile?.isUsingEarlyOrderLimit && (
+              <Badge color="warning" dot>Max {orderLimitProfile.currentPerOrderLimit} crates</Badge>
+            )}
+            <button
+              onClick={() => {
+                setStep(1);
+                setSelectedBatch(null);
+                setSelectedBooking(null);
+                setWorkflow('');
+                setLineItems([]);
+              }}
+              className="ml-auto text-caption text-brand-600 hover:text-brand-700 font-medium"
             >
-              <p className={`text-heading ${orderLimitProfile.isUsingEarlyOrderLimit ? 'text-warning-900' : 'text-surface-900'}`}>
-                {orderLimitProfile.isUsingEarlyOrderLimit ? 'Early-order limit still applies' : 'Standard order limit'}
-              </p>
-              <p className={`text-body mt-1 ${orderLimitProfile.isUsingEarlyOrderLimit ? 'text-warning-800' : 'text-surface-700'}`}>
-                {orderLimitMessage(orderLimitProfile)}
-              </p>
-              {orderLimitProfile.isUsingEarlyOrderLimit && (
-                <p className="text-caption text-warning-800 mt-2">
-                  This lighter cap stays active for the first {orderLimitProfile.earlyOrderLimitCount} orders.
-                </p>
-              )}
-            </Card>
-          )}
-
-          <Card variant="outlined" padding="comfortable">
-            <p className="text-heading text-surface-900">Choose what you want to do</p>
-            <p className="text-body text-surface-600 mt-1">
-              If this customer already paid for a booking, finish the pickup. If not, record a direct sale.
-            </p>
-          </Card>
+              Change
+            </button>
+          </div>
 
           {loadingWorkspace ? (
-            <p className="text-body text-surface-500">Loading customer options...</p>
+            <div className="space-y-3">
+              {[1, 2].map((i) => (
+                <div key={i} className="h-20 bg-surface-100 rounded-lg animate-pulse" />
+              ))}
+            </div>
           ) : (
             <>
-              <section className="space-y-3">
-                <div>
-                  <h3 className="text-heading text-surface-900">1. Fulfil an existing booking or portal order</h3>
-                  <p className="text-body text-surface-600 mt-1">
-                    Use this when the customer already paid and is now collecting eggs.
-                  </p>
-                </div>
-
-                {customerWorkspace.bookings.length === 0 ? (
-                  <Card variant="outlined" padding="comfortable" className="border-dashed text-center">
-                    <p className="text-body text-surface-600">This customer has no open bookings right now.</p>
-                  </Card>
-                ) : (
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              {/* Bookings section */}
+              {customerWorkspace.bookings.length > 0 && (
+                <section className="space-y-3">
+                  <h3 className="text-overline text-surface-500">Open bookings</h3>
+                  <div className="space-y-2">
                     {customerWorkspace.bookings.map((booking) => {
                       const sourceMeta = bookingSourceMeta(booking);
-                      const paymentMeta = bookingPaymentTruthMeta(booking);
                       return (
-                      <Card key={booking.id} variant="outlined" padding="comfortable">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-heading text-surface-900">{booking.batch?.name || 'Batch'}</p>
-                            <p className="text-body-medium font-semibold text-surface-800 mt-1">{booking.batch?.eggTypeLabel || 'Regular Size Eggs'}</p>
-                            <p className="text-body text-surface-600 mt-1">
-                              {booking.quantity} crates{booking.batchEggCode?.code ? ` of ${booking.batchEggCode.code}` : ''} booked on {formatDate(booking.createdAt)}
-                            </p>
-                            <div className="mt-2 flex items-center gap-2 flex-wrap">
+                        <button
+                          key={booking.id}
+                          type="button"
+                          disabled={!booking.isFullyPaid}
+                          onClick={() => booking.isFullyPaid && chooseBooking(booking)}
+                          className={`w-full text-left rounded-lg border px-4 py-3 transition-colors ${
+                            booking.isFullyPaid
+                              ? 'border-success-200 bg-success-50/50 hover:bg-success-50 cursor-pointer'
+                              : 'border-surface-200 bg-surface-50 opacity-75 cursor-not-allowed'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 flex-wrap">
+                              <span className="text-body-medium font-semibold text-surface-900">
+                                {booking.batch?.name || 'Batch'}
+                              </span>
+                              <span className="text-body text-surface-600">
+                                {booking.quantity} crates
+                              </span>
                               <Badge color={sourceMeta.color} dot>{sourceMeta.label}</Badge>
-                              <Badge color={paymentMeta.color} dot>{paymentMeta.label}</Badge>
                               {booking.portalCheckout?.reference && (
-                                <span className="text-caption text-surface-500 font-mono">{booking.portalCheckout.reference}</span>
+                                <span className="text-caption text-surface-400 font-mono">{booking.portalCheckout.reference}</span>
                               )}
                             </div>
-                            <p className="text-caption text-surface-500 mt-2">{sourceMeta.description}</p>
-                            <p className="text-caption text-surface-500 mt-1">{paymentMeta.description}</p>
-                          </div>
-                          <Badge
-                            color={booking.isFullyPaid ? 'success' : 'warning'}
-                            status={booking.isFullyPaid ? 'ready' : 'pending'}
-                            dot
-                          >
-                            {booking.isFullyPaid ? 'Ready' : 'Needs payment'}
-                          </Badge>
-                        </div>
-
-                        <div className="grid grid-cols-3 gap-3 mt-4 text-sm">
-                          <div>
-                            <p className="text-surface-500">Booking value</p>
-                            <p className="text-body-medium font-semibold text-surface-900">{formatCurrency(booking.orderValue)}</p>
-                          </div>
-                          <div>
-                            <p className="text-surface-500">Paid</p>
-                            <p className="text-body-medium font-semibold text-surface-900">{formatCurrency(booking.amountPaid)}</p>
-                          </div>
-                          <div>
-                            <p className="text-surface-500">Balance</p>
-                            <p className={`text-body-medium font-semibold ${booking.balance > 0 ? 'text-warning-700' : 'text-success-700'}`}>
-                              {formatCurrency(booking.balance)}
-                            </p>
-                          </div>
-                        </div>
-
-                        <Button
-                          type="button"
-                          variant={booking.isFullyPaid ? 'primary' : 'secondary'}
-                          disabled={!booking.isFullyPaid}
-                          onClick={() => chooseBooking(booking)}
-                          size="md"
-                          className="w-full mt-4"
-                        >
-                          {booking.isFullyPaid ? sourceMeta.cta : 'Record payment first'}
-                        </Button>
-                      </Card>
-                    );})}
-                  </div>
-                )}
-              </section>
-
-              {customerWorkspace.recentFulfilments?.length > 0 && (
-                <section className="space-y-3">
-                  <div>
-                    <h3 className="text-heading text-surface-900">Recent pickups and sales</h3>
-                    <p className="text-body text-surface-600 mt-1">
-                      Use this to confirm what this customer already collected recently before you save anything new.
-                    </p>
-                  </div>
-
-                  <div className="space-y-3">
-                    {customerWorkspace.recentFulfilments.map((sale) => {
-                      const sourceMeta = saleSourceBadgeMeta(sale);
-                      const bookingTruth = sale.booking ? bookingPaymentTruthMeta({
-                        portalCheckout: sale.booking.portalCheckout,
-                        isFullyPaid: true,
-                      }) : null;
-
-                      return (
-                        <Card key={sale.id} variant="outlined" padding="comfortable">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="text-heading text-surface-900">{sale.receiptNumber}</p>
-                              <p className="text-body text-surface-600 mt-1">
-                                {formatDateTime(sale.saleDate)} · {sale.totalQuantity} crates · {formatCurrency(sale.totalAmount)}
-                              </p>
-                              <p className="text-caption text-surface-500 mt-1">
-                                {sale.batchSummary || sale.batch?.name || '—'} · {PAYMENT_LABELS[sale.paymentMethod] || sale.paymentMethod}
-                              </p>
-                              <div className="mt-2 flex items-center gap-2 flex-wrap">
-                                <Badge color={sourceMeta.color} dot>{sourceMeta.label}</Badge>
-                                {bookingTruth && <Badge color={bookingTruth.color} dot>{bookingTruth.label}</Badge>}
-                                {sale.booking?.portalCheckout?.reference && (
-                                  <span className="text-caption text-surface-500 font-mono">{sale.booking.portalCheckout.reference}</span>
-                                )}
-                              </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {booking.isFullyPaid ? (
+                                <Badge color="success" dot>Ready for pickup</Badge>
+                              ) : (
+                                <Badge color="warning" dot>{formatCurrency(booking.balance)} due</Badge>
+                              )}
                             </div>
-                            <Badge color="success" dot>Completed</Badge>
                           </div>
-                        </Card>
+                        </button>
                       );
                     })}
                   </div>
                 </section>
               )}
 
-              <section className="space-y-3">
-                <div>
-                  <h3 className="text-heading text-surface-900">2. Create a new direct sale</h3>
-                  <p className="text-body text-surface-600 mt-1">
-                    Use this only when the customer is not collecting from an existing booking or portal order.
-                  </p>
+              {/* Divider when both sections exist */}
+              {customerWorkspace.bookings.length > 0 && customerWorkspace.directSaleBatches.length > 0 && (
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-surface-200" /></div>
+                  <div className="relative flex justify-center">
+                    <span className="bg-white px-3 text-caption text-surface-400">or</span>
+                  </div>
                 </div>
+              )}
 
-                {customerWorkspace.mixedDirectSaleStock?.length > 0 && (
+              {/* Direct sale section */}
+              <section className="space-y-3">
+                <h3 className="text-overline text-surface-500">Direct sale</h3>
+
+                {customerWorkspace.mixedDirectSaleStock?.length > 0 && customerWorkspace.directSaleBatches.length > 1 && (
                   <button
                     type="button"
                     onClick={() => chooseMixedDirectSale()}
-                    className="w-full text-left rounded-lg border border-brand-200 bg-brand-50/50 px-4 py-4 hover:bg-brand-50 transition-colors"
+                    className="w-full text-left rounded-lg border border-brand-200 bg-brand-50/30 px-4 py-3 hover:bg-brand-50 transition-colors"
                   >
                     <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-heading text-surface-900">Use stock from multiple batches</p>
-                        <p className="text-body text-surface-600 mt-1">
-                          Choose this when one receipt needs items from more than one received batch.
-                        </p>
+                      <div className="flex items-center gap-2">
+                        <span className="text-body-medium font-semibold text-surface-900">All available stock</span>
+                        <span className="text-caption text-surface-500">across {customerWorkspace.directSaleBatches.length} batches</span>
                       </div>
-                      <span className="text-caption text-brand-600 font-semibold">Recommended</span>
+                      <span className="text-caption text-brand-600 font-medium">Recommended</span>
                     </div>
                   </button>
                 )}
 
                 {customerWorkspace.directSaleBatches.length === 0 ? (
-                  <Card variant="outlined" padding="comfortable" className="border-dashed text-center">
-                    <p className="text-body text-surface-600">No received batches are available for direct sale right now.</p>
-                  </Card>
+                  <div className="text-center py-6 text-body text-surface-400">
+                    {customerWorkspace.bookings.length === 0
+                      ? 'No batches available right now'
+                      : 'No batches available for direct sale'}
+                  </div>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     {customerWorkspace.directSaleBatches.map((batch) => (
                       <button
                         key={batch.id}
                         type="button"
                         onClick={() => chooseDirectSale(batch)}
-                        className="w-full text-left border border-surface-200 rounded-lg px-4 py-4 hover:border-surface-300 hover:bg-surface-50 transition-colors"
+                        className="w-full text-left border border-surface-200 rounded-lg px-4 py-3 hover:border-surface-300 hover:bg-surface-50 transition-colors"
                       >
                         <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <p className="text-heading text-surface-900">{batch.name}</p>
-                            <p className="text-body-medium font-semibold text-surface-800 mt-1">{batch.eggTypeLabel || 'Regular Size Eggs'}</p>
-                            <p className="text-body text-surface-600 mt-1">
-                              Wholesale {formatCurrency(batch.wholesalePrice)} · Retail {formatCurrency(batch.retailPrice)}
-                            </p>
-                            <p className="text-caption text-surface-500 mt-1">
-                              {batch.availableForSale?.toLocaleString?.() || 0} crates available for direct sale
-                            </p>
-                            <p className="text-caption text-surface-500">
-                              {Number(batch.totalBooked || 0).toLocaleString('en-NG')} booked · {Number(batch.heldForCheckout || 0).toLocaleString('en-NG')} held in portal
-                            </p>
-                          </div>
-                          <span className="text-caption text-surface-500">{batch.eggCodes.length} code(s)</span>
-                        </div>
-                        <div className="flex gap-2 mt-3 flex-wrap">
-                          {batch.eggCodes.map((eggCode) => (
-                            <span key={eggCode.id} className="text-caption font-mono bg-surface-100 text-surface-700 px-2 py-1 rounded">
-                              {eggCode.code}
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <span className="text-body-medium font-semibold text-surface-900">{batch.name}</span>
+                            <span className="text-body text-surface-600">
+                              W {formatCurrency(batch.wholesalePrice)} · R {formatCurrency(batch.retailPrice)}
                             </span>
-                          ))}
+                            <span className="text-caption text-surface-500">
+                              {batch.availableForSale?.toLocaleString?.() || 0} available
+                            </span>
+                          </div>
+                          <div className="flex gap-1.5 shrink-0">
+                            {batch.eggCodes.map((eggCode) => (
+                              <span key={eggCode.id} className="text-caption font-mono bg-surface-100 text-surface-600 px-1.5 py-0.5 rounded">
+                                {eggCode.code}
+                              </span>
+                            ))}
+                          </div>
                         </div>
                       </button>
                     ))}
                   </div>
                 )}
               </section>
+
+              {/* Recent sales — collapsed by default */}
+              {customerWorkspace.recentFulfilments?.length > 0 && (
+                <details className="group">
+                  <summary className="cursor-pointer text-caption text-surface-400 hover:text-surface-600 select-none py-1">
+                    Recent sales ({customerWorkspace.recentFulfilments.length})
+                  </summary>
+                  <div className="mt-2 space-y-1.5">
+                    {customerWorkspace.recentFulfilments.map((sale) => (
+                      <div key={sale.id} className="flex items-center justify-between gap-3 px-3 py-2 bg-surface-50 rounded-lg text-caption">
+                        <span className="text-surface-600 font-mono">{sale.receiptNumber}</span>
+                        <span className="text-surface-500">
+                          {sale.totalQuantity} crates · {formatCurrency(sale.totalAmount)} · {formatDate(sale.saleDate)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
             </>
           )}
 
@@ -1313,64 +1222,24 @@ function RecordSaleModal({ onClose, onRecorded }) {
             </Card>
           </div>
 
-          {workflow === 'BOOKING' ? (
-            <Card
-              variant="outlined"
-              padding="comfortable"
-              className={selectedBooking?.isFullyPaid ? 'border-success-200 bg-success-50' : 'border-warning-200 bg-warning-50'}
-            >
-              <p className={`text-heading ${selectedBooking?.isFullyPaid ? 'text-success-900' : 'text-warning-900'}`}>
-                {selectedBooking?.isFullyPaid ? 'Complete this booking pickup' : 'This booking still has a balance'}
-              </p>
-              <p className={`text-body mt-1 ${selectedBooking?.isFullyPaid ? 'text-success-800' : 'text-warning-800'}`}>
-                {selectedBooking?.isFullyPaid
-                  ? `Enter the egg codes collected. The total must stay at ${selectedBooking?.quantity} crates.`
-                  : 'Record the remaining payment in Banking and update the booking before pickup.'}
-              </p>
-              {selectedBooking?.isFullyPaid && (
-                <p className="text-caption text-surface-700 mt-2">
-                  If the customer is collecting only part today, update the booking first so the booking quantity matches what will actually leave the store.
-                </p>
-              )}
-            </Card>
-          ) : (
-            <Card variant="outlined" padding="comfortable" className="border-info-200 bg-info-50">
-              <p className="text-heading text-info-900">Record a direct sale</p>
-              <p className="text-body text-info-800 mt-1">
-                Enter what the customer bought, then choose exactly how they paid before saving.
-              </p>
-            </Card>
+          {workflow === 'BOOKING' && !selectedBooking?.isFullyPaid && (
+            <p className="text-body text-warning-700 bg-warning-50 border border-warning-200 rounded-lg px-4 py-2">
+              This booking still has a balance. Record the remaining payment in Banking first.
+            </p>
           )}
 
-          {workflow === 'DIRECT' && orderLimitProfile && (
-            <Card
-              variant="outlined"
-              padding="comfortable"
-              className={needsLimitOverride ? 'border-error-200 bg-error-50' : orderLimitProfile.isUsingEarlyOrderLimit ? 'border-warning-200 bg-warning-50' : 'border-surface-200 bg-surface-50'}
-            >
-              <p className={`text-heading ${needsLimitOverride ? 'text-error-900' : orderLimitProfile.isUsingEarlyOrderLimit ? 'text-warning-900' : 'text-surface-900'}`}>
-                {needsLimitOverride ? 'This sale is above the customer limit' : 'Customer sale limit'}
+          {needsLimitOverride && (
+            <Card variant="outlined" padding="compact" className="border-error-200 bg-error-50">
+              <p className="text-body text-error-800">
+                This sale exceeds the {orderLimitProfile.currentPerOrderLimit}-crate limit for this customer.
               </p>
-              <p className={`text-body mt-1 ${needsLimitOverride ? 'text-error-800' : orderLimitProfile.isUsingEarlyOrderLimit ? 'text-warning-800' : 'text-surface-700'}`}>
-                {orderLimitMessage(orderLimitProfile)}
-              </p>
-              {needsLimitOverride && (
-                <div className="mt-3 space-y-2">
-                  <label className="block text-body-medium font-semibold text-error-900">
-                    Why are you overriding this limit?
-                  </label>
-                  <textarea
-                    value={limitOverrideNote}
-                    onChange={(e) => setLimitOverrideNote(e.target.value)}
-                    rows={3}
-                    placeholder="Explain why this sale is going above the customer limit."
-                    className="w-full border border-error-300 rounded-lg px-3 py-2 text-body focus:ring-2 focus:ring-error-500 focus:border-error-500 outline-none"
-                  />
-                  <p className="text-caption text-error-800">
-                    Your note and your staff name will be saved with this sale.
-                  </p>
-                </div>
-              )}
+              <textarea
+                value={limitOverrideNote}
+                onChange={(e) => setLimitOverrideNote(e.target.value)}
+                rows={2}
+                placeholder="Reason for override (required)"
+                className="w-full mt-2 border border-error-300 rounded-lg px-3 py-2 text-body focus:ring-2 focus:ring-error-500 focus:border-error-500 outline-none"
+              />
             </Card>
           )}
 
@@ -1499,24 +1368,15 @@ function RecordSaleModal({ onClose, onRecorded }) {
                         : `${formatCurrency(Math.abs(paymentGap))} is too much. Reduce the payment parts.`}
                 </p>
               </div>
-              <Card variant="outlined" padding="comfortable" className="mt-3 bg-surface-50">
-                <p className="text-body-medium font-semibold text-surface-900">What happens when you save</p>
-                <p className="text-body text-surface-700 mt-1">
-                  {activePaymentRows.length > 0
-                    ? 'Each payment part will create its own money trail automatically when you save this sale.'
-                    : 'Add the payment parts first so the app knows exactly where each part of the money should land.'}
-                </p>
-                <p className="text-caption text-surface-600 mt-2">
-                  You do not need to enter this same direct sale again in Banking.
-                </p>
-              </Card>
+              <p className="text-caption text-surface-400 mt-2">
+                Banking entries are created automatically — no need to record this sale there.
+              </p>
             </div>
           ) : (
-            <Card variant="outlined" padding="comfortable" className="bg-surface-50">
-              <p className="text-body text-surface-600">Payment method</p>
-              <p className="text-body-medium font-semibold text-surface-900 mt-1">Pre-order</p>
-              <p className="text-caption text-surface-600 mt-1">This pickup will be saved as a booking sale that was already paid for.</p>
-            </Card>
+            <div className="flex items-center gap-2 text-caption text-surface-500 px-1">
+              <Badge color="neutral" dot>Pre-order</Badge>
+              <span>Already paid via booking</span>
+            </div>
           )}
 
           {totalQty > 0 && (

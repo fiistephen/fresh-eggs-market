@@ -50,7 +50,7 @@ export default function Farmers() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const pageSize = 25;
+  const [pageSize, setPageSize] = useState(25);
   const [showCreate, setShowCreate] = useState(false);
   const [selectedFarmerId, setSelectedFarmerId] = useState(null);
   const [error, setError] = useState('');
@@ -194,7 +194,7 @@ export default function Farmers() {
         </Card>
       )}
 
-      <Pagination page={page} pageSize={pageSize} total={total} onChange={setPage} noun="farmers" />
+      <Pagination page={page} pageSize={pageSize} total={total} onChange={setPage} onPageSizeChange={(s) => { setPageSize(s); setPage(1); }} noun="farmers" />
 
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="New Farmer" size="md">
         <CreateFarmerModal

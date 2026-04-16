@@ -41,7 +41,7 @@ function mapBatchForSale(batch, eggTypes = []) {
     actualQuantity: batch.actualQuantity,
     wholesalePrice: Number(batch.wholesalePrice),
     retailPrice: Number(batch.retailPrice),
-    eggCodes: batch.eggCodes.map((eggCode) => ({
+    eggCodes: (batch.eggCodes || []).map((eggCode) => ({
       id: eggCode.id,
       code: eggCode.code,
       costPrice: Number(eggCode.costPrice),

@@ -697,7 +697,7 @@ function CountHistoryTab() {
   const [discrepanciesOnly, setDiscrepanciesOnly] = useState(false);
   const [summary, setSummary] = useState({});
   const [page, setPage] = useState(1);
-  const pageSize = 25;
+  const [pageSize, setPageSize] = useState(25);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -812,7 +812,7 @@ function CountHistoryTab() {
         </div>
       )}
 
-      <Pagination page={page} pageSize={pageSize} total={summary.total || 0} onChange={setPage} noun="counts" />
+      <Pagination page={page} pageSize={pageSize} total={summary.total || 0} onChange={setPage} onPageSizeChange={(s) => { setPageSize(s); setPage(1); }} noun="counts" />
     </div>
   );
 }

@@ -64,7 +64,7 @@ export default function Items() {
   const [summary, setSummary] = useState(null);
   const [categories, setCategories] = useState([]);
   const [page, setPage] = useState(1);
-  const pageSize = 25;
+  const [pageSize, setPageSize] = useState(25);
   const [filters, setFilters] = useState({
     search: '',
     category: '',
@@ -508,7 +508,7 @@ export default function Items() {
               );
             })}
           </div>
-          <Pagination page={page} pageSize={pageSize} total={total} onChange={setPage} noun="items" />
+          <Pagination page={page} pageSize={pageSize} total={total} onChange={setPage} onPageSizeChange={(s) => { setPageSize(s); setPage(1); }} noun="items" />
         </div>
       </section>
     </div>
