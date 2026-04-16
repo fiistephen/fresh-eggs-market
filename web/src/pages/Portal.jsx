@@ -795,7 +795,7 @@ function CheckoutModal({ batch, profile, policy, onClose, onFinished }) {
                     onChange={(e) => setDeliveryOption(prev => ({ ...prev, enabled: e.target.checked }))}
                     className="w-4 h-4 rounded border-surface-300"
                   />
-                  <span className="text-body text-surface-700">I'd like delivery (₦100/crate)</span>
+                  <span className="text-body text-surface-700">I want to add delivery (₦100/crate)</span>
                 </label>
                 {deliveryOption.enabled && (
                   <>
