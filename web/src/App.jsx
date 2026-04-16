@@ -96,7 +96,7 @@ export default function App() {
                 }
               />
               <Route
-                path="reports/:type"
+                path="reports/:reportType"
                 element={
                   <ProtectedRoute roles={['ADMIN', 'MANAGER']}>
                     <ReportDetail />

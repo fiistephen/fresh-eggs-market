@@ -114,7 +114,9 @@ function getReportEndpoint(reportType) {
   if (['batch-summary', 'inventory-control'].includes(reportType)) {
     return '/reports/operations';
   }
-
+  if (reportType === 'customer-report') {
+    return '/reports/customers';
+  }
   return '/reports/sales';
 }
 
@@ -238,6 +240,8 @@ function ReportBody({ reportType, data }) {
       return <BatchSummaryReport data={data} />;
     case 'inventory-control':
       return <InventoryControlReport data={data} />;
+    case 'customer-report':
+      return <CustomerReport data={data} />;
     default:
       return null;
   }
@@ -1338,6 +1342,74 @@ function InventoryControlReport({ data }) {
             </tbody>
           </table>
         </div>
+      </Panel>
+    </div>
+  );
+}
+
+function CustomerReport({ data }) {
+  const { summary, topBySpend, topByQuantity, acquisitionByDay } = data;
+
+  return (
+    <div className="space-y-6">
+      {/* KPI cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        <SummaryCard label="Active customers" value={summary.activeCustomerCount.toLocaleString()} hint={`${summary.newCustomersInPeriod} new in period`} />
+        <SummaryCard label="Repeat rate" value={`${summary.repeatRate}%`} hint={`${summary.repeatCustomerCount} repeat · ${summary.oneTimeCustomerCount} one-time`} />
+        <SummaryCard label="Revenue from customers" value={formatCurrency(summary.totalRevenue)} hint={`${summary.totalCrates.toLocaleString()} crates total`} />
+        <SummaryCard label="Avg. spend / customer" value={formatCurrency(summary.averageRevenuePerCustomer)} hint={`${summary.averageCratesPerCustomer} crates avg.`} />
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <SummaryCard label="Total customers (all time)" value={summary.totalCustomers.toLocaleString()} />
+        <SummaryCard label="Wholesale-leaning" value={summary.wholesaleLeaningCount.toLocaleString()} hint="More wholesale than retail purchases" />
+        <SummaryCard label="Retail-leaning" value={summary.retailLeaningCount.toLocaleString()} hint="More retail than wholesale purchases" />
+      </div>
+
+      {/* Acquisition trend */}
+      {acquisitionByDay.length > 0 && (
+        <Panel title="New customer acquisition" body="How many new customers signed up or were added each day during the period.">
+          <BarComparisonChart
+            data={acquisitionByDay}
+            labelKey="date"
+            valueKey="count"
+            valueFormatter={(v) => `${v} new`}
+            labelFormatter={(v) => formatDate(v)}
+          />
+        </Panel>
+      )}
+
+      {/* Top customers by spend */}
+      <Panel title="Top customers by spend" body="The 20 highest-spending customers in the selected period.">
+        <DataTable
+          columns={[
+            { key: 'customerName', label: 'Customer' },
+            { key: 'customerPhone', label: 'Phone' },
+            { key: 'transactionCount', label: 'Transactions', align: 'right' },
+            { key: 'totalQuantity', label: 'Crates', align: 'right', render: (v) => v.toLocaleString() },
+            { key: 'totalAmount', label: 'Total spent', align: 'right', render: (v) => formatCurrency(v) },
+            { key: 'grossProfit', label: 'Gross profit', align: 'right', render: (v) => formatCurrency(v) },
+          ]}
+          rows={topBySpend}
+          emptyText="No sales in the selected period."
+        />
+      </Panel>
+
+      {/* Top customers by quantity */}
+      <Panel title="Top customers by quantity" body="The 20 customers who purchased the most crates in the selected period.">
+        <DataTable
+          columns={[
+            { key: 'customerName', label: 'Customer' },
+            { key: 'customerPhone', label: 'Phone' },
+            { key: 'totalQuantity', label: 'Crates', align: 'right', render: (v) => v.toLocaleString() },
+            { key: 'transactionCount', label: 'Transactions', align: 'right' },
+            { key: 'totalAmount', label: 'Total spent', align: 'right', render: (v) => formatCurrency(v) },
+            { key: 'wholesaleQty', label: 'Wholesale', align: 'right', render: (v) => v.toLocaleString() },
+            { key: 'retailQty', label: 'Retail', align: 'right', render: (v) => v.toLocaleString() },
+          ]}
+          rows={topByQuantity}
+          emptyText="No sales in the selected period."
+        />
       </Panel>
     </div>
   );

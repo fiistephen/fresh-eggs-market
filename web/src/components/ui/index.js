@@ -11,3 +11,4 @@ export { default as Skeleton, SkeletonCard, SkeletonTable, SkeletonMetric } from
 export { default as FilterChip } from './FilterChip';
 export { default as PageHeader } from './PageHeader';
 export { default as NoticeBanner } from './NoticeBanner';
+export { default as Pagination } from './Pagination';

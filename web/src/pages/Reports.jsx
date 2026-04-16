@@ -38,6 +38,7 @@ function getReportIcon(reportType) {
     'sales-by-payment-type': <BarChartIcon />,
     'sales-by-employee': <BarChartIcon />,
     'receipts': <BoxIcon />,
+    'customer-report': <PieChartIcon />,
     'batch-summary': <BarChartIcon />,
     'inventory-control': <BoxIcon />,
   };

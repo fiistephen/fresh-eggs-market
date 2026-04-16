@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../lib/api';
-import { Button, Input, Select, Textarea, Modal, Card, Badge, EmptyState, useToast } from '../components/ui';
+import { Button, Input, Select, Textarea, Modal, Card, Badge, EmptyState, useToast, Pagination } from '../components/ui';
 
 // ─── SVG ICONS ───────────────────────────────────────────────────
 const PackageIcon = () => (
@@ -696,6 +696,8 @@ function CountHistoryTab() {
   const [dateTo, setDateTo] = useState('');
   const [discrepanciesOnly, setDiscrepanciesOnly] = useState(false);
   const [summary, setSummary] = useState({});
+  const [page, setPage] = useState(1);
+  const pageSize = 25;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -704,6 +706,8 @@ function CountHistoryTab() {
       if (dateFrom) params.set('dateFrom', dateFrom);
       if (dateTo) params.set('dateTo', dateTo);
       if (discrepanciesOnly) params.set('discrepanciesOnly', 'true');
+      params.set('limit', String(pageSize));
+      params.set('offset', String((page - 1) * pageSize));
       const res = await api.get(`/inventory/counts?${params}`);
       setCounts(res.counts || []);
       setSummary({ total: res.total, totalDiscrepancies: res.totalDiscrepancies, totalWriteOffs: res.totalWriteOffs });
@@ -712,8 +716,9 @@ function CountHistoryTab() {
     } finally {
       setLoading(false);
     }
-  }, [dateFrom, dateTo, discrepanciesOnly]);
+  }, [dateFrom, dateTo, discrepanciesOnly, page]);
 
+  useEffect(() => { setPage(1); }, [dateFrom, dateTo, discrepanciesOnly]);
   useEffect(() => { load(); }, [load]);
 
   return (
@@ -806,6 +811,8 @@ function CountHistoryTab() {
           </table>
         </div>
       )}
+
+      <Pagination page={page} pageSize={pageSize} total={summary.total || 0} onChange={setPage} noun="counts" />
     </div>
   );
 }

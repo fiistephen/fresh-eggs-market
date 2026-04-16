@@ -225,7 +225,7 @@ export default async function inventoryRoutes(fastify) {
   fastify.get('/inventory/counts', {
     preHandler: [authenticate],
     handler: async (request, reply) => {
-      const { batchId, dateFrom, dateTo, discrepanciesOnly } = request.query;
+      const { batchId, dateFrom, dateTo, discrepanciesOnly, limit = '25', offset = '0' } = request.query;
 
       const where = {};
       if (batchId) where.batchId = batchId;
@@ -242,14 +242,22 @@ export default async function inventoryRoutes(fastify) {
         where.discrepancy = { not: 0 };
       }
 
-      const counts = await prisma.inventoryCount.findMany({
-        where,
-        include: {
-          batch: { select: { id: true, name: true } },
-          enteredBy: { select: { firstName: true, lastName: true } },
-        },
-        orderBy: { countDate: 'desc' },
-      });
+      const parsedLimit = Math.min(200, Math.max(1, Number(limit) || 25));
+      const parsedOffset = Math.max(0, Number(offset) || 0);
+
+      const [counts, totalCount] = await Promise.all([
+        prisma.inventoryCount.findMany({
+          where,
+          include: {
+            batch: { select: { id: true, name: true } },
+            enteredBy: { select: { firstName: true, lastName: true } },
+          },
+          orderBy: { countDate: 'desc' },
+          take: parsedLimit,
+          skip: parsedOffset,
+        }),
+        prisma.inventoryCount.count({ where }),
+      ]);
 
       const enriched = counts.map(c => ({
         id: c.id,
@@ -265,11 +273,11 @@ export default async function inventoryRoutes(fastify) {
         createdAt: c.createdAt,
       }));
 
-      // Summary
+      // Summary stats over the current page (for the filter context)
       const totalDiscrepancies = enriched.filter(c => c.discrepancy !== 0).length;
       const totalWriteOffs = enriched.reduce((s, c) => s + c.crackedWriteOff, 0);
 
-      return reply.send({ counts: enriched, total: enriched.length, totalDiscrepancies, totalWriteOffs });
+      return reply.send({ counts: enriched, total: totalCount, totalDiscrepancies, totalWriteOffs });
     },
   });
 

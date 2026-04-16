@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
-import { EmptyState, NoticeBanner, PageHeader } from '../components/ui';
+import { EmptyState, NoticeBanner, PageHeader, Pagination } from '../components/ui';
 
 const DEFAULT_ITEM_FORM = {
   code: '',
@@ -60,8 +60,11 @@ export default function Items() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [items, setItems] = useState([]);
+  const [total, setTotal] = useState(0);
   const [summary, setSummary] = useState(null);
   const [categories, setCategories] = useState([]);
+  const [page, setPage] = useState(1);
+  const pageSize = 25;
   const [filters, setFilters] = useState({
     search: '',
     category: '',
@@ -74,8 +77,12 @@ export default function Items() {
   const [savingId, setSavingId] = useState('');
 
   useEffect(() => {
-    loadItems();
+    setPage(1);
   }, [filters.search, filters.category, filters.includeInactive]);
+
+  useEffect(() => {
+    loadItems();
+  }, [filters.search, filters.category, filters.includeInactive, page]);
 
   async function loadItems() {
     setLoading(true);
@@ -85,8 +92,11 @@ export default function Items() {
       if (filters.search.trim()) params.set('search', filters.search.trim());
       if (filters.category) params.set('category', filters.category);
       params.set('includeInactive', String(filters.includeInactive));
+      params.set('limit', String(pageSize));
+      params.set('offset', String((page - 1) * pageSize));
       const response = await api.get(`/items?${params.toString()}`);
       setItems(response.items || []);
+      setTotal(response.total || 0);
       setSummary(response.summary || null);
       setCategories(response.categories || []);
       setDrafts(buildDrafts(response.items || []));
@@ -498,6 +508,7 @@ export default function Items() {
               );
             })}
           </div>
+          <Pagination page={page} pageSize={pageSize} total={total} onChange={setPage} noun="items" />
         </div>
       </section>
     </div>

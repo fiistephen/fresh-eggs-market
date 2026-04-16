@@ -88,6 +88,8 @@ export default async function itemRoutes(fastify) {
         search = '',
         category = '',
         includeInactive = 'false',
+        limit = '50',
+        offset = '0',
       } = request.query;
 
       await syncItemsFromBatchEggCodes();
@@ -99,27 +101,35 @@ export default async function itemRoutes(fastify) {
         includeInactive: includeInactiveBool,
       });
 
-      const items = await prisma.item.findMany({
-        where,
-        include: {
-          batchEggCodes: {
-            include: {
-              batch: {
-                select: {
-                  id: true,
-                  name: true,
-                  receivedDate: true,
-                  status: true,
+      const parsedLimit = Math.min(200, Math.max(1, Number(limit) || 50));
+      const parsedOffset = Math.max(0, Number(offset) || 0);
+
+      const [items, total] = await Promise.all([
+        prisma.item.findMany({
+          where,
+          include: {
+            batchEggCodes: {
+              include: {
+                batch: {
+                  select: {
+                    id: true,
+                    name: true,
+                    receivedDate: true,
+                    status: true,
+                  },
                 },
               },
-            },
-            orderBy: {
-              batch: { receivedDate: 'desc' },
+              orderBy: {
+                batch: { receivedDate: 'desc' },
+              },
             },
           },
-        },
-        orderBy: [{ isActive: 'desc' }, { category: 'asc' }, { code: 'asc' }, { name: 'asc' }],
-      });
+          orderBy: [{ isActive: 'desc' }, { category: 'asc' }, { code: 'asc' }, { name: 'asc' }],
+          take: parsedLimit,
+          skip: parsedOffset,
+        }),
+        prisma.item.count({ where }),
+      ]);
 
       const allItemsForSummary = await prisma.item.findMany({
         orderBy: { createdAt: 'desc' },
@@ -127,6 +137,7 @@ export default async function itemRoutes(fastify) {
 
       return reply.send({
         items: items.map(mapItem),
+        total,
         summary: buildSummary(allItemsForSummary),
         categories: Object.entries(ITEM_CATEGORY_LABELS).map(([value, label]) => ({ value, label })),
       });

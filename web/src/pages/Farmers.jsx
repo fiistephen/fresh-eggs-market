@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
-import { Button, Card, Input, Modal, EmptyState, Select, Textarea } from '../components/ui';
+import { Button, Card, Input, Modal, EmptyState, Select, Textarea, Pagination } from '../components/ui';
 
 function formatCurrency(value) {
   return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', minimumFractionDigits: 0 }).format(Number(value || 0));
@@ -49,23 +49,32 @@ export default function Farmers() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const pageSize = 25;
   const [showCreate, setShowCreate] = useState(false);
   const [selectedFarmerId, setSelectedFarmerId] = useState(null);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       loadFarmers();
     }, search ? 250 : 0);
     return () => clearTimeout(timer);
-  }, [search]);
+  }, [search, page]);
 
   async function loadFarmers() {
     setLoading(true);
     setError('');
     try {
-      const params = search.trim() ? `?search=${encodeURIComponent(search.trim())}` : '';
-      const data = await api.get(`/farmers${params}`);
+      const params = new URLSearchParams();
+      if (search.trim()) params.set('search', search.trim());
+      params.set('limit', String(pageSize));
+      params.set('offset', String((page - 1) * pageSize));
+      const data = await api.get(`/farmers?${params.toString()}`);
       setFarmers(data.farmers || []);
       setTotal(data.total || 0);
     } catch (err) {
@@ -184,6 +193,8 @@ export default function Farmers() {
           </div>
         </Card>
       )}
+
+      <Pagination page={page} pageSize={pageSize} total={total} onChange={setPage} noun="farmers" />
 
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="New Farmer" size="md">
         <CreateFarmerModal

@@ -56,6 +56,14 @@ export const REPORT_CARDS = [
     group: 'Sales',
   },
   {
+    key: 'customer-report',
+    title: 'Customer Report',
+    description: 'See your top customers, acquisition trends, repeat purchase rates, and lifetime value.',
+    icon: '👥',
+    accent: 'from-teal-50 to-white border-teal-200',
+    group: 'Management',
+  },
+  {
     key: 'batch-summary',
     title: 'Batch Summary',
     description: 'Review profit by batch, compare against company target, and spot weak batches quickly.',

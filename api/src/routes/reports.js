@@ -642,4 +642,136 @@ export default async function reportsRoutes(fastify) {
       });
     },
   });
+
+  // ────────────────────────────────────────────────────────────────
+  // GET /reports/customers — Customer report
+  // ────────────────────────────────────────────────────────────────
+  fastify.get('/reports/customers', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER')],
+    handler: async (request, reply) => {
+      const { dateFrom, dateTo } = request.query;
+      const saleWhere = buildDateRangeWhere({ dateFrom, dateTo });
+
+      // All sales in the period with customer + line items
+      const sales = await prisma.sale.findMany({
+        where: saleWhere,
+        include: {
+          customer: { select: { id: true, name: true, phone: true, createdAt: true } },
+          lineItems: {
+            select: { saleType: true, quantity: true, lineTotal: true, costPrice: true },
+          },
+        },
+        orderBy: { saleDate: 'desc' },
+      });
+
+      // Total customers in DB (all time)
+      const totalCustomers = await prisma.customer.count();
+
+      // New customers created within the date range
+      const newCustomerWhere = {};
+      if (dateFrom) newCustomerWhere.createdAt = { ...(newCustomerWhere.createdAt || {}), gte: startOfDay(dateFrom) };
+      if (dateTo) newCustomerWhere.createdAt = { ...(newCustomerWhere.createdAt || {}), lte: endOfDay(dateTo) };
+      const newCustomersInPeriod = await prisma.customer.count({ where: newCustomerWhere });
+
+      // Aggregate per customer
+      const customerMap = new Map();
+      for (const sale of sales) {
+        if (!sale.customer) continue;
+        const cId = sale.customer.id;
+        const entry = customerMap.get(cId) || {
+          customerId: cId,
+          customerName: sale.customer.name,
+          customerPhone: sale.customer.phone,
+          memberSince: sale.customer.createdAt,
+          transactionCount: 0,
+          totalQuantity: 0,
+          totalAmount: 0,
+          totalCost: 0,
+          grossProfit: 0,
+          wholesaleQty: 0,
+          retailQty: 0,
+          firstSaleInPeriod: sale.saleDate,
+          lastSaleInPeriod: sale.saleDate,
+        };
+        const saleAmount = sale.lineItems.reduce((s, li) => s + Number(li.lineTotal), 0);
+        const saleCost = sale.lineItems.reduce((s, li) => s + Number(li.costPrice) * li.quantity, 0);
+        entry.transactionCount += 1;
+        entry.totalQuantity += sale.totalQuantity;
+        entry.totalAmount += saleAmount;
+        entry.totalCost += saleCost;
+        entry.grossProfit += saleAmount - saleCost;
+        for (const li of sale.lineItems) {
+          if (li.saleType === 'WHOLESALE') entry.wholesaleQty += li.quantity;
+          if (li.saleType === 'RETAIL') entry.retailQty += li.quantity;
+        }
+        if (sale.saleDate < entry.firstSaleInPeriod) entry.firstSaleInPeriod = sale.saleDate;
+        if (sale.saleDate > entry.lastSaleInPeriod) entry.lastSaleInPeriod = sale.saleDate;
+        customerMap.set(cId, entry);
+      }
+
+      const customers = [...customerMap.values()];
+
+      // Top customers by spend
+      const topBySpend = [...customers].sort((a, b) => b.totalAmount - a.totalAmount).slice(0, 20);
+
+      // Top by quantity
+      const topByQuantity = [...customers].sort((a, b) => b.totalQuantity - a.totalQuantity).slice(0, 20);
+
+      // Repeat vs one-time
+      const repeatCustomers = customers.filter((c) => c.transactionCount > 1);
+      const oneTimeCustomers = customers.filter((c) => c.transactionCount === 1);
+
+      // Wholesale vs retail leaning
+      const wholesaleLeaning = customers.filter((c) => c.wholesaleQty > c.retailQty);
+      const retailLeaning = customers.filter((c) => c.retailQty > c.wholesaleQty);
+
+      // Acquisition trend — new customers by day
+      const newCustomers = await prisma.customer.findMany({
+        where: newCustomerWhere,
+        select: { id: true, createdAt: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      const acquisitionByDay = new Map();
+      for (const nc of newCustomers) {
+        const day = nc.createdAt.toISOString().slice(0, 10);
+        acquisitionByDay.set(day, (acquisitionByDay.get(day) || 0) + 1);
+      }
+
+      // Summary
+      const totalRevenue = customers.reduce((s, c) => s + c.totalAmount, 0);
+      const totalProfit = customers.reduce((s, c) => s + c.grossProfit, 0);
+      const totalCrates = customers.reduce((s, c) => s + c.totalQuantity, 0);
+      const activeCustomerCount = customers.length;
+
+      return reply.send({
+        filters: { dateFrom: dateFrom || null, dateTo: dateTo || null },
+        summary: {
+          totalCustomers,
+          newCustomersInPeriod,
+          activeCustomerCount,
+          repeatCustomerCount: repeatCustomers.length,
+          oneTimeCustomerCount: oneTimeCustomers.length,
+          repeatRate: activeCustomerCount > 0
+            ? roundTo2((repeatCustomers.length / activeCustomerCount) * 100)
+            : 0,
+          totalRevenue,
+          totalProfit,
+          totalCrates,
+          averageRevenuePerCustomer: activeCustomerCount > 0
+            ? roundTo2(totalRevenue / activeCustomerCount)
+            : 0,
+          averageCratesPerCustomer: activeCustomerCount > 0
+            ? roundTo2(totalCrates / activeCustomerCount)
+            : 0,
+          wholesaleLeaningCount: wholesaleLeaning.length,
+          retailLeaningCount: retailLeaning.length,
+        },
+        topBySpend,
+        topByQuantity,
+        acquisitionByDay: [...acquisitionByDay.entries()]
+          .map(([date, count]) => ({ date, count }))
+          .sort((a, b) => a.date.localeCompare(b.date)),
+      });
+    },
+  });
 }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
-import { Button, Input, Modal, Card, Badge, EmptyState, Textarea } from '../components/ui';
+import { Button, Input, Modal, Card, Badge, EmptyState, Textarea, Pagination } from '../components/ui';
 
 const PlusIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -107,6 +107,8 @@ export default function Customers() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const pageSize = 25;
   const [showCreate, setShowCreate] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [error, setError] = useState('');
@@ -115,15 +117,22 @@ export default function Customers() {
   const canEdit = ['ADMIN', 'MANAGER'].includes(user?.role);
 
   useEffect(() => {
+    setPage(1);
+  }, [search]);
+
+  useEffect(() => {
     const timer = setTimeout(() => loadCustomers(), search ? 300 : 0);
     return () => clearTimeout(timer);
-  }, [search]);
+  }, [search, page]);
 
   async function loadCustomers() {
     setLoading(true);
     try {
-      const params = search ? `?search=${encodeURIComponent(search)}` : '';
-      const data = await api.get(`/customers${params}`);
+      const params = new URLSearchParams();
+      if (search) params.set('search', search);
+      params.set('limit', String(pageSize));
+      params.set('offset', String((page - 1) * pageSize));
+      const data = await api.get(`/customers?${params.toString()}`);
       setCustomers(data.customers);
       setTotal(data.total);
       setError('');
@@ -218,6 +227,8 @@ export default function Customers() {
           </div>
         </Card>
       )}
+
+      <Pagination page={page} pageSize={pageSize} total={total} onChange={setPage} noun="customers" />
 
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="New Customer" size="md">
         <CreateCustomerModal
