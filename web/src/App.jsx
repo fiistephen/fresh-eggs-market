@@ -18,6 +18,7 @@ import Reports from './pages/Reports';
 import ReportDetail from './pages/ReportDetail';
 import AdminConfig from './pages/AdminConfig';
 import Items from './pages/Items';
+import Staff from './pages/Staff';
 
 export default function App() {
   return (
@@ -54,8 +55,22 @@ export default function App() {
                   </ProtectedRoute>
                 }
               />
-              <Route path="bookings" element={<Bookings />} />
-              <Route path="inventory" element={<Inventory />} />
+              <Route
+                path="bookings"
+                element={
+                  <ProtectedRoute roles={['ADMIN', 'MANAGER', 'RECORD_KEEPER']}>
+                    <Bookings />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="inventory"
+                element={
+                  <ProtectedRoute roles={['ADMIN', 'MANAGER', 'SHOP_FLOOR']}>
+                    <Inventory />
+                  </ProtectedRoute>
+                }
+              />
               <Route
                 path="customers"
                 element={
@@ -93,6 +108,14 @@ export default function App() {
                 element={
                   <ProtectedRoute roles={['ADMIN', 'MANAGER']}>
                     <Items />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="staff"
+                element={
+                  <ProtectedRoute roles={['ADMIN']}>
+                    <Staff />
                   </ProtectedRoute>
                 }
               />

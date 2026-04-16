@@ -1,6 +1,8 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
+const STAFF_ROLES = ['ADMIN', 'MANAGER', 'SHOP_FLOOR', 'RECORD_KEEPER'];
+
 export default function ProtectedRoute({ children, roles }) {
   const { user, loading } = useAuth();
 
@@ -13,6 +15,11 @@ export default function ProtectedRoute({ children, roles }) {
   }
 
   if (!user) return <Navigate to="/login" replace />;
+
+  // CUSTOMER accounts cannot access the backend — redirect to portal
+  if (!STAFF_ROLES.includes(user.role)) {
+    return <Navigate to="/portal" replace />;
+  }
 
   if (roles && !roles.includes(user.role)) {
     return (

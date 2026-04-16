@@ -11,13 +11,20 @@ export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
 
+  const STAFF_ROLES = ['ADMIN', 'MANAGER', 'SHOP_FLOOR', 'RECORD_KEEPER'];
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      await login(identifier, password);
-      navigate('/');
+      const user = await login(identifier, password);
+      if (!STAFF_ROLES.includes(user.role)) {
+        // Customer accounts go to the portal, not the dashboard
+        navigate('/portal');
+      } else {
+        navigate('/');
+      }
     } catch (err) {
       setError(err.error || 'Login failed. Please try again.');
     } finally {
