@@ -39,16 +39,29 @@ const isPaystackReadyEmail = (value) => {
 
 /* ─── Google Places Autocomplete ─── */
 function AddressAutocomplete({ onChange, placeholder }) {
-  const inputRef = useRef(null);
-  const autocompleteRef = useRef(null);
+  const containerRef = useRef(null);
+  const acInstanceRef = useRef(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
 
   useEffect(() => {
-    if (!inputRef.current || autocompleteRef.current) return;
+    const container = containerRef.current;
+    if (!container || acInstanceRef.current) return;
+
+    // Create the input element via DOM — completely outside React's render cycle
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = placeholder || 'Start typing your address...';
+    input.className = 'w-full rounded-md border border-surface-300 bg-surface-0 px-3 py-2 text-body text-surface-900 placeholder:text-surface-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500';
+    input.setAttribute('autocomplete', 'new-password'); // stronger than "off" for Chrome
+    container.appendChild(input);
+
+    // Sync manual typing
+    input.addEventListener('input', () => onChangeRef.current(input.value));
+
     const tryInit = () => {
       if (!window.google?.maps?.places) return false;
-      const ac = new window.google.maps.places.Autocomplete(inputRef.current, {
+      const ac = new window.google.maps.places.Autocomplete(input, {
         types: ['address'],
         componentRestrictions: { country: 'ng' },
       });
@@ -61,34 +74,26 @@ function AddressAutocomplete({ onChange, placeholder }) {
         const addr = place?.formatted_address || place?.name || '';
         if (addr) onChangeRef.current(addr);
       });
-      autocompleteRef.current = ac;
+      acInstanceRef.current = ac;
       return true;
     };
+
     if (!tryInit()) {
       const id = setInterval(() => { if (tryInit()) clearInterval(id); }, 300);
       const timeout = setTimeout(() => clearInterval(id), 5000);
       return () => { clearInterval(id); clearTimeout(timeout); };
     }
-  }, []);
+
+    return () => {
+      if (input.parentNode) input.parentNode.removeChild(input);
+      acInstanceRef.current = null;
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div>
       <label className="block text-body text-surface-700 mb-1">Delivery address</label>
-      <input
-        ref={(el) => {
-          inputRef.current = el;
-          // Sync value on manual typing too
-          if (el && !el._listening) {
-            el.addEventListener('input', () => onChangeRef.current(el.value));
-            el._listening = true;
-          }
-        }}
-        type="text"
-        defaultValue=""
-        placeholder={placeholder || 'Start typing your address...'}
-        className="w-full rounded-md border border-surface-300 bg-surface-0 px-3 py-2 text-body text-surface-900 placeholder:text-surface-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-        autoComplete="off"
-      />
+      <div ref={containerRef} />
     </div>
   );
 }
@@ -551,9 +556,8 @@ function CheckoutModal({ batch, profile, policy, onClose, onFinished }) {
     const reference = co.reference || success.order?.reference;
     const nextSteps = paymentMethod === 'TRANSFER'
       ? [
-          'Your crates are reserved. Our team will confirm your transfer within 1 hour during business hours.',
+          'Your crates are reserved. Our team will confirm your transfer within 2 hours during business hours.',
           'Track your order status in My Orders.',
-          'Final confirmation happens when we match the bank statement line.',
         ]
       : isReady
         ? [
