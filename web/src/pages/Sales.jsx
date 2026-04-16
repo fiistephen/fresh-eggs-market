@@ -875,6 +875,24 @@ function RecordSaleModal({ onClose, onRecorded }) {
           unitPrice: Number(lineItem.unitPrice),
         })),
       });
+
+      // Post-sale banking feedback
+      if (workflow === 'BOOKING') {
+        toast.success('Booking pickup completed. Receipt is ready.');
+      } else {
+        const methods = paymentPayload.map(r => r.paymentMethod);
+        const hasCash = methods.includes('CASH');
+        const hasTransferOrCard = methods.some(m => m === 'TRANSFER' || m === 'POS_CARD');
+
+        if (hasCash && hasTransferOrCard) {
+          toast.success('Sale recorded. Cash portion added to undeposited cash in Banking. Transfer/card will appear when entered from the bank statement.');
+        } else if (hasCash) {
+          toast.success('Sale recorded. Added to undeposited cash in Banking.');
+        } else {
+          toast.success('Sale recorded. Will appear in Banking when the record keeper enters it from the bank statement.');
+        }
+      }
+
       onRecorded();
     } catch (err) {
       setError(err.error || 'Failed to record sale');
