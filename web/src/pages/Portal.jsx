@@ -452,9 +452,10 @@ function CheckoutModal({ batch, profile, policy, onClose, onFinished }) {
 
   const qtyVal = parseInt(quantity, 10) || 0;
   const orderValue = qtyVal * unitPrice;
-  const payNow = isReady ? orderValue : (Number(amountToPay) || 0);
   const deliveryFee = deliveryOption.enabled ? qtyVal * 100 : 0;
   const totalWithDelivery = orderValue + deliveryFee;
+  const minPayment = totalWithDelivery * (minPaymentPercent / 100);
+  const payNow = isReady ? totalWithDelivery : (Number(amountToPay) || 0);
   const balance = Math.max(0, totalWithDelivery - payNow);
 
   const qtyError = useMemo(() => {
