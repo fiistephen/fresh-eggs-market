@@ -3464,18 +3464,9 @@ export default async function bankingRoutes(fastify) {
         if (review.accountsMissingMonthEndBalance > 0) {
           return reply.code(400).send({ error: 'Enter a month-end balance for every active account before closing the month.' });
         }
-        // V3 Phase 3: block close if unallocated transactions exist for the month
-        if (review.unresolved.unallocatedTransactions?.count > 0) {
-          return reply.code(400).send({
-            error: `${review.unresolved.unallocatedTransactions.count} transaction(s) still categorized as "Unallocated". Re-categorize them before closing.`,
-          });
-        }
-        // V3 Phase 3: block close if unbanked cash sales exist for the month
-        if (review.unresolved.undepositedCash?.count > 0) {
-          return reply.code(400).send({
-            error: `${review.unresolved.undepositedCash.count} cash sale(s) have not been matched to a bank deposit. Match them in Cash Sales before closing.`,
-          });
-        }
+        // V3 Phase 3: unallocated transactions and unbanked cash are captured in the
+        // snapshot for visibility but do NOT block the close.  Only missing account
+        // balances are a hard gate (checked above).
 
         const unresolvedSnapshot = {
           hangingDeposits: { count: review.unresolved.hangingDeposits.count, total: review.unresolved.hangingDeposits.total },

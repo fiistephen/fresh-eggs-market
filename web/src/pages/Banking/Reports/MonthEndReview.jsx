@@ -200,7 +200,7 @@ function CloseMonthModal({ month, review, onClose, onClosed }) {
         {error ? <div className="rounded-lg border border-error-100 bg-error-50 px-3 py-2 text-body text-error-700">{error}</div> : null}
 
         <div className="rounded-lg border border-brand-100 bg-brand-50 px-4 py-3 text-body text-brand-700">
-          Closing this month stores the current balance picture as the formal month-end record. Unallocated transactions and unbanked cash must be resolved first.
+          Closing this month stores the current balance picture as the formal month-end record. Any unresolved items (unallocated transactions, unbanked cash) will be captured in the snapshot for reference.
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -300,10 +300,12 @@ export default function MonthEndReview({ onNavigate }) {
   const unresolved = data.unresolved || {};
   const monthClose = data.monthClose;
   const recentMonthCloses = data.recentMonthCloses || [];
+  // Only missing account balances block closing. Unallocated transactions and
+  // unbanked cash are warnings captured in the snapshot, not hard gates.
   const canCloseMonth = !monthClose
-    && Number(data.accountsMissingMonthEndBalance || 0) === 0
-    && Number(unresolved.unallocatedTransactions?.count || 0) === 0
-    && Number(unresolved.undepositedCash?.count || 0) === 0;
+    && Number(data.accountsMissingMonthEndBalance || 0) === 0;
+  const hasUnallocated = Number(unresolved.unallocatedTransactions?.count || 0) > 0;
+  const hasUnbankedCash = Number(unresolved.undepositedCash?.count || 0) > 0;
   const goToView = (view, options = {}) => onNavigate?.(view, options);
 
   return (
@@ -353,13 +355,16 @@ export default function MonthEndReview({ onNavigate }) {
           </div>
         ) : !canCloseMonth ? (
           <div className="rounded-lg border border-warning-100 bg-warning-50 px-4 py-4 text-body text-warning-700">
-            {Number(data.accountsMissingMonthEndBalance || 0) > 0
-              ? `Enter a month-end balance for all active accounts before you close ${data.label}.`
-              : Number(unresolved.unallocatedTransactions?.count || 0) > 0
-                ? `Re-categorize ${unresolved.unallocatedTransactions.count} unallocated transaction(s) before closing ${data.label}.`
-                : Number(unresolved.undepositedCash?.count || 0) > 0
-                  ? `Match ${unresolved.undepositedCash.count} unbanked cash sale(s) to a bank deposit before closing ${data.label}.`
-                  : `Resolve outstanding items before closing ${data.label}.`}
+            Enter a month-end balance for all active accounts before you close {data.label}.
+          </div>
+        ) : (hasUnallocated || hasUnbankedCash) ? (
+          <div className="rounded-lg border border-warning-100 bg-warning-50 px-4 py-4 text-body text-warning-700">
+            <p className="font-semibold">For your awareness before closing {data.label}:</p>
+            <ul className="mt-1 list-disc pl-5 space-y-0.5">
+              {hasUnallocated ? <li>{unresolved.unallocatedTransactions.count} transaction(s) still categorized as &ldquo;Unallocated&rdquo;.</li> : null}
+              {hasUnbankedCash ? <li>{unresolved.undepositedCash.count} cash sale(s) not yet matched to a bank deposit.</li> : null}
+            </ul>
+            <p className="mt-1 opacity-80">These items are captured in the close snapshot. You can still close the month.</p>
           </div>
         ) : null}
 
@@ -379,7 +384,7 @@ export default function MonthEndReview({ onNavigate }) {
             <ActionLink label="Review account snapshot" onClick={() => goToView('reports', { reportKey: 'balances' })} tone="surface" />
           </div>
           <div className="space-y-2">
-            <StatCard label="Unallocated transactions" value={String(unresolved.unallocatedTransactions?.count || 0)} subtext={Number(unresolved.unallocatedTransactions?.count || 0) > 0 ? `${fmtMoney(unresolved.unallocatedTransactions?.total || 0)} needs re-categorizing before close` : 'All transactions categorized'} tone={toneForCount(unresolved.unallocatedTransactions?.count)} />
+            <StatCard label="Unallocated transactions" value={String(unresolved.unallocatedTransactions?.count || 0)} subtext={Number(unresolved.unallocatedTransactions?.count || 0) > 0 ? `${fmtMoney(unresolved.unallocatedTransactions?.total || 0)} still needs re-categorizing` : 'All transactions categorized'} tone={toneForCount(unresolved.unallocatedTransactions?.count)} />
             <ActionLink label="Open transactions" onClick={() => goToView('transactions')} tone={Number(unresolved.unallocatedTransactions?.count || 0) > 0 ? 'warning' : 'surface'} />
           </div>
           <div className="space-y-2">
