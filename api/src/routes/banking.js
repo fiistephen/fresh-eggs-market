@@ -2022,10 +2022,19 @@ export default async function bankingRoutes(fastify) {
   fastify.post('/banking/cash-deposits/confirm-from-bank', {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
     handler: async (request, reply) => {
-      const { bankTransactionId, cashSaleIds, notes } = request.body || {};
+      const { bankTransactionId, bankTransactionIds, cashSaleIds, notes } = request.body || {};
 
-      if (!bankTransactionId) {
-        return reply.code(400).send({ error: 'bankTransactionId is required.' });
+      // Support both single (bankTransactionId) and multi (bankTransactionIds[])
+      // for backward compatibility. If both supplied, bankTransactionIds wins.
+      const rawInflowIds = Array.isArray(bankTransactionIds) && bankTransactionIds.length > 0
+        ? bankTransactionIds
+        : bankTransactionId
+          ? [bankTransactionId]
+          : [];
+      const uniqueInflowIds = [...new Set(rawInflowIds.filter(Boolean))];
+
+      if (uniqueInflowIds.length === 0) {
+        return reply.code(400).send({ error: 'Select at least one bank inflow to match.' });
       }
       if (!Array.isArray(cashSaleIds) || cashSaleIds.length === 0) {
         return reply.code(400).send({ error: 'Select at least one cash sale to link.' });
@@ -2033,29 +2042,44 @@ export default async function bankingRoutes(fastify) {
 
       const uniqueCashIds = [...new Set(cashSaleIds.filter(Boolean))];
 
-      const bankTransaction = await prisma.bankTransaction.findUnique({
-        where: { id: bankTransactionId },
-        include: {
-          bankAccount: true,
-          cashDepositOutflow: { select: { id: true } },
-          cashDepositBatchLinks: { select: { id: true } },
-        },
-      });
+      // Fetch and validate all selected inflows
+      const bankTransactions = await Promise.all(
+        uniqueInflowIds.map((id) =>
+          prisma.bankTransaction.findUnique({
+            where: { id },
+            include: {
+              bankAccount: true,
+              cashDepositOutflow: { select: { id: true } },
+              cashDepositBatchLinks: { select: { id: true } },
+            },
+          }),
+        ),
+      );
 
-      if (!bankTransaction) {
-        return reply.code(404).send({ error: 'Bank transaction not found.' });
-      }
-      if (bankTransaction.direction !== 'INFLOW' || bankTransaction.sourceType !== 'MANUAL') {
-        return reply.code(400).send({ error: 'Only manually-entered inflows can be matched.' });
-      }
-      if (bankTransaction.internalTransferGroupId) {
-        return reply.code(400).send({ error: 'This transaction is already part of an internal transfer.' });
-      }
-      if (bankTransaction.cashDepositOutflow || (bankTransaction.cashDepositBatchLinks?.length || 0) > 0) {
-        return reply.code(400).send({ error: 'This transaction is already linked to a cash deposit.' });
-      }
-      if (bankTransaction.bankAccount.accountType === 'CASH_ON_HAND') {
-        return reply.code(400).send({ error: 'The inflow must be on a real bank account, not Cash on Hand.' });
+      // Validate each inflow
+      let targetBankAccountId = null;
+      for (const bt of bankTransactions) {
+        if (!bt) {
+          return reply.code(404).send({ error: 'One or more bank transactions not found.' });
+        }
+        if (bt.direction !== 'INFLOW' || bt.sourceType !== 'MANUAL') {
+          return reply.code(400).send({ error: `Transaction ${bt.reference || bt.id} is not a manually-entered inflow.` });
+        }
+        if (bt.internalTransferGroupId) {
+          return reply.code(400).send({ error: `Transaction ${bt.reference || bt.id} is already part of an internal transfer.` });
+        }
+        if (bt.cashDepositOutflow || (bt.cashDepositBatchLinks?.length || 0) > 0) {
+          return reply.code(400).send({ error: `Transaction ${bt.reference || bt.id} is already linked to a cash deposit.` });
+        }
+        if (bt.bankAccount.accountType === 'CASH_ON_HAND') {
+          return reply.code(400).send({ error: 'Inflows must be on a real bank account, not Cash on Hand.' });
+        }
+        // All inflows must be on the same destination bank account
+        if (!targetBankAccountId) {
+          targetBankAccountId = bt.bankAccountId;
+        } else if (bt.bankAccountId !== targetBankAccountId) {
+          return reply.code(400).send({ error: 'All selected inflows must be on the same bank account.' });
+        }
       }
 
       const availableCashTransactions = await getAvailableCashSaleTransactions();
@@ -2067,11 +2091,11 @@ export default async function bankingRoutes(fastify) {
       }
 
       const cashTotal = selected.reduce((sum, transaction) => sum + Number(transaction.availableAmount), 0);
-      const bankAmount = Number(bankTransaction.amount);
+      const bankAmount = bankTransactions.reduce((sum, bt) => sum + Number(bt.amount), 0);
       // Allow a 1-kobo rounding tolerance.
       if (Math.abs(cashTotal - bankAmount) > 0.01) {
         return reply.code(400).send({
-          error: `Selected cash sales total ${cashTotal.toFixed(2)} but the bank inflow is ${bankAmount.toFixed(2)}. They must match.`,
+          error: `Selected cash sales total ${cashTotal.toFixed(2)} but the selected bank inflow${bankTransactions.length > 1 ? 's total' : ' is'} ${bankAmount.toFixed(2)}. They must match.`,
         });
       }
 
@@ -2083,12 +2107,16 @@ export default async function bankingRoutes(fastify) {
       }
 
       const transferGroupId = crypto.randomUUID();
-      const effectiveDate = bankTransaction.transactionDate;
+      // Use the earliest inflow date as the effective date for the outflow and batch.
+      const effectiveDate = bankTransactions
+        .map((bt) => new Date(bt.transactionDate))
+        .sort((a, b) => a - b)[0];
       const allocations = selected.map((transaction) => ({
         bankTransactionId: transaction.id,
         amountIncluded: Number(transaction.availableAmount),
       }));
-      const description = String(notes || '').trim() || `Cash deposit confirmed from ${cashAccount.name} to ${bankTransaction.bankAccount.name}`;
+      const targetAccountName = bankTransactions[0].bankAccount.name;
+      const description = String(notes || '').trim() || `Cash deposit confirmed from ${cashAccount.name} to ${targetAccountName}`;
 
       const result = await prisma.$transaction(async (tx) => {
         // 1. Create the balancing outflow from Cash on Hand.
@@ -2108,21 +2136,25 @@ export default async function bankingRoutes(fastify) {
           },
         });
 
-        // 2. Stamp the existing manual inflow with the same group id and promote its
-        //    category to CASH_DEPOSIT_CONFIRMATION so reporting is consistent.
-        await tx.bankTransaction.update({
-          where: { id: bankTransaction.id },
-          data: {
-            internalTransferGroupId: transferGroupId,
-            category: 'CASH_DEPOSIT_CONFIRMATION',
-          },
-        });
+        // 2. Stamp all selected manual inflows with the same group id and promote
+        //    their category to CASH_DEPOSIT_CONFIRMATION.
+        await Promise.all(
+          bankTransactions.map((bt) =>
+            tx.bankTransaction.update({
+              where: { id: bt.id },
+              data: {
+                internalTransferGroupId: transferGroupId,
+                category: 'CASH_DEPOSIT_CONFIRMATION',
+              },
+            }),
+          ),
+        );
 
         // 3. Create the CashDepositBatch in CONFIRMED state, linking everything.
         const batch = await tx.cashDepositBatch.create({
           data: {
             fromBankAccountId: cashAccount.id,
-            toBankAccountId: bankTransaction.bankAccountId,
+            toBankAccountId: targetBankAccountId,
             outflowTransactionId: outflowTransaction.id,
             amount: bankAmount,
             depositDate: effectiveDate,
@@ -2160,6 +2192,7 @@ export default async function bankingRoutes(fastify) {
       return reply.code(201).send({
         confirmed: true,
         transferGroupId,
+        inflowCount: bankTransactions.length,
         outflow: enrichTransaction(result.outflowTransaction),
         cashDepositBatch: {
           ...result.batch,

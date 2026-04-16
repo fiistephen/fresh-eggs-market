@@ -4,14 +4,18 @@ import { api } from '../../lib/api';
 import { fmtDate, fmtMoney, displayAccountName } from './shared/constants';
 
 /**
- * V3 Phase 2 — "Match a bank deposit" flow.
+ * V3 Phase 2 — "Match a bank deposit" flow (multi-inflow edition).
  *
- * Use case (from Meeting 3): the record keeper has already entered a bank
- * inflow manually (e.g. ₦94,400 arriving in the Customer Deposit Account),
- * and that inflow represents pooled cash that was physically taken to the bank.
- * Staff opens this modal, picks the bank inflow from a dropdown, ticks which
- * individual cash sales were in that deposit, and submits. The system records
- * a confirmed CashDepositBatch and the matching outflow from Cash on Hand.
+ * Use case (from Meeting 3): the record keeper has already entered bank
+ * inflows manually (e.g. two deposits of ₦47,200 each arriving in the
+ * Customer Deposit Account), and those inflows represent pooled cash that
+ * was physically taken to the bank. Staff opens this modal, ticks which
+ * bank inflows to include, ticks which individual cash sales were in the
+ * deposit, and submits. The system records a confirmed CashDepositBatch
+ * and the matching outflow from Cash on Hand.
+ *
+ * Multiple inflows can be selected simultaneously — useful when cash was
+ * deposited twice on the same day.
  */
 export default function MatchCashDepositModal({ onClose, onMatched }) {
   const [inflows, setInflows] = useState([]);
@@ -19,19 +23,13 @@ export default function MatchCashDepositModal({ onClose, onMatched }) {
   const [availableCash, setAvailableCash] = useState([]);
   const [cashLoading, setCashLoading] = useState(true);
 
-  const [selectedInflowId, setSelectedInflowId] = useState('');
+  const [selectedInflowIds, setSelectedInflowIds] = useState([]);
   const [selectedCashIds, setSelectedCashIds] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
-  // V3 Phase 2 Fix 3: track how many matches were completed in this modal
-  // session so the success banner reflects multi-inflow matching. The modal
-  // stays open after each successful match so the user can keep matching
-  // the next inflow without reopening.
   const [matchedCount, setMatchedCount] = useState(0);
   const [lastMatchMessage, setLastMatchMessage] = useState('');
 
-  // Extract the loader so we can call it again after each successful match
-  // to refresh the eligible inflows and unbanked cash sales lists.
   async function loadData() {
     setInflowsLoading(true);
     setCashLoading(true);
@@ -55,10 +53,11 @@ export default function MatchCashDepositModal({ onClose, onMatched }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const selectedInflow = useMemo(
-    () => inflows.find((inflow) => inflow.id === selectedInflowId) || null,
-    [inflows, selectedInflowId],
-  );
+  const selectedInflowTotal = useMemo(() => {
+    return inflows
+      .filter((inflow) => selectedInflowIds.includes(inflow.id))
+      .reduce((sum, inflow) => sum + Number(inflow.amount || 0), 0);
+  }, [inflows, selectedInflowIds]);
 
   const selectedCashTotal = useMemo(() => {
     return availableCash
@@ -66,44 +65,80 @@ export default function MatchCashDepositModal({ onClose, onMatched }) {
       .reduce((sum, cash) => sum + Number(cash.availableAmount || 0), 0);
   }, [availableCash, selectedCashIds]);
 
-  const bankAmount = selectedInflow ? Number(selectedInflow.amount) : 0;
-  const difference = bankAmount - selectedCashTotal;
-  const amountsMatch = selectedInflow && selectedCashIds.length > 0 && Math.abs(difference) <= 0.01;
+  const difference = selectedInflowTotal - selectedCashTotal;
+  const amountsMatch = selectedInflowIds.length > 0 && selectedCashIds.length > 0 && Math.abs(difference) <= 0.01;
+
+  // Check that all selected inflows are on the same bank account
+  const selectedInflowAccounts = useMemo(() => {
+    const accounts = new Set();
+    inflows
+      .filter((inflow) => selectedInflowIds.includes(inflow.id))
+      .forEach((inflow) => accounts.add(inflow.bankAccountId || inflow.bankAccount?.id));
+    return accounts;
+  }, [inflows, selectedInflowIds]);
+  const sameAccount = selectedInflowAccounts.size <= 1;
+
+  function toggleInflow(id) {
+    setSelectedInflowIds((current) =>
+      current.includes(id) ? current.filter((v) => v !== id) : [...current, id],
+    );
+    setError('');
+  }
 
   function toggleCashSale(id) {
     setSelectedCashIds((current) =>
-      current.includes(id) ? current.filter((value) => value !== id) : [...current, id],
+      current.includes(id) ? current.filter((v) => v !== id) : [...current, id],
     );
+  }
+
+  function selectAllInflows() {
+    if (selectedInflowIds.length === inflows.length) {
+      setSelectedInflowIds([]);
+    } else {
+      setSelectedInflowIds(inflows.map((i) => i.id));
+    }
+    setError('');
+  }
+
+  function selectAllCash() {
+    if (selectedCashIds.length === availableCash.length) {
+      setSelectedCashIds([]);
+    } else {
+      setSelectedCashIds(availableCash.map((c) => c.id));
+    }
   }
 
   async function handleSubmit(event) {
     event.preventDefault();
-    if (!selectedInflow) {
-      setError('Pick the bank inflow that represents this deposit.');
+    if (selectedInflowIds.length === 0) {
+      setError('Tick at least one bank inflow that represents this deposit.');
       return;
     }
     if (selectedCashIds.length === 0) {
       setError('Tick at least one cash sale that was in the deposit.');
       return;
     }
-    if (!amountsMatch) {
-      setError(`Selected cash sales total ${fmtMoney(selectedCashTotal)} but the bank inflow is ${fmtMoney(bankAmount)}. They must match.`);
+    if (!sameAccount) {
+      setError('All selected inflows must be on the same bank account.');
       return;
     }
-    const inflowDescription = selectedInflow.description || fmtMoney(bankAmount);
+    if (!amountsMatch) {
+      setError(`Selected cash sales total ${fmtMoney(selectedCashTotal)} but the bank inflow${selectedInflowIds.length > 1 ? 's total' : ' is'} ${fmtMoney(selectedInflowTotal)}. They must match.`);
+      return;
+    }
     setSubmitting(true);
     setError('');
     try {
       await api.post('/banking/cash-deposits/confirm-from-bank', {
-        bankTransactionId: selectedInflow.id,
+        bankTransactionIds: selectedInflowIds,
         cashSaleIds: selectedCashIds,
       });
-      // V3 Fix 3: stay open for more matches. Reset the selection, bump the
-      // counter, reload the lists so matched items disappear, and notify the
-      // parent to refresh the Cash Sales workspace + transactions list.
+      const inflowLabel = selectedInflowIds.length > 1
+        ? `${selectedInflowIds.length} inflows totalling ${fmtMoney(selectedInflowTotal)}`
+        : fmtMoney(selectedInflowTotal);
       setMatchedCount((count) => count + 1);
-      setLastMatchMessage(`Matched ${fmtMoney(bankAmount)} — ${inflowDescription}`);
-      setSelectedInflowId('');
+      setLastMatchMessage(`Matched ${inflowLabel} to ${selectedCashIds.length} cash sale${selectedCashIds.length === 1 ? '' : 's'}`);
+      setSelectedInflowIds([]);
       setSelectedCashIds([]);
       await loadData();
       onMatched?.();
@@ -114,8 +149,6 @@ export default function MatchCashDepositModal({ onClose, onMatched }) {
     }
   }
 
-  // V3 Fix 3: separate close action so we can distinguish "done matching, keep
-  // working" (onMatched was already called during each match) from explicit dismiss.
   function handleDone() {
     onClose?.();
   }
@@ -124,13 +157,12 @@ export default function MatchCashDepositModal({ onClose, onMatched }) {
     <ModalShell title="Match a bank deposit" onClose={onClose} maxWidth="max-w-4xl">
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="rounded-lg border border-info-200 bg-info-50 px-4 py-3 text-sm text-info-800">
-          Pick the bank inflow you already recorded for a cash deposit, then tick the cash
-          sales that made it up. The amounts must match exactly. The form stays open after
-          each match so you can process several deposits in one session.
+          Tick the bank inflow(s) you already recorded for a cash deposit, then tick the cash
+          sales that made it up. The totals must match exactly. You can select multiple inflows
+          if cash was deposited more than once. The form stays open after each match so you can
+          process several deposits in one session.
         </div>
 
-        {/* V3 Fix 3: running success banner — shows after each match so the user
-            can see progress while continuing to match more inflows. */}
         {matchedCount > 0 && (
           <div className="rounded-lg border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-800">
             <p className="font-semibold">
@@ -149,57 +181,97 @@ export default function MatchCashDepositModal({ onClose, onMatched }) {
           </div>
         ) : null}
 
-        {/* Step 1: pick the bank inflow */}
-        <Field label="Bank inflow">
-          {inflowsLoading ? (
-            <p className="text-body text-surface-500">Loading eligible inflows…</p>
-          ) : inflows.length === 0 ? (
-            <p className="text-body text-surface-500">
-              No eligible bank inflows. Record the bank deposit first (from the Transactions tab) with
-              category <span className="font-medium">Cash deposit confirmation</span> or{' '}
-              <span className="font-medium">Unallocated income</span>, then come back here to match it.
-            </p>
-          ) : (
-            <select
-              value={selectedInflowId}
-              onChange={(event) => {
-                setSelectedInflowId(event.target.value);
-                setSelectedCashIds([]);
-                setError('');
-              }}
-              className="w-full rounded-md border border-surface-300 bg-surface-0 px-3 py-2 text-sm text-surface-900 outline-none transition-colors duration-fast focus:border-brand-500 focus:ring-2 focus:ring-brand-500"
-            >
-              <option value="">Select an inflow…</option>
-              {inflows.map((inflow) => (
-                <option key={inflow.id} value={inflow.id}>
-                  {fmtDate(inflow.transactionDate)} — {displayAccountName(inflow.bankAccount)} — {fmtMoney(inflow.amount)} {inflow.description ? `— ${inflow.description}` : ''}
-                </option>
-              ))}
-            </select>
-          )}
-        </Field>
-
-        {selectedInflow && (
-          <div className="rounded-lg border border-surface-200 bg-surface-50 px-4 py-3">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <div>
-                <p className="text-caption text-surface-500">Date</p>
-                <p className="text-body-medium text-surface-900">{fmtDate(selectedInflow.transactionDate)}</p>
-              </div>
-              <div>
-                <p className="text-caption text-surface-500">Account</p>
-                <p className="text-body-medium text-surface-900">{displayAccountName(selectedInflow.bankAccount)}</p>
-              </div>
-              <div>
-                <p className="text-caption text-surface-500">Amount</p>
-                <p className="text-heading font-bold text-surface-900">{fmtMoney(selectedInflow.amount)}</p>
-              </div>
+        {/* Step 1: tick the bank inflows */}
+        <div>
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <p className="text-body-medium font-semibold text-surface-900">Bank inflows</p>
+              <p className="text-caption text-surface-500">
+                Tick the bank deposit(s) that represent cash taken to the bank.
+              </p>
             </div>
-            {selectedInflow.description ? (
-              <p className="mt-2 text-caption text-surface-500">{selectedInflow.description}</p>
-            ) : null}
+            {selectedInflowIds.length > 0 && (
+              <div className="text-right">
+                <p className="text-caption text-surface-500">Selected inflow total</p>
+                <p className="text-body-medium font-semibold text-surface-900">
+                  {fmtMoney(selectedInflowTotal)}
+                </p>
+                {selectedInflowIds.length > 1 && (
+                  <p className="text-caption text-surface-500">
+                    {selectedInflowIds.length} inflow{selectedInflowIds.length === 1 ? '' : 's'}
+                  </p>
+                )}
+                {!sameAccount && (
+                  <p className="text-caption text-error-600">
+                    Must be same account
+                  </p>
+                )}
+              </div>
+            )}
           </div>
-        )}
+
+          <div className="mt-3 overflow-hidden rounded-lg border border-surface-200 bg-surface-0">
+            {inflowsLoading ? (
+              <p className="px-4 py-4 text-body text-surface-500">Loading eligible inflows…</p>
+            ) : inflows.length === 0 ? (
+              <div className="px-4 py-4">
+                <p className="text-body text-surface-500">
+                  No eligible bank inflows. Record the bank deposit first (from the Transactions tab) with
+                  category <span className="font-medium">Cash deposit confirmation</span> or{' '}
+                  <span className="font-medium">Unallocated income</span>, then come back here to match it.
+                </p>
+              </div>
+            ) : (
+              <>
+                {inflows.length > 1 && (
+                  <div className="border-b border-surface-100 px-4 py-2 bg-surface-50">
+                    <label className="flex cursor-pointer items-center gap-2 text-caption font-medium text-surface-600">
+                      <input
+                        type="checkbox"
+                        checked={selectedInflowIds.length === inflows.length}
+                        onChange={selectAllInflows}
+                        className="h-3.5 w-3.5 rounded border-surface-300 text-brand-500 focus:ring-brand-500"
+                      />
+                      {selectedInflowIds.length === inflows.length ? 'Deselect all' : 'Select all'}
+                    </label>
+                  </div>
+                )}
+                <ul className="divide-y divide-surface-100 max-h-52 overflow-y-auto">
+                  {inflows.map((inflow) => {
+                    const checked = selectedInflowIds.includes(inflow.id);
+                    return (
+                      <li key={inflow.id}>
+                        <label className={`flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors duration-fast hover:bg-surface-50 ${checked ? 'bg-brand-50' : ''}`}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleInflow(inflow.id)}
+                            className="h-4 w-4 rounded border-surface-300 text-brand-500 focus:ring-brand-500"
+                          />
+                          <div className="flex flex-1 items-center justify-between gap-3">
+                            <div>
+                              <p className="text-body-medium text-surface-900">
+                                {displayAccountName(inflow.bankAccount)}
+                              </p>
+                              <p className="text-caption text-surface-500">
+                                {fmtDate(inflow.transactionDate, true)}
+                                {inflow.description ? ` · ${inflow.description}` : ''}
+                                {inflow.reference ? ` · Ref: ${inflow.reference}` : ''}
+                              </p>
+                            </div>
+                            <p className="text-body-medium font-semibold text-success-700 whitespace-nowrap">
+                              {fmtMoney(inflow.amount)}
+                            </p>
+                          </div>
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
+            )}
+          </div>
+        </div>
 
         {/* Step 2: tick the cash sales */}
         <div>
@@ -207,16 +279,16 @@ export default function MatchCashDepositModal({ onClose, onMatched }) {
             <div>
               <p className="text-body-medium font-semibold text-surface-900">Cash sales in this deposit</p>
               <p className="text-caption text-surface-500">
-                Tick the individual cash sales that were pooled into the bank inflow above.
+                Tick the individual cash sales that were pooled into the bank deposit above.
               </p>
             </div>
-            {selectedInflow && (
+            {(selectedInflowIds.length > 0 || selectedCashIds.length > 0) && (
               <div className="text-right">
                 <p className="text-caption text-surface-500">Selected cash total</p>
                 <p className={`text-body-medium font-semibold ${amountsMatch ? 'text-success-700' : 'text-surface-900'}`}>
                   {fmtMoney(selectedCashTotal)}
                 </p>
-                {selectedCashIds.length > 0 && !amountsMatch && (
+                {selectedCashIds.length > 0 && !amountsMatch && selectedInflowIds.length > 0 && (
                   <p className="text-caption text-error-600">
                     {difference > 0 ? 'Short by ' : 'Over by '}{fmtMoney(Math.abs(difference))}
                   </p>
@@ -231,45 +303,83 @@ export default function MatchCashDepositModal({ onClose, onMatched }) {
             ) : availableCash.length === 0 ? (
               <p className="px-4 py-4 text-body text-surface-500">No unbanked cash sales.</p>
             ) : (
-              <ul className="divide-y divide-surface-100 max-h-80 overflow-y-auto">
-                {availableCash.map((cash) => {
-                  const checked = selectedCashIds.includes(cash.id);
-                  return (
-                    <li key={cash.id}>
-                      <label className={`flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors duration-fast hover:bg-surface-50 ${checked ? 'bg-brand-50' : ''}`}>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleCashSale(cash.id)}
-                          className="h-4 w-4 rounded border-surface-300 text-brand-500 focus:ring-brand-500"
-                        />
-                        <div className="flex flex-1 items-center justify-between gap-3">
-                          <div>
-                            <p className="text-body-medium text-surface-900">
-                              {cash.sale?.receiptNumber || 'Cash sale'}
-                              {cash.customer?.name ? ` — ${cash.customer.name}` : ' — Walk-in'}
-                            </p>
-                            <p className="text-caption text-surface-500">
-                              {fmtDate(cash.transactionDate, true)}
-                              {cash.description ? ` · ${cash.description}` : ''}
+              <>
+                {availableCash.length > 1 && (
+                  <div className="border-b border-surface-100 px-4 py-2 bg-surface-50">
+                    <label className="flex cursor-pointer items-center gap-2 text-caption font-medium text-surface-600">
+                      <input
+                        type="checkbox"
+                        checked={selectedCashIds.length === availableCash.length}
+                        onChange={selectAllCash}
+                        className="h-3.5 w-3.5 rounded border-surface-300 text-brand-500 focus:ring-brand-500"
+                      />
+                      {selectedCashIds.length === availableCash.length ? 'Deselect all' : 'Select all'}
+                    </label>
+                  </div>
+                )}
+                <ul className="divide-y divide-surface-100 max-h-80 overflow-y-auto">
+                  {availableCash.map((cash) => {
+                    const checked = selectedCashIds.includes(cash.id);
+                    return (
+                      <li key={cash.id}>
+                        <label className={`flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors duration-fast hover:bg-surface-50 ${checked ? 'bg-brand-50' : ''}`}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleCashSale(cash.id)}
+                            className="h-4 w-4 rounded border-surface-300 text-brand-500 focus:ring-brand-500"
+                          />
+                          <div className="flex flex-1 items-center justify-between gap-3">
+                            <div>
+                              <p className="text-body-medium text-surface-900">
+                                {cash.sale?.receiptNumber || 'Cash sale'}
+                                {cash.customer?.name ? ` — ${cash.customer.name}` : ' — Walk-in'}
+                              </p>
+                              <p className="text-caption text-surface-500">
+                                {fmtDate(cash.transactionDate, true)}
+                                {cash.description ? ` · ${cash.description}` : ''}
+                              </p>
+                            </div>
+                            <p className="text-body-medium font-semibold text-surface-900 whitespace-nowrap">
+                              {fmtMoney(cash.availableAmount)}
                             </p>
                           </div>
-                          <p className="text-body-medium font-semibold text-surface-900">
-                            {fmtMoney(cash.availableAmount)}
-                          </p>
-                        </div>
-                      </label>
-                    </li>
-                  );
-                })}
-              </ul>
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
             )}
           </div>
         </div>
 
-        {/* V3 Fix 3: "Close" replaces "Cancel" once the user has matched at least
-            one deposit, since the work is already saved. Submit button is
-            disabled while amounts don't match. */}
+        {/* Amount comparison summary — shown when both sides have selections */}
+        {selectedInflowIds.length > 0 && selectedCashIds.length > 0 && (
+          <div className={`rounded-lg border px-4 py-3 ${amountsMatch ? 'border-success-200 bg-success-50' : 'border-warning-200 bg-warning-50'}`}>
+            <div className="flex items-center justify-between gap-4 text-sm">
+              <div>
+                <span className="font-medium">{selectedInflowIds.length} inflow{selectedInflowIds.length === 1 ? '' : 's'}</span>
+                <span className="mx-1.5 text-surface-400">→</span>
+                <span className="font-semibold">{fmtMoney(selectedInflowTotal)}</span>
+              </div>
+              <div className={`text-lg font-bold ${amountsMatch ? 'text-success-700' : 'text-warning-700'}`}>
+                {amountsMatch ? '=' : '≠'}
+              </div>
+              <div className="text-right">
+                <span className="font-medium">{selectedCashIds.length} cash sale{selectedCashIds.length === 1 ? '' : 's'}</span>
+                <span className="mx-1.5 text-surface-400">→</span>
+                <span className="font-semibold">{fmtMoney(selectedCashTotal)}</span>
+              </div>
+            </div>
+            {!amountsMatch && (
+              <p className="mt-1 text-center text-caption text-warning-700">
+                {difference > 0 ? `Cash sales are short by ${fmtMoney(Math.abs(difference))}` : `Cash sales exceed inflows by ${fmtMoney(Math.abs(difference))}`}
+              </p>
+            )}
+          </div>
+        )}
+
         <div className="flex flex-col-reverse gap-3 border-t border-surface-200 pt-4 sm:flex-row sm:justify-end">
           <button
             type="button"
@@ -280,7 +390,7 @@ export default function MatchCashDepositModal({ onClose, onMatched }) {
           </button>
           <button
             type="submit"
-            disabled={submitting || !amountsMatch || inflows.length === 0}
+            disabled={submitting || !amountsMatch || !sameAccount || inflows.length === 0}
             className="text-body-medium rounded-md bg-brand-600 px-4 py-2 text-surface-0 transition-colors duration-fast hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-surface-300"
           >
             {submitting
