@@ -37,66 +37,135 @@ const isPaystackReadyEmail = (value) => {
   return true;
 };
 
-/* ─── Google Places Autocomplete ─── */
-// Key insight: Google's Autocomplete widget takes exclusive control of the input
-// DOM element. We must NOT trigger React state updates on every keystroke (via an
-// 'input' listener) because that causes parent re-renders which conflict with
-// Google's internal input management, freezing the field.
-// Instead we ONLY fire onChange when:
-//   (a) the user picks a suggestion (place_changed), or
-//   (b) the user finishes typing manually and leaves the field (blur).
+/* ─── Google Places Autocomplete (custom dropdown, no widget) ─── */
+// Previous attempts used google.maps.places.Autocomplete widget which takes over
+// the input DOM and conflicts with React/modal CSS. This version uses the
+// AutocompleteService API instead — a pure data API that returns predictions.
+// We render the dropdown ourselves. Google never touches our input.
 function AddressAutocomplete({ onChange, placeholder }) {
-  const inputRef = useRef(null);
-  const acRef = useRef(null);
-  const cbRef = useRef(onChange);
-  cbRef.current = onChange;
+  const [query, setQuery] = useState('');
+  const [predictions, setPredictions] = useState([]);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [serviceReady, setServiceReady] = useState(false);
+  const serviceRef = useRef(null);
+  const debounceRef = useRef(null);
+  const containerRef = useRef(null);
 
+  // Initialize the AutocompleteService (not the widget)
   useEffect(() => {
-    const el = inputRef.current;
-    if (!el || acRef.current) return;
-
     const tryInit = () => {
-      if (!window.google?.maps?.places) return false;
-      const ac = new window.google.maps.places.Autocomplete(el, {
-        types: ['address'],
-        componentRestrictions: { country: 'ng' },
-      });
-      ac.setBounds(new window.google.maps.LatLngBounds(
-        { lat: 6.4, lng: 3.4 },
-        { lat: 6.6, lng: 3.65 },
-      ));
-      ac.addListener('place_changed', () => {
-        const place = ac.getPlace();
-        const addr = place?.formatted_address || place?.name || '';
-        if (addr) cbRef.current(addr);
-      });
-      acRef.current = ac;
-      return true;
+      if (window.google?.maps?.places?.AutocompleteService) {
+        serviceRef.current = new window.google.maps.places.AutocompleteService();
+        setServiceReady(true);
+        return true;
+      }
+      return false;
     };
-
-    // Also sync when user tabs/clicks away (manual address without picking suggestion)
-    const onBlur = () => { if (el.value) cbRef.current(el.value); };
-    el.addEventListener('blur', onBlur);
-
     if (!tryInit()) {
       const id = setInterval(() => { if (tryInit()) clearInterval(id); }, 300);
-      const tm = setTimeout(() => clearInterval(id), 5000);
-      return () => { clearInterval(id); clearTimeout(tm); el.removeEventListener('blur', onBlur); };
+      const tm = setTimeout(() => clearInterval(id), 8000);
+      return () => { clearInterval(id); clearTimeout(tm); };
     }
-    return () => { el.removeEventListener('blur', onBlur); };
   }, []);
 
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  function handleInput(e) {
+    const val = e.target.value;
+    setQuery(val);
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    if (!val || val.length < 3 || !serviceRef.current) {
+      setPredictions([]);
+      setShowDropdown(false);
+      return;
+    }
+
+    debounceRef.current = setTimeout(() => {
+      serviceRef.current.getPlacePredictions(
+        {
+          input: val,
+          componentRestrictions: { country: 'ng' },
+          types: ['address'],
+          locationBias: {
+            center: { lat: 6.5, lng: 3.5 },
+            radius: 30000,
+          },
+        },
+        (results, status) => {
+          if (status === 'OK' && results?.length) {
+            setPredictions(results.slice(0, 5));
+            setShowDropdown(true);
+          } else {
+            setPredictions([]);
+            setShowDropdown(false);
+          }
+        },
+      );
+    }, 300);
+  }
+
+  function handleSelect(prediction) {
+    setQuery(prediction.description);
+    setPredictions([]);
+    setShowDropdown(false);
+    onChange(prediction.description);
+  }
+
+  function handleBlur() {
+    // Small delay so click on dropdown item registers before blur hides it
+    setTimeout(() => {
+      if (query) onChange(query);
+      setShowDropdown(false);
+    }, 200);
+  }
+
   return (
-    <div>
+    <div ref={containerRef} className="relative">
       <label className="block text-body text-surface-700 mb-1">Delivery address</label>
       <input
-        ref={inputRef}
         type="text"
-        defaultValue=""
+        value={query}
+        onChange={handleInput}
+        onFocus={() => predictions.length > 0 && setShowDropdown(true)}
+        onBlur={handleBlur}
         placeholder={placeholder || 'Start typing your address...'}
         className="w-full rounded-md border border-surface-300 bg-surface-0 px-3 py-2 text-body text-surface-900 placeholder:text-surface-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-        autoComplete="off"
+        autoComplete="new-password"
       />
+      {showDropdown && predictions.length > 0 && (
+        <div className="absolute z-50 left-0 right-0 mt-1 bg-white rounded-lg border border-surface-200 shadow-lg overflow-hidden">
+          {predictions.map((p) => (
+            <button
+              key={p.place_id}
+              type="button"
+              className="w-full text-left px-3 py-2.5 text-body text-surface-800 hover:bg-brand-50 transition-colors cursor-pointer border-b border-surface-100 last:border-b-0"
+              onMouseDown={(e) => { e.preventDefault(); handleSelect(p); }}
+            >
+              <span className="font-medium">{p.structured_formatting?.main_text || p.description}</span>
+              {p.structured_formatting?.secondary_text && (
+                <span className="text-surface-500 text-caption ml-1">{p.structured_formatting.secondary_text}</span>
+              )}
+            </button>
+          ))}
+          <div className="px-3 py-1.5 text-right">
+            <span className="text-[10px] text-surface-400">Powered by Google</span>
+          </div>
+        </div>
+      )}
+      {!serviceReady && (
+        <p className="text-caption text-surface-400 mt-1">Loading address suggestions...</p>
+      )}
     </div>
   );
 }
