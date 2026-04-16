@@ -64,6 +64,7 @@ model User {
   approvalRequestsResolved ApprovalRequest[] @relation("ApprovalResolvedBy")
   monthCloses MonthClose[] @relation("MonthClosedBy")
   farmerLedgerEntriesCreated FarmerLedgerEntry[] @relation("FarmerLedgerEntryCreatedBy")
+  auditLogs AuditLog[] @relation("AuditLogPerformedBy")
 
   @@map("users")
 }
@@ -814,4 +815,23 @@ model AppSetting {
   updatedBy   User?    @relation("AppSettingUpdatedBy", fields: [updatedById], references: [id])
 
   @@map("app_settings")
+}
+
+// ─── AUDIT LOG ────────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  entityType String   @map("entity_type")   // e.g. "Batch", "BankTransaction"
+  entityId   String   @map("entity_id")     // ID of the record that changed
+  action     String                         // e.g. "UPDATE", "CREATE", "DELETE", "RECEIVE", "CLOSE"
+  changes    Json?                          // { field: { from, to } } for each changed field
+  performedById String @map("performed_by_id")
+  performedAt   DateTime @default(now()) @map("performed_at")
+
+  performedBy User @relation("AuditLogPerformedBy", fields: [performedById], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([performedById])
+  @@index([performedAt])
+  @@map("audit_logs")
 }

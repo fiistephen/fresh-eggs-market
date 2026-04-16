@@ -94,6 +94,7 @@ export default function BatchDetail() {
   const [showClose, setShowClose] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
+  const [auditLog, setAuditLog] = useState(null);
 
   const canManage = ['ADMIN', 'MANAGER'].includes(user?.role);
   const canCount = ['ADMIN', 'MANAGER', 'SHOP_FLOOR'].includes(user?.role);
@@ -153,6 +154,7 @@ export default function BatchDetail() {
     ...(batch.bookings?.length > 0 ? [{ key: 'bookings', label: `Bookings (${batch._count?.bookings || batch.bookings.length})` }] : []),
     ...(batch.sales?.length > 0 ? [{ key: 'sales', label: `Sales (${batch._count?.sales || batch.sales.length})` }] : []),
     ...((analysis && canManage) ? [{ key: 'analysis', label: 'Analysis' }] : []),
+    ...(canManage ? [{ key: 'auditlog', label: 'History' }] : []),
   ];
 
   return (
@@ -264,6 +266,7 @@ export default function BatchDetail() {
       {activeTab === 'bookings' && <BookingsTab batch={batch} />}
       {activeTab === 'sales' && <SalesTab batch={batch} />}
       {activeTab === 'analysis' && analysis && <AnalysisTab analysis={analysis} />}
+      {activeTab === 'auditlog' && <AuditLogTab batchId={batch.id} auditLog={auditLog} setAuditLog={setAuditLog} />}
 
       {/* Modals */}
       {showReceive && (
@@ -746,6 +749,136 @@ function AnalysisTab({ analysis }) {
           </div>
         </div>
       </Card>
+    </div>
+  );
+}
+
+// ─── AUDIT LOG TAB ─────────────────────────────────────────────
+
+const ACTION_LABELS = {
+  UPDATE: 'Edited',
+  RECEIVE: 'Received',
+  CLOSE: 'Closed',
+  DELETE: 'Deleted',
+  CREATE: 'Created',
+};
+
+const ACTION_COLORS = {
+  UPDATE: 'text-blue-700 bg-blue-50',
+  RECEIVE: 'text-green-700 bg-green-50',
+  CLOSE: 'text-surface-700 bg-surface-100',
+  DELETE: 'text-red-700 bg-red-50',
+  CREATE: 'text-purple-700 bg-purple-50',
+};
+
+function formatFieldName(field) {
+  return field
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/^./, s => s.toUpperCase())
+    .replace('Egg Type Key', 'Egg Type')
+    .replace('Expected Date', 'Arrival Date')
+    .replace('Available For Booking', 'Available for Booking');
+}
+
+function formatChangeValue(field, val) {
+  if (val == null || val === '') return '—';
+  if (field === 'wholesalePrice' || field === 'retailPrice' || field === 'costPrice') {
+    return formatCurrency(val);
+  }
+  if (field === 'expectedDate' || field === 'receivedDate') {
+    return formatDate(val);
+  }
+  if (Array.isArray(val)) return val.join(', ');
+  return String(val);
+}
+
+function AuditLogTab({ batchId, auditLog, setAuditLog }) {
+  const [loading, setLoading] = useState(!auditLog);
+
+  useEffect(() => {
+    if (!auditLog) {
+      setLoading(true);
+      api.get(`/batches/${batchId}/audit-log`)
+        .then(data => setAuditLog(data.logs || []))
+        .catch(() => setAuditLog([]))
+        .finally(() => setLoading(false));
+    }
+  }, [batchId, auditLog, setAuditLog]);
+
+  if (loading) {
+    return (
+      <Card>
+        <p className="text-body text-surface-500 py-8 text-center">Loading history…</p>
+      </Card>
+    );
+  }
+
+  if (!auditLog || auditLog.length === 0) {
+    return (
+      <Card>
+        <EmptyState
+          title="No changes recorded"
+          description="Edit, receive, or close actions on this batch will appear here."
+        />
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {auditLog.map(entry => {
+        const changes = entry.changes || {};
+        const changedFields = Object.keys(changes);
+        const actor = entry.performedBy;
+        const actorName = actor ? `${actor.firstName} ${actor.lastName}` : 'System';
+
+        return (
+          <Card key={entry.id} padding="comfortable">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${ACTION_COLORS[entry.action] || 'text-surface-700 bg-surface-100'}`}>
+                  {ACTION_LABELS[entry.action] || entry.action}
+                </span>
+                <span className="text-body-medium text-surface-900">{actorName}</span>
+                <span className="text-caption text-surface-500">({actor?.role || '—'})</span>
+              </div>
+              <span className="text-caption text-surface-500 shrink-0">
+                {new Date(entry.performedAt).toLocaleString('en-NG', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              </span>
+            </div>
+
+            {changedFields.length > 0 && entry.action === 'UPDATE' && (
+              <div className="mt-3 space-y-1.5">
+                {changedFields.map(field => (
+                  <div key={field} className="flex flex-wrap items-baseline gap-x-2 text-caption">
+                    <span className="font-medium text-surface-700">{formatFieldName(field)}:</span>
+                    <span className="text-surface-500 line-through">{formatChangeValue(field, changes[field]?.from)}</span>
+                    <span className="text-surface-500">→</span>
+                    <span className="text-surface-900">{formatChangeValue(field, changes[field]?.to)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {entry.action === 'RECEIVE' && changes.eggCodes?.to && (
+              <div className="mt-3 text-caption text-surface-600">
+                <span className="font-medium">Egg codes:</span> {Array.isArray(changes.eggCodes.to) ? changes.eggCodes.to.join(', ') : String(changes.eggCodes.to)}
+                {changes.actualQuantity?.to && <> · <span className="font-medium">{changes.actualQuantity.to} crates</span></>}
+              </div>
+            )}
+
+            {entry.action === 'CLOSE' && changes.unfulfilledBookings?.note && (
+              <p className="mt-2 text-caption text-warning-700">{changes.unfulfilledBookings.note}</p>
+            )}
+
+            {entry.action === 'DELETE' && (
+              <div className="mt-2 text-caption text-surface-600">
+                Batch <span className="font-medium">{changes.name?.was}</span> ({formatDate(changes.expectedDate?.was)}) was deleted.
+              </div>
+            )}
+          </Card>
+        );
+      })}
     </div>
   );
 }

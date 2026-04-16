@@ -439,9 +439,65 @@ export default async function batchRoutes(fastify) {
       const { expectedDate, expectedQuantity, availableForBooking, eggTypeKey, wholesalePrice, retailPrice, costPrice } = request.body;
       const eggTypes = await getCustomerEggTypeConfig();
       const data = {};
-      if (expectedDate !== undefined) data.expectedDate = new Date(expectedDate);
-      if (expectedQuantity !== undefined) data.expectedQuantity = expectedQuantity;
-      if (availableForBooking !== undefined) data.availableForBooking = availableForBooking;
+
+      // Track what changed for the audit log
+      const changes = {};
+
+      if (expectedDate !== undefined) {
+        const newDate = new Date(expectedDate);
+        data.expectedDate = newDate;
+
+        // Regenerate batch name from the new date
+        const day = newDate.getUTCDate();
+        const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+        const month = MONTHS[newDate.getUTCMonth()];
+        const year = newDate.getUTCFullYear();
+        const baseName = `${day}${month}${year}`;
+
+        // Check for collisions with other batches (excluding this one)
+        const others = await prisma.batch.findMany({
+          where: { name: { startsWith: baseName }, id: { not: existing.id } },
+        });
+
+        let newName;
+        if (others.length === 0) {
+          newName = baseName;
+        } else {
+          // If there's exactly one other batch with the plain baseName, rename it to A
+          const plainMatch = others.find((b) => b.name === baseName);
+          if (plainMatch) {
+            await prisma.batch.update({ where: { id: plainMatch.id }, data: { name: `${baseName}A` } });
+          }
+          const letters = others.map((b) => b.name.replace(baseName, '')).filter(Boolean).sort();
+          const nextLetter = String.fromCharCode(
+            (letters.length > 0 ? letters[letters.length - 1].charCodeAt(0) : 64) + 1,
+          );
+          newName = `${baseName}${nextLetter}`;
+        }
+
+        data.name = newName;
+        if (existing.name !== newName) {
+          changes.name = { from: existing.name, to: newName };
+        }
+        if (existing.expectedDate.toISOString() !== newDate.toISOString()) {
+          changes.expectedDate = { from: existing.expectedDate.toISOString().slice(0, 10), to: newDate.toISOString().slice(0, 10) };
+        }
+      }
+
+      if (expectedQuantity !== undefined && expectedQuantity !== existing.expectedQuantity) {
+        data.expectedQuantity = expectedQuantity;
+        changes.expectedQuantity = { from: existing.expectedQuantity, to: expectedQuantity };
+      } else if (expectedQuantity !== undefined) {
+        data.expectedQuantity = expectedQuantity;
+      }
+
+      if (availableForBooking !== undefined && availableForBooking !== existing.availableForBooking) {
+        data.availableForBooking = availableForBooking;
+        changes.availableForBooking = { from: existing.availableForBooking, to: availableForBooking };
+      } else if (availableForBooking !== undefined) {
+        data.availableForBooking = availableForBooking;
+      }
+
       if (eggTypeKey !== undefined) {
         const allowedEggType = findCustomerEggTypeByKey(
           eggTypes.filter((entry) => entry.isActive || entry.key === existing.eggTypeKey),
@@ -451,15 +507,47 @@ export default async function batchRoutes(fastify) {
           return reply.code(400).send({ error: 'Choose an active egg type for this batch' });
         }
         data.eggTypeKey = allowedEggType.key;
+        if (existing.eggTypeKey !== allowedEggType.key) {
+          changes.eggTypeKey = { from: existing.eggTypeKey, to: allowedEggType.key };
+        }
       }
-      if (wholesalePrice !== undefined) data.wholesalePrice = wholesalePrice;
-      if (retailPrice !== undefined) data.retailPrice = retailPrice;
-      if (costPrice !== undefined) data.costPrice = costPrice;
+
+      if (wholesalePrice !== undefined) {
+        data.wholesalePrice = wholesalePrice;
+        if (Number(existing.wholesalePrice) !== Number(wholesalePrice)) {
+          changes.wholesalePrice = { from: Number(existing.wholesalePrice), to: Number(wholesalePrice) };
+        }
+      }
+      if (retailPrice !== undefined) {
+        data.retailPrice = retailPrice;
+        if (Number(existing.retailPrice) !== Number(retailPrice)) {
+          changes.retailPrice = { from: Number(existing.retailPrice), to: Number(retailPrice) };
+        }
+      }
+      if (costPrice !== undefined) {
+        data.costPrice = costPrice;
+        if (Number(existing.costPrice) !== Number(costPrice)) {
+          changes.costPrice = { from: Number(existing.costPrice), to: Number(costPrice) };
+        }
+      }
 
       const batch = await prisma.batch.update({
         where: { id: request.params.id },
         data,
       });
+
+      // Write audit log if anything actually changed
+      if (Object.keys(changes).length > 0) {
+        await prisma.auditLog.create({
+          data: {
+            entityType: 'Batch',
+            entityId: batch.id,
+            action: 'UPDATE',
+            changes,
+            performedById: request.user.sub,
+          },
+        });
+      }
 
       return reply.send({
         batch: {
@@ -488,6 +576,21 @@ export default async function batchRoutes(fastify) {
       if (existing._count.bookings > 0) {
         return reply.code(400).send({ error: 'Cannot delete batch with existing bookings' });
       }
+
+      // Audit log: batch deleted (create before deletion since the batch will cease to exist)
+      await prisma.auditLog.create({
+        data: {
+          entityType: 'Batch',
+          entityId: existing.id,
+          action: 'DELETE',
+          changes: {
+            name: { was: existing.name },
+            expectedDate: { was: existing.expectedDate.toISOString().slice(0, 10) },
+            expectedQuantity: { was: existing.expectedQuantity },
+          },
+          performedById: request.user.sub,
+        },
+      });
 
       await prisma.batch.delete({ where: { id: request.params.id } });
       return reply.send({ message: 'Batch deleted' });
@@ -629,6 +732,22 @@ export default async function batchRoutes(fastify) {
           },
         });
 
+        // Audit log: batch received
+        await tx.auditLog.create({
+          data: {
+            entityType: 'Batch',
+            entityId: receivedBatch.id,
+            action: 'RECEIVE',
+            changes: {
+              status: { from: 'OPEN', to: 'RECEIVED' },
+              actualQuantity: { from: null, to: actualQuantity },
+              farmerId: { from: null, to: farmerId },
+              eggCodes: { from: null, to: eggCodes.map(ec => `${normalizeItemCode(ec.code)} ×${ec.quantity}`) },
+            },
+            performedById: request.user.sub,
+          },
+        });
+
         return receivedBatch;
       });
 
@@ -665,6 +784,20 @@ export default async function batchRoutes(fastify) {
         data: {
           status: 'CLOSED',
           closedDate: new Date(),
+        },
+      });
+
+      // Audit log: batch closed
+      await prisma.auditLog.create({
+        data: {
+          entityType: 'Batch',
+          entityId: batch.id,
+          action: 'CLOSE',
+          changes: {
+            status: { from: existing.status, to: 'CLOSED' },
+            ...(unfulfilledBookings > 0 ? { unfulfilledBookings: { note: `${unfulfilledBookings} confirmed booking(s) still unfulfilled` } } : {}),
+          },
+          performedById: request.user.sub,
         },
       });
 
@@ -825,6 +958,25 @@ export default async function batchRoutes(fastify) {
           effectiveFrom: policy.effectiveFrom,
         },
       });
+    },
+  });
+
+  // ─── BATCH AUDIT LOG ────────────────────────────────────────────
+  fastify.get('/batches/:id/audit-log', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER')],
+    handler: async (request, reply) => {
+      const batch = await prisma.batch.findUnique({ where: { id: request.params.id } });
+      if (!batch) return reply.code(404).send({ error: 'Batch not found' });
+
+      const logs = await prisma.auditLog.findMany({
+        where: { entityType: 'Batch', entityId: request.params.id },
+        include: {
+          performedBy: { select: { id: true, firstName: true, lastName: true, role: true } },
+        },
+        orderBy: { performedAt: 'desc' },
+      });
+
+      return reply.send({ logs });
     },
   });
 }
