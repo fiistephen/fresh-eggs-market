@@ -75,6 +75,15 @@ sync_api() {
     --exclude 'node_modules' \
     "${SRC_DIR}/api/" "${LIVE_DIR}/api/"
 
+  # CloudLinux / cPanel virtfs mounts Docker overlay2 layers into the
+  # digivlrx user jail at /home/virtfs/digivlrx/var/lib/docker/overlay2/…
+  # This pins the overlays and causes "device or resource busy" errors
+  # when Docker tries to recreate containers. Unmount them preemptively.
+  echo "Clearing stale virtfs overlay mounts (if any)"
+  for mnt in $(mount | grep 'virtfs/digivlrx.*overlay2' | awk '{print $3}'); do
+    umount "$mnt" 2>/dev/null && echo "  unmounted $mnt" || true
+  done
+
   echo "Rebuilding and restarting API container"
   (
     cd "$LIVE_DIR"
