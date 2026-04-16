@@ -234,6 +234,7 @@ model BatchEggCode {
 
   bookings      Booking[]
   saleLineItems SaleLineItem[]
+  portalCheckoutItems PortalCheckoutItem[]
 
   @@unique([batchId, code])
   @@map("batch_egg_codes")
@@ -314,6 +315,9 @@ model Booking {
   orderValue     Decimal       @map("order_value") @db.Decimal(12, 2) // Full value at booking price
   status         BookingStatus @default(CONFIRMED)
   channel        String        @default("backend") // "website" or "backend"
+  deliveryRequested Boolean    @default(false) @map("delivery_requested")
+  deliveryAddress String?      @map("delivery_address")
+  deliveryFee    Decimal?      @db.Decimal(12, 2) @map("delivery_fee")
   notes          String?
   createdAt      DateTime      @default(now()) @map("created_at")
   updatedAt      DateTime      @updatedAt @map("updated_at")
@@ -391,6 +395,9 @@ model PortalCheckout {
   orderValue           Decimal                  @map("order_value") @db.Decimal(12, 2)
   amountToPay          Decimal                  @map("amount_to_pay") @db.Decimal(12, 2)
   balanceAfterPayment  Decimal                  @map("balance_after_payment") @db.Decimal(12, 2)
+  deliveryRequested    Boolean                  @default(false) @map("delivery_requested")
+  deliveryAddress      String?                  @map("delivery_address")
+  deliveryFee          Decimal?                 @db.Decimal(12, 2) @map("delivery_fee")
   reference            String                   @unique
   paystackReference    String?                  @unique @map("paystack_reference")
   paystackAccessCode   String?                  @map("paystack_access_code")
@@ -413,6 +420,7 @@ model PortalCheckout {
   adminConfirmedBy     User?                    @relation("PortalCheckoutAdminConfirmedBy", fields: [adminConfirmedById], references: [id])
   selectedStatementLine BankStatementLine?      @relation("BankStatementLineSelectedPortalCheckout")
   confirmationStatementLine BankStatementLine?  @relation("PortalCheckoutConfirmedStatementLine", fields: [confirmationStatementLineId], references: [id])
+  items                PortalCheckoutItem[]
   decisions            PortalCheckoutDecision[]
 
   @@map("portal_checkouts")
@@ -434,6 +442,20 @@ model PortalCheckoutDecision {
   @@index([portalCheckoutId, createdAt])
   @@index([actorId, createdAt])
   @@map("portal_checkout_decisions")
+}
+
+model PortalCheckoutItem {
+  id              String          @id @default(cuid())
+  checkoutId      String          @map("checkout_id")
+  batchEggCodeId  String          @map("batch_egg_code_id")
+  quantity        Int
+  unitPrice       Decimal         @db.Decimal(12, 2)
+  lineTotal       Decimal         @db.Decimal(12, 2)
+
+  checkout        PortalCheckout  @relation(fields: [checkoutId], references: [id], onDelete: Cascade)
+  batchEggCode    BatchEggCode    @relation(fields: [batchEggCodeId], references: [id])
+
+  @@map("portal_checkout_items")
 }
 
 // ─── SALES ─────────────────────────────────────────────────────

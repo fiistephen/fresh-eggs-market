@@ -78,6 +78,26 @@ function mapBatchEggCode(eggCode, batch = null) {
 }
 
 function mapPortalBatch(batch, eggTypes, extra = {}) {
+  let displayDate = null;
+  if (batch.status === 'RECEIVED') {
+    displayDate = 'Available now';
+  } else if (batch.status === 'OPEN' && batch.expectedDate) {
+    const date = new Date(batch.expectedDate);
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+    });
+    const formatted = formatter.format(date);
+    // Add ordinal suffix (st, nd, rd, th)
+    const day = date.getDate();
+    const suffix = (day % 10 === 1 && day !== 11) ? 'st'
+      : (day % 10 === 2 && day !== 12) ? 'nd'
+        : (day % 10 === 3 && day !== 13) ? 'rd'
+          : 'th';
+    displayDate = `Arriving ${formatted.replace(/\b\d+\b/, `${day}${suffix}`)}`;
+  }
+
   return {
     id: batch.id,
     name: batch.name,
@@ -86,6 +106,7 @@ function mapPortalBatch(batch, eggTypes, extra = {}) {
     eggTypeLabel: getCustomerEggTypeLabel(eggTypes, batch.eggTypeKey || 'REGULAR'),
     expectedDate: batch.expectedDate,
     receivedDate: batch.receivedDate,
+    displayDate,
     wholesalePrice: Number(batch.wholesalePrice),
     retailPrice: Number(batch.retailPrice),
     expectedQuantity: batch.expectedQuantity,
@@ -372,6 +393,9 @@ async function finalizeUpcomingBookingCheckout(checkout, enteredById) {
         orderValue: checkout.orderValue,
         status: 'CONFIRMED',
         channel: 'website',
+        deliveryRequested: checkout.deliveryRequested || false,
+        deliveryAddress: checkout.deliveryAddress || null,
+        deliveryFee: checkout.deliveryFee || null,
         notes: checkout.notes || `Portal booking payment confirmed (${checkout.paymentMethod.toLowerCase()})`,
       },
       include: {
@@ -413,6 +437,9 @@ async function finalizeBuyNowCheckout(checkout) {
         orderValue: checkout.orderValue,
         status: 'CONFIRMED',
         channel: 'website',
+        deliveryRequested: checkout.deliveryRequested || false,
+        deliveryAddress: checkout.deliveryAddress || null,
+        deliveryFee: checkout.deliveryFee || null,
         notes: checkout.notes || `Portal buy-now payment confirmed (${checkout.paymentMethod.toLowerCase()}).`,
       },
       include: {
@@ -847,8 +874,11 @@ export default async function portalRoutes(fastify) {
         checkoutType,
         batchId,
         quantity,
+        items,
         paymentMethod,
         amountToPay,
+        deliveryRequested,
+        deliveryAddress,
         checkoutEmail,
         notes,
       } = request.body;
@@ -860,8 +890,31 @@ export default async function portalRoutes(fastify) {
         return reply.code(400).send({ error: 'Choose card payment or bank transfer.' });
       }
       if (!batchId) return reply.code(400).send({ error: 'Choose a batch first.' });
-      if (!Number.isInteger(quantity) || quantity < 1) {
-        return reply.code(400).send({ error: 'Quantity must be a whole number of crates.' });
+
+      // Support both single quantity and multi-item array
+      let totalQuantity = 0;
+      const itemsArray = items && Array.isArray(items) ? items : [];
+
+      if (itemsArray.length > 0) {
+        // Multi-item mode
+        for (const item of itemsArray) {
+          if (!Number.isInteger(item.quantity) || item.quantity < 1) {
+            return reply.code(400).send({ error: 'Each item quantity must be a whole number of crates.' });
+          }
+          totalQuantity += item.quantity;
+        }
+      } else if (quantity) {
+        // Single quantity mode (backward compat)
+        if (!Number.isInteger(quantity) || quantity < 1) {
+          return reply.code(400).send({ error: 'Quantity must be a whole number of crates.' });
+        }
+        totalQuantity = quantity;
+      } else {
+        return reply.code(400).send({ error: 'Provide either quantity or items array.' });
+      }
+
+      if (deliveryRequested && totalQuantity < 50) {
+        return reply.code(400).send({ error: 'Delivery is only available for orders of 50 crates or more.' });
       }
 
       const [{ user, customer }, policy, eggTypes] = await Promise.all([
@@ -889,6 +942,19 @@ export default async function portalRoutes(fastify) {
       });
       if (!batch) return reply.code(404).send({ error: 'Batch not found.' });
 
+      // Validate items array if provided
+      if (itemsArray.length > 0) {
+        const eggCodeIds = new Set(batch.eggCodes.map((ec) => ec.id));
+        for (const item of itemsArray) {
+          if (!item.batchEggCodeId) {
+            return reply.code(400).send({ error: 'Each item must specify batchEggCodeId.' });
+          }
+          if (!eggCodeIds.has(item.batchEggCodeId)) {
+            return reply.code(400).send({ error: `Egg code ${item.batchEggCodeId} not found in this batch.` });
+          }
+        }
+      }
+
       let cardPaymentEmail = buildPortalCustomerEmail(user, customer, checkoutEmail);
       if (paymentMethod === 'CARD') {
         try {
@@ -905,10 +971,11 @@ export default async function portalRoutes(fastify) {
       let unitPrice = 0;
       let paymentDue = 0;
       let paymentWindowEndsAt = null;
+      let deliveryFeeAmount = 0;
       const orderLimitProfile = await getCustomerOrderLimitProfile(customer.id, policy);
       const currentPerOrderLimit = Number(orderLimitProfile.currentPerOrderLimit || policy.maxBookingCratesPerOrder || 100);
 
-      if (quantity > currentPerOrderLimit) {
+      if (totalQuantity > currentPerOrderLimit) {
         return reply.code(400).send({
           error: orderLimitProfile.isUsingEarlyOrderLimit
             ? `Your first ${orderLimitProfile.earlyOrderLimitCount} orders can be up to ${currentPerOrderLimit} crates each.`
@@ -923,16 +990,33 @@ export default async function portalRoutes(fastify) {
 
         const openAvailability = await getOpenBatchBookingAvailability(batchId, { batch });
         const remainingAvailable = openAvailability?.remainingAvailable ?? 0;
-        if (quantity > remainingAvailable) {
+        if (totalQuantity > remainingAvailable) {
           return reply.code(400).send({ error: `Only ${remainingAvailable} crates are still available to book.` });
         }
 
-        unitPrice = Number(batch.wholesalePrice);
-        orderValue = quantity * unitPrice;
+        if (itemsArray.length > 0) {
+          // Multi-item: calculate per item
+          for (const item of itemsArray) {
+            const eggCode = batch.eggCodes.find((ec) => ec.id === item.batchEggCodeId);
+            const itemPrice = eggCode.wholesalePrice != null ? Number(eggCode.wholesalePrice) : Number(batch.wholesalePrice);
+            orderValue += item.quantity * itemPrice;
+          }
+        } else {
+          // Single quantity: use batch wholesale price
+          unitPrice = Number(batch.wholesalePrice);
+          orderValue = totalQuantity * unitPrice;
+        }
+
         paymentDue = Number(amountToPay);
         if (!paymentDue || paymentDue <= 0) {
           return reply.code(400).send({ error: 'Enter how much you want to pay now.' });
         }
+
+        if (deliveryRequested) {
+          deliveryFeeAmount = totalQuantity * 100; // ₦100 per crate
+          orderValue += deliveryFeeAmount;
+        }
+
         const minimumPayment = orderValue * (Number(policy.bookingMinimumPaymentPercent || 80) / 100);
         if (paymentDue < minimumPayment) {
           return reply.code(400).send({ error: `Minimum payment is ${Number(policy.bookingMinimumPaymentPercent || 80)}% of the booking value.` });
@@ -951,11 +1035,28 @@ export default async function portalRoutes(fastify) {
         if (!availability) {
           return reply.code(404).send({ error: 'Batch not found.' });
         }
-        if (quantity > availability.availableForSale) {
+        if (totalQuantity > availability.availableForSale) {
           return reply.code(400).send({ error: `Only ${availability.availableForSale} crates are still available to buy.` });
         }
-        unitPrice = Number(batch.retailPrice);
-        orderValue = quantity * unitPrice;
+
+        if (itemsArray.length > 0) {
+          // Multi-item: calculate per item
+          for (const item of itemsArray) {
+            const eggCode = batch.eggCodes.find((ec) => ec.id === item.batchEggCodeId);
+            const itemPrice = eggCode.retailPrice != null ? Number(eggCode.retailPrice) : Number(batch.retailPrice);
+            orderValue += item.quantity * itemPrice;
+          }
+        } else {
+          // Single quantity: use batch retail price
+          unitPrice = Number(batch.retailPrice);
+          orderValue = totalQuantity * unitPrice;
+        }
+
+        if (deliveryRequested) {
+          deliveryFeeAmount = totalQuantity * 100; // ₦100 per crate
+          orderValue += deliveryFeeAmount;
+        }
+
         paymentDue = orderValue;
         paymentWindowEndsAt = paymentMethod === 'CARD'
           ? addMinutes(new Date(), 30)
@@ -969,12 +1070,15 @@ export default async function portalRoutes(fastify) {
           checkoutType,
           paymentMethod,
           status: paymentMethod === 'CARD' ? 'AWAITING_PAYMENT' : 'AWAITING_TRANSFER',
-          quantity,
+          quantity: totalQuantity,
           priceType: getCheckoutPriceType(checkoutType),
-          unitPrice,
+          unitPrice: itemsArray.length > 0 ? null : unitPrice,
           orderValue,
           amountToPay: paymentDue,
           balanceAfterPayment: Math.max(0, orderValue - paymentDue),
+          deliveryRequested: deliveryRequested || false,
+          deliveryAddress: deliveryAddress?.trim() || null,
+          deliveryFee: deliveryFeeAmount > 0 ? deliveryFeeAmount : null,
           reference: buildPortalReference(checkoutType === 'BOOK_UPCOMING' ? 'BOOK' : 'BUY'),
           paymentWindowEndsAt,
           notes: notes?.trim() || null,
@@ -983,6 +1087,26 @@ export default async function portalRoutes(fastify) {
           batch: { select: { id: true, name: true, expectedDate: true, receivedDate: true, eggTypeKey: true, status: true, wholesalePrice: true, retailPrice: true } },
         },
       });
+
+      // If items array was provided, create PortalCheckoutItem records
+      if (itemsArray.length > 0) {
+        await prisma.portalCheckoutItem.createMany({
+          data: itemsArray.map((item) => {
+            const eggCode = batch.eggCodes.find((ec) => ec.id === item.batchEggCodeId);
+            const priceType = getCheckoutPriceType(checkoutType);
+            const itemPrice = priceType === 'RETAIL'
+              ? (eggCode.retailPrice != null ? Number(eggCode.retailPrice) : Number(batch.retailPrice))
+              : (eggCode.wholesalePrice != null ? Number(eggCode.wholesalePrice) : Number(batch.wholesalePrice));
+            return {
+              checkoutId: checkout.id,
+              batchEggCodeId: item.batchEggCodeId,
+              quantity: item.quantity,
+              unitPrice: itemPrice,
+              lineTotal: item.quantity * itemPrice,
+            };
+          }),
+        });
+      }
 
       if (paymentMethod === 'TRANSFER') {
         return reply.code(201).send({

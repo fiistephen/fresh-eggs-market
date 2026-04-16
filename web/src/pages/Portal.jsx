@@ -9,6 +9,25 @@ const fmtMoney = (n) => '₦' + Number(n || 0).toLocaleString('en-NG', { minimum
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-NG', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : '—';
 const fmtDateTime = (d) => d ? new Date(d).toLocaleString('en-NG', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
 
+const getOrdinalSuffix = (n) => {
+  const j = n % 10;
+  const k = n % 100;
+  if (j === 1 && k !== 11) return 'st';
+  if (j === 2 && k !== 12) return 'nd';
+  if (j === 3 && k !== 13) return 'rd';
+  return 'th';
+};
+
+const fmtBatchArrivalDate = (date) => {
+  if (!date) return '—';
+  const d = new Date(date);
+  const weekday = d.toLocaleDateString('en-NG', { weekday: 'long' });
+  const month = d.toLocaleDateString('en-NG', { month: 'long' });
+  const day = d.getDate();
+  const ordinal = getOrdinalSuffix(day);
+  return `${weekday}, ${month} ${day}${ordinal}`;
+};
+
 const isPaystackReadyEmail = (value) => {
   const email = String(value || '').trim().toLowerCase();
   if (!email) return false;
@@ -309,8 +328,8 @@ function BatchCard({ batch, signedIn, onAction, onRequireAuth }) {
   const ctaLabel = soldOut
     ? 'Sold out'
     : signedIn
-      ? (isReady ? 'Buy now' : 'Book now')
-      : (isReady ? 'Sign in to buy now' : 'Sign in to book now');
+      ? (isReady ? 'Buy now' : 'Book ahead')
+      : (isReady ? 'Sign in and buy now' : 'Sign in and book ahead');
 
   return (
     <div className={`group relative bg-surface-0 border rounded-lg p-5 transition-all duration-fast hover:shadow-md ${
@@ -324,9 +343,11 @@ function BatchCard({ batch, signedIn, onAction, onRequireAuth }) {
           <StatusDot tone={isReady ? 'success' : 'warning'} />
           {isReady ? 'Ready for pickup' : 'Arriving soon'}
         </div>
-        {!isReady && batch.expectedDate && (
+        {isReady ? (
+          <span className="text-caption-medium text-success-700 font-medium">Available now</span>
+        ) : batch.expectedDate && (
           <span className="flex items-center gap-1 text-caption text-surface-500">
-            {Icon.clock} {fmtDate(batch.expectedDate)}
+            {Icon.clock} Arriving {fmtBatchArrivalDate(batch.expectedDate)}
           </span>
         )}
       </div>
@@ -395,8 +416,10 @@ function CheckoutModal({ batch, profile, policy, onClose, onFinished }) {
 
   const [step, setStep] = useState('quantity');
   const [quantity, setQuantity] = useState('');
+  const [lineItems, setLineItems] = useState({});
   const [amountToPay, setAmountToPay] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('CARD');
+  const [deliveryOption, setDeliveryOption] = useState({ enabled: false, address: '' });
   const [checkoutEmail, setCheckoutEmail] = useState(() => {
     const candidate = profile?.user?.email || profile?.customer?.email || '';
     return isPaystackReadyEmail(candidate) ? candidate : '';
@@ -410,30 +433,54 @@ function CheckoutModal({ batch, profile, policy, onClose, onFinished }) {
     setCheckoutEmail(isPaystackReadyEmail(candidate) ? candidate : '');
   }, [profile?.user?.email, profile?.customer?.email]);
 
-  const qtyVal = parseInt(quantity, 10) || 0;
-  const orderValue = qtyVal * unitPrice;
+  const hasMultipleEggCodes = batch.eggCodes && batch.eggCodes.length > 1;
+  const totalQtyVal = hasMultipleEggCodes
+    ? Object.values(lineItems).reduce((sum, qty) => sum + (parseInt(qty, 10) || 0), 0)
+    : parseInt(quantity, 10) || 0;
+  const qtyVal = totalQtyVal;
+  const orderValue = hasMultipleEggCodes
+    ? Object.entries(lineItems).reduce((sum, [code, qty]) => {
+        const code_ = batch.eggCodes?.find(c => c === code);
+        return sum + ((parseInt(qty, 10) || 0) * unitPrice);
+      }, 0)
+    : qtyVal * unitPrice;
   const minPayment = orderValue * (minPaymentPercent / 100);
   const payNow = isReady ? orderValue : (Number(amountToPay) || 0);
-  const balance = Math.max(0, orderValue - payNow);
+  const deliveryFee = deliveryOption.enabled ? totalQtyVal * 100 : 0;
+  const totalWithDelivery = orderValue + deliveryFee;
+  const balance = Math.max(0, totalWithDelivery - payNow);
 
   const qtyError = useMemo(() => {
-    if (!quantity) return '';
-    if (!Number.isInteger(qtyVal) || qtyVal < 1) return 'Enter at least 1 crate.';
-    if (qtyVal > availableQty) return `Only ${fmt(availableQty)} crates available.`;
-    if (qtyVal > perOrderLimit) {
-      return orderLimitProfile?.isUsingEarlyOrderLimit
-        ? `Limit: ${fmt(perOrderLimit)} crates for your first ${orderLimitProfile.earlyOrderLimitCount} orders.`
-        : `Maximum ${fmt(perOrderLimit)} crates per order.`;
+    if (hasMultipleEggCodes) {
+      if (totalQtyVal === 0) return '';
+      if (!Number.isInteger(totalQtyVal) || totalQtyVal < 1) return 'Enter at least 1 crate.';
+      if (totalQtyVal > availableQty) return `Only ${fmt(availableQty)} crates available.`;
+      if (totalQtyVal > perOrderLimit) {
+        return orderLimitProfile?.isUsingEarlyOrderLimit
+          ? `Limit: ${fmt(perOrderLimit)} crates for your first ${orderLimitProfile.earlyOrderLimitCount} orders.`
+          : `Maximum ${fmt(perOrderLimit)} crates per order.`;
+      }
+      return '';
+    } else {
+      if (!quantity) return '';
+      if (!Number.isInteger(qtyVal) || qtyVal < 1) return 'Enter at least 1 crate.';
+      if (qtyVal > availableQty) return `Only ${fmt(availableQty)} crates available.`;
+      if (qtyVal > perOrderLimit) {
+        return orderLimitProfile?.isUsingEarlyOrderLimit
+          ? `Limit: ${fmt(perOrderLimit)} crates for your first ${orderLimitProfile.earlyOrderLimitCount} orders.`
+          : `Maximum ${fmt(perOrderLimit)} crates per order.`;
+      }
+      return '';
     }
-    return '';
-  }, [quantity, qtyVal, availableQty, perOrderLimit, orderLimitProfile]);
+  }, [quantity, lineItems, totalQtyVal, qtyVal, availableQty, perOrderLimit, orderLimitProfile, hasMultipleEggCodes]);
 
   const payError = useMemo(() => {
     if (isReady || !amountToPay) return '';
-    if (payNow < minPayment) return `Minimum payment is ${fmtMoney(minPayment)} (${minPaymentPercent}%).`;
-    if (payNow > orderValue) return 'Cannot exceed the order value.';
+    const minPaymentAmount = totalWithDelivery * (minPaymentPercent / 100);
+    if (payNow < minPaymentAmount) return `Minimum payment is ${fmtMoney(minPaymentAmount)} (${minPaymentPercent}%).`;
+    if (payNow > totalWithDelivery) return 'Cannot exceed the order value.';
     return '';
-  }, [isReady, amountToPay, payNow, minPayment, orderValue, minPaymentPercent]);
+  }, [isReady, amountToPay, payNow, minPaymentPercent, totalWithDelivery]);
 
   const cardEmailError = useMemo(() => {
     if (paymentMethod !== 'CARD') return '';
@@ -443,8 +490,8 @@ function CheckoutModal({ batch, profile, policy, onClose, onFinished }) {
   }, [paymentMethod, checkoutEmail]);
 
   function goToPayment() {
-    if (qtyError || qtyVal < 1) return;
-    if (isReady) { setAmountToPay(String(orderValue)); }
+    if (qtyError || totalQtyVal < 1) return;
+    if (isReady) { setAmountToPay(String(totalWithDelivery)); }
     setStep('payment');
   }
 
@@ -456,10 +503,16 @@ function CheckoutModal({ batch, profile, policy, onClose, onFinished }) {
       const body = {
         checkoutType: isReady ? 'BUY_NOW' : 'BOOK_UPCOMING',
         batchId: batch.id,
-        quantity: qtyVal,
+        quantity: totalQtyVal,
         paymentMethod,
         ...(isReady ? {} : { amountToPay: payNow }),
+        ...(deliveryOption.enabled ? { deliveryRequested: true, deliveryAddress: deliveryOption.address } : {}),
         ...(paymentMethod === 'CARD' ? { checkoutEmail: checkoutEmail.trim() } : {}),
+        ...(hasMultipleEggCodes ? {
+          items: batch.eggCodes
+            .filter(ec => parseInt(lineItems[ec.code] || '0', 10) > 0)
+            .map(ec => ({ batchEggCodeId: ec.id, quantity: parseInt(lineItems[ec.code], 10) }))
+        } : {}),
       };
       const res = await api.post('/portal/checkouts', body);
 
@@ -501,10 +554,9 @@ function CheckoutModal({ batch, profile, policy, onClose, onFinished }) {
     const reference = co.reference || success.order?.reference;
     const nextSteps = paymentMethod === 'TRANSFER'
       ? [
-          'We have reserved your crates and sent your order to the team for transfer review.',
-          'The team will first confirm they have seen the transfer.',
-          'Final confirmation happens when the matching bank statement line is linked.',
-          'You can track the status in My Orders.',
+          'Your crates are reserved. Our team will confirm your transfer within 1 hour during business hours.',
+          'Track your order status in My Orders.',
+          'Final confirmation happens when we match the bank statement line.',
         ]
       : isReady
         ? [
@@ -609,6 +661,10 @@ function CheckoutModal({ batch, profile, policy, onClose, onFinished }) {
             </div>
           </div>
 
+          <div className="rounded-lg border border-error-200 bg-error-50 p-4">
+            <p className="text-body-medium font-semibold text-error-800">Do not click until you have actually completed the transfer from your bank.</p>
+          </div>
+
           <div className="rounded-lg border border-surface-200 bg-surface-50 p-4">
             <p className="text-body-medium font-semibold text-surface-800">Before you continue</p>
             <div className="mt-3 space-y-2 text-body text-surface-700">
@@ -644,10 +700,13 @@ function CheckoutModal({ batch, profile, policy, onClose, onFinished }) {
         <div className="space-y-4">
           <div className="flex items-center justify-between p-3 rounded-lg bg-surface-50 border border-surface-100">
             <div>
-              <p className="text-body-medium text-surface-800">{batch.name} · {qtyVal} crate{qtyVal !== 1 ? 's' : ''}</p>
+              <p className="text-body-medium text-surface-800">{batch.name} · {totalQtyVal} crate{totalQtyVal !== 1 ? 's' : ''}</p>
               <p className="text-caption text-surface-500">{batch.eggTypeLabel || 'Eggs'}</p>
             </div>
-            <p className="text-heading font-bold text-surface-900">{fmtMoney(orderValue)}</p>
+            <div className="text-right">
+              <p className="text-heading font-bold text-surface-900">{fmtMoney(orderValue)}</p>
+              {deliveryOption.enabled && <p className="text-caption text-surface-600">+ {fmtMoney(deliveryFee)} delivery</p>}
+            </div>
           </div>
 
           {error && (
@@ -660,7 +719,7 @@ function CheckoutModal({ batch, profile, policy, onClose, onFinished }) {
                 label="How much are you paying now?"
                 type="number"
                 min={minPayment || 0}
-                max={orderValue}
+                max={totalWithDelivery}
                 step="0.01"
                 required
                 value={amountToPay}
@@ -729,7 +788,7 @@ function CheckoutModal({ batch, profile, policy, onClose, onFinished }) {
             <Button variant="secondary" size="lg" onClick={() => setStep('quantity')} className="flex-1">Back</Button>
             <Button
               variant="primary" size="lg" loading={loading} className="flex-1"
-              disabled={(!isReady && (payNow <= 0 || Boolean(payError))) || (paymentMethod === 'CARD' && Boolean(cardEmailError))}
+              disabled={(!isReady && (payNow <= 0 || Boolean(payError))) || (paymentMethod === 'CARD' && Boolean(cardEmailError)) || deliveryOption.enabled && !deliveryOption.address}
               onClick={continueFromPayment}
             >
               {paymentMethod === 'CARD' ? 'Continue to card payment' : 'Continue'}
@@ -766,33 +825,97 @@ function CheckoutModal({ batch, profile, policy, onClose, onFinished }) {
           </div>
         )}
 
-        <Input
-          label="Number of crates"
-          type="number"
-          min="1"
-          max={maxQty}
-          required
-          value={quantity}
-          onChange={(e) => setQuantity(e.target.value)}
-          hint={`Up to ${fmt(maxQty)} crates`}
-          error={qtyError || undefined}
-        />
+        {hasMultipleEggCodes ? (
+          <>
+            <div className="space-y-3">
+              <p className="text-body-medium font-medium text-surface-700">Select quantities per egg type</p>
+              {batch.eggCodes && batch.eggCodes.map((code) => (
+                <div key={code} className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <label className="text-body text-surface-700">{code}</label>
+                    <Input
+                      type="number"
+                      min="0"
+                      max={maxQty}
+                      value={lineItems[code] || ''}
+                      onChange={(e) => setLineItems(prev => ({ ...prev, [code]: e.target.value }))}
+                      placeholder="0"
+                    />
+                  </div>
+                  {lineItems[code] && (
+                    <div className="text-right text-caption text-surface-600">
+                      {fmtMoney((parseInt(lineItems[code], 10) || 0) * unitPrice)}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <Input
+            label="Number of crates"
+            type="number"
+            min="1"
+            max={maxQty}
+            required
+            value={quantity}
+            onChange={(e) => setQuantity(e.target.value)}
+            hint={`Up to ${fmt(maxQty)} crates`}
+            error={qtyError || undefined}
+          />
+        )}
 
-        {quantity && qtyError && (
+        {qtyError && (
           <div className="rounded-lg border border-error-200 bg-error-50 p-3 text-body text-error-700">
             {qtyError}
           </div>
         )}
 
-        {qtyVal > 0 && !qtyError && (
-          <div className="rounded-lg border border-surface-200 p-4">
+        {totalQtyVal > 0 && !qtyError && (
+          <div className="rounded-lg border border-surface-200 p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-body text-surface-600">{fmt(qtyVal)} crate{qtyVal !== 1 ? 's' : ''} × {fmtMoney(unitPrice)}</span>
+              <span className="text-body text-surface-600">{fmt(totalQtyVal)} crate{totalQtyVal !== 1 ? 's' : ''} × {fmtMoney(unitPrice)}</span>
               <span className="text-title font-bold text-surface-900">{fmtMoney(orderValue)}</span>
             </div>
+            {totalQtyVal >= 50 && (
+              <div className="border-t border-surface-200 pt-3 space-y-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={deliveryOption.enabled}
+                    onChange={(e) => setDeliveryOption(prev => ({ ...prev, enabled: e.target.checked }))}
+                    className="w-4 h-4 rounded border-surface-300"
+                  />
+                  <span className="text-body text-surface-700">I'd like delivery (₦100/crate)</span>
+                </label>
+                {deliveryOption.enabled && (
+                  <>
+                    <Input
+                      label="Delivery address"
+                      type="text"
+                      required
+                      value={deliveryOption.address}
+                      onChange={(e) => setDeliveryOption(prev => ({ ...prev, address: e.target.value }))}
+                      placeholder="Enter your delivery address"
+                    />
+                    <p className="text-caption text-surface-500">
+                      <span className="font-medium">Note:</span> We deliver to island locations not exceeding Lekki Phase 1 only. Minimum 50 crates. No refunds for non-qualifying delivery locations.
+                    </p>
+                    <div className="flex justify-between pt-2 border-t border-surface-200">
+                      <span className="text-body text-surface-600">Delivery fee ({totalQtyVal} × ₦100)</span>
+                      <span className="text-body font-semibold text-surface-800">{fmtMoney(deliveryFee)}</span>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+            <div className="flex items-center justify-between border-t border-surface-200 pt-2">
+              <span className="text-body font-medium text-surface-700">Total</span>
+              <span className="text-title font-bold text-surface-900">{fmtMoney(totalWithDelivery)}</span>
+            </div>
             {!isReady && (
-              <p className="text-caption text-surface-500 mt-2">
-                You'll pay at least {minPaymentPercent}% ({fmtMoney(orderValue * minPaymentPercent / 100)}) in the next step.
+              <p className="text-caption text-surface-500 pt-2">
+                You'll pay at least {minPaymentPercent}% ({fmtMoney(totalWithDelivery * minPaymentPercent / 100)}) in the next step.
               </p>
             )}
           </div>
@@ -800,7 +923,7 @@ function CheckoutModal({ batch, profile, policy, onClose, onFinished }) {
 
         <div className="flex gap-3 pt-2">
           <Button variant="secondary" size="lg" onClick={onClose} className="flex-1">Cancel</Button>
-          <Button variant="primary" size="lg" onClick={goToPayment} disabled={qtyVal < 1 || Boolean(qtyError)} className="flex-1">
+          <Button variant="primary" size="lg" onClick={goToPayment} disabled={totalQtyVal < 1 || Boolean(qtyError)} className="flex-1">
             Continue
           </Button>
         </div>
