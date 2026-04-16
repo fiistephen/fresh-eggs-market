@@ -38,9 +38,11 @@ const isPaystackReadyEmail = (value) => {
 };
 
 /* ─── Google Places Autocomplete ─── */
-function AddressAutocomplete({ value, onChange, placeholder }) {
+function AddressAutocomplete({ onChange, placeholder }) {
   const inputRef = useRef(null);
   const autocompleteRef = useRef(null);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
 
   useEffect(() => {
     if (!inputRef.current || autocompleteRef.current) return;
@@ -50,35 +52,39 @@ function AddressAutocomplete({ value, onChange, placeholder }) {
         types: ['address'],
         componentRestrictions: { country: 'ng' },
       });
-      // Bias to Lagos / Lekki area
       ac.setBounds(new window.google.maps.LatLngBounds(
-        { lat: 6.4, lng: 3.4 },   // SW corner (Lagos Island south)
-        { lat: 6.6, lng: 3.65 },   // NE corner (Lekki / Sangotedo)
+        { lat: 6.4, lng: 3.4 },
+        { lat: 6.6, lng: 3.65 },
       ));
       ac.addListener('place_changed', () => {
         const place = ac.getPlace();
-        if (place?.formatted_address) onChange(place.formatted_address);
-        else if (place?.name) onChange(place.name);
+        const addr = place?.formatted_address || place?.name || '';
+        if (addr) onChangeRef.current(addr);
       });
       autocompleteRef.current = ac;
       return true;
     };
     if (!tryInit()) {
-      // Google Maps might not be loaded yet — poll briefly
       const id = setInterval(() => { if (tryInit()) clearInterval(id); }, 300);
       const timeout = setTimeout(() => clearInterval(id), 5000);
       return () => { clearInterval(id); clearTimeout(timeout); };
     }
-  }, [onChange]);
+  }, []);
 
   return (
     <div>
       <label className="block text-body text-surface-700 mb-1">Delivery address</label>
       <input
-        ref={inputRef}
+        ref={(el) => {
+          inputRef.current = el;
+          // Sync value on manual typing too
+          if (el && !el._listening) {
+            el.addEventListener('input', () => onChangeRef.current(el.value));
+            el._listening = true;
+          }
+        }}
         type="text"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
+        defaultValue=""
         placeholder={placeholder || 'Start typing your address...'}
         className="w-full rounded-md border border-surface-300 bg-surface-0 px-3 py-2 text-body text-surface-900 placeholder:text-surface-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
         autoComplete="off"
@@ -665,11 +671,7 @@ function CheckoutModal({ batch, profile, policy, onClose, onFinished }) {
               </div>
               <div className="flex items-start gap-2">
                 <span className="mt-1 text-brand-700 shrink-0">{Icon.check}</span>
-                <span>When you click <span className="font-semibold">I have made the transfer</span>, we will reserve these crates for you and send the order to the team for review.</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="mt-1 text-brand-700 shrink-0">{Icon.check}</span>
-                <span>The final financial confirmation still depends on the bank statement record.</span>
+                <span>When you click <span className="font-semibold">I have made the transfer</span>, we will review your order and confirm after we receive the payment.</span>
               </div>
             </div>
           </div>
