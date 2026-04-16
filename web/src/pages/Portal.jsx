@@ -808,7 +808,7 @@ function CheckoutModal({ batch, profile, policy, onClose, onFinished }) {
                       placeholder="Enter your delivery address"
                     />
                     <p className="text-caption text-surface-500">
-                      <span className="font-medium">Note:</span> We deliver to island locations not exceeding Lekki Phase 1 only. Minimum 50 crates. No refunds for non-qualifying delivery locations.
+                      <span className="font-medium">Note:</span> We deliver to island locations from Sangotedo to Lekki Phase 1 only. Minimum 50 crates. Do not request delivery beyond this location.
                     </p>
                     <div className="flex justify-between pt-2 border-t border-surface-200">
                       <span className="text-body text-surface-600">Delivery fee ({qtyVal} × ₦100)</span>
