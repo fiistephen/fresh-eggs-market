@@ -38,30 +38,26 @@ const isPaystackReadyEmail = (value) => {
 };
 
 /* ─── Google Places Autocomplete ─── */
+// Key insight: Google's Autocomplete widget takes exclusive control of the input
+// DOM element. We must NOT trigger React state updates on every keystroke (via an
+// 'input' listener) because that causes parent re-renders which conflict with
+// Google's internal input management, freezing the field.
+// Instead we ONLY fire onChange when:
+//   (a) the user picks a suggestion (place_changed), or
+//   (b) the user finishes typing manually and leaves the field (blur).
 function AddressAutocomplete({ onChange, placeholder }) {
-  const containerRef = useRef(null);
-  const acInstanceRef = useRef(null);
-  const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
+  const inputRef = useRef(null);
+  const acRef = useRef(null);
+  const cbRef = useRef(onChange);
+  cbRef.current = onChange;
 
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container || acInstanceRef.current) return;
-
-    // Create the input element via DOM — completely outside React's render cycle
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.placeholder = placeholder || 'Start typing your address...';
-    input.className = 'w-full rounded-md border border-surface-300 bg-surface-0 px-3 py-2 text-body text-surface-900 placeholder:text-surface-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500';
-    input.setAttribute('autocomplete', 'new-password'); // stronger than "off" for Chrome
-    container.appendChild(input);
-
-    // Sync manual typing
-    input.addEventListener('input', () => onChangeRef.current(input.value));
+    const el = inputRef.current;
+    if (!el || acRef.current) return;
 
     const tryInit = () => {
       if (!window.google?.maps?.places) return false;
-      const ac = new window.google.maps.places.Autocomplete(input, {
+      const ac = new window.google.maps.places.Autocomplete(el, {
         types: ['address'],
         componentRestrictions: { country: 'ng' },
       });
@@ -72,28 +68,35 @@ function AddressAutocomplete({ onChange, placeholder }) {
       ac.addListener('place_changed', () => {
         const place = ac.getPlace();
         const addr = place?.formatted_address || place?.name || '';
-        if (addr) onChangeRef.current(addr);
+        if (addr) cbRef.current(addr);
       });
-      acInstanceRef.current = ac;
+      acRef.current = ac;
       return true;
     };
 
+    // Also sync when user tabs/clicks away (manual address without picking suggestion)
+    const onBlur = () => { if (el.value) cbRef.current(el.value); };
+    el.addEventListener('blur', onBlur);
+
     if (!tryInit()) {
       const id = setInterval(() => { if (tryInit()) clearInterval(id); }, 300);
-      const timeout = setTimeout(() => clearInterval(id), 5000);
-      return () => { clearInterval(id); clearTimeout(timeout); };
+      const tm = setTimeout(() => clearInterval(id), 5000);
+      return () => { clearInterval(id); clearTimeout(tm); el.removeEventListener('blur', onBlur); };
     }
-
-    return () => {
-      if (input.parentNode) input.parentNode.removeChild(input);
-      acInstanceRef.current = null;
-    };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => { el.removeEventListener('blur', onBlur); };
+  }, []);
 
   return (
     <div>
       <label className="block text-body text-surface-700 mb-1">Delivery address</label>
-      <div ref={containerRef} />
+      <input
+        ref={inputRef}
+        type="text"
+        defaultValue=""
+        placeholder={placeholder || 'Start typing your address...'}
+        className="w-full rounded-md border border-surface-300 bg-surface-0 px-3 py-2 text-body text-surface-900 placeholder:text-surface-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+        autoComplete="off"
+      />
     </div>
   );
 }
