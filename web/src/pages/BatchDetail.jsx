@@ -1612,10 +1612,6 @@ function EditBatchModal({ batch, onClose, onUpdated }) {
             />
           </div>
 
-          <div className="rounded-md border border-info-200 bg-info-50 px-4 py-3 text-body text-info-900">
-            FE rows inside the batch can have different cost prices, but the batch uses one selling price for wholesale and one for retail.
-          </div>
-
           <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-2 border-t border-surface-200">
             <Button variant="tertiary" size="md" onClick={onClose}>
               Cancel
