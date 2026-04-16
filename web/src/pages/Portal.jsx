@@ -171,16 +171,12 @@ function StatusDot({ tone }) {
   return <span className={`inline-block w-2 h-2 rounded-full ${colors[tone] || colors.neutral}`} />;
 }
 
-function AvailabilityBar({ used, total, className = '', availableLabel = 'available', usedLabel = 'taken' }) {
+function AvailabilityBar({ available, total, className = '' }) {
+  const used = total - available;
   const pct = total > 0 ? Math.min(100, (used / total) * 100) : 0;
-  const remaining = total - used;
   const urgency = pct > 80 ? 'bg-error-500' : pct > 50 ? 'bg-warning-500' : 'bg-success-500';
   return (
     <div className={className}>
-      <div className="flex items-center justify-between text-caption text-surface-600 mb-1">
-        <span>{fmt(remaining)} {availableLabel}</span>
-        <span>{Math.round(pct)}% {usedLabel}</span>
-      </div>
       <div className="h-1.5 bg-surface-200 rounded-full overflow-hidden">
         <div className={`h-full rounded-full transition-all duration-normal ${urgency}`} style={{ width: `${pct}%` }} />
       </div>
@@ -307,18 +303,12 @@ function AuthModal({ open, onClose, onAuth, intent }) {
 function BatchCard({ batch, signedIn, onAction, onRequireAuth }) {
   const isReady = batch.status === 'RECEIVED';
   const price = isReady ? Number(batch.retailPrice) : Number(batch.wholesalePrice);
-  const priceLabel = isReady ? 'Retail' : 'Wholesale';
   const available = isReady ? Number(batch.availableForSale || 0) : Number(batch.remainingAvailable || 0);
-  const used = isReady
-    ? Number(batch.totalBooked || 0) + Number(batch.heldForCheckout || 0)
-    : Number(batch.totalBooked || 0) + Number(batch.heldForCheckout || 0);
   const total = isReady
     ? Number(batch.onHand || 0)
     : Number(batch.totalBookingCapacity || batch.availableForBooking || 0);
   const soldOut = available <= 0;
-  const commitmentCopy = isReady
-    ? `${fmt(Number(batch.totalBooked || 0))} booked · ${fmt(Number(batch.heldForCheckout || 0))} held in checkout`
-    : `${fmt(Number(batch.totalBooked || 0))} booked · ${fmt(Number(batch.heldForCheckout || 0))} being checked out`;
+  const lowStock = available > 0 && available <= 10;
 
   function handleClick() {
     if (!signedIn) { onRequireAuth(isReady ? 'buy-now' : 'book-upcoming'); return; }
@@ -335,52 +325,30 @@ function BatchCard({ batch, signedIn, onAction, onRequireAuth }) {
     <div className={`group relative bg-surface-0 border rounded-lg p-5 transition-all duration-fast hover:shadow-md ${
       soldOut ? 'border-surface-200 opacity-60' : 'border-surface-200 hover:border-brand-300'
     }`}>
-      {/* Status chip */}
-      <div className="flex items-center justify-between mb-3">
-        <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-caption-medium ${
-          isReady ? 'bg-success-50 text-success-700' : 'bg-brand-50 text-brand-700'
-        }`}>
-          <StatusDot tone={isReady ? 'success' : 'warning'} />
-          {isReady ? 'Ready for pickup' : 'Arriving soon'}
-        </div>
-        {isReady ? (
-          <span className="text-caption-medium text-success-700 font-medium">Available now</span>
-        ) : batch.expectedDate && (
-          <span className="flex items-center gap-1 text-caption text-surface-500">
-            {Icon.clock} Arriving {fmtBatchArrivalDate(batch.expectedDate)}
-          </span>
-        )}
-      </div>
-
-      {/* Batch name + egg type */}
-      <h3 className="text-heading text-surface-900">{batch.name}</h3>
+      {/* When — the most important info */}
+      <p className={`text-body-medium font-semibold ${isReady ? 'text-success-700' : 'text-surface-700'}`}>
+        {isReady ? 'Available now' : `Arriving ${fmtBatchArrivalDate(batch.expectedDate)}`}
+      </p>
       <p className="text-caption text-surface-500 mt-0.5">{batch.eggTypeLabel || 'Eggs'}</p>
 
       {/* Price */}
-      <div className="mt-4 flex items-end justify-between">
-        <div>
-          <p className="text-metric text-surface-900">{fmtMoney(price)}</p>
-          <p className="text-caption text-surface-500">{priceLabel} per crate</p>
-        </div>
-        {!isReady && batch.retailPrice && Number(batch.retailPrice) !== price && (
-          <div className="text-right">
-            <p className="text-caption text-surface-400 line-through">{fmtMoney(batch.retailPrice)}</p>
-            <p className="text-caption-medium text-success-700">
-              Save {fmtMoney(Number(batch.retailPrice) - price)}
-            </p>
-          </div>
-        )}
+      <div className="mt-3 flex items-baseline gap-2">
+        <span className="text-2xl font-bold text-surface-900">{fmtMoney(price)}</span>
+        <span className="text-caption text-surface-500">per crate</span>
       </div>
+      {!isReady && batch.retailPrice && Number(batch.retailPrice) > price && (
+        <p className="text-caption text-success-700 mt-0.5">
+          Save {fmtMoney(Number(batch.retailPrice) - price)} vs retail
+        </p>
+      )}
 
-      {/* Availability */}
-      <AvailabilityBar
-        used={used}
-        total={Math.max(total, available, 1)}
-        className="mt-4"
-        availableLabel={isReady ? 'available to buy' : 'still open to book'}
-        usedLabel={isReady ? 'committed' : 'reserved'}
-      />
-      <p className="mt-2 text-caption text-surface-500">{commitmentCopy}</p>
+      {/* How many are left */}
+      <div className="mt-3">
+        <p className={`text-body-medium font-medium ${lowStock ? 'text-error-600' : 'text-surface-700'}`}>
+          {fmt(available)} crates {isReady ? 'left' : 'available'}
+        </p>
+        <AvailabilityBar available={available} total={Math.max(total, 1)} className="mt-1.5" />
+      </div>
 
       {/* CTA */}
       <button
@@ -439,9 +407,10 @@ function CheckoutModal({ batch, profile, policy, onClose, onFinished }) {
     : parseInt(quantity, 10) || 0;
   const qtyVal = totalQtyVal;
   const orderValue = hasMultipleEggCodes
-    ? Object.entries(lineItems).reduce((sum, [code, qty]) => {
-        const code_ = batch.eggCodes?.find(c => c === code);
-        return sum + ((parseInt(qty, 10) || 0) * unitPrice);
+    ? Object.entries(lineItems).reduce((sum, [codeKey, qty]) => {
+        const ec = batch.eggCodes?.find(c => c.code === codeKey);
+        const codePrice = ec ? Number(ec.wholesalePrice || ec.retailPrice || unitPrice) : unitPrice;
+        return sum + ((parseInt(qty, 10) || 0) * codePrice);
       }, 0)
     : qtyVal * unitPrice;
   const minPayment = orderValue * (minPaymentPercent / 100);
@@ -829,26 +798,30 @@ function CheckoutModal({ batch, profile, policy, onClose, onFinished }) {
           <>
             <div className="space-y-3">
               <p className="text-body-medium font-medium text-surface-700">Select quantities per egg type</p>
-              {batch.eggCodes && batch.eggCodes.map((code) => (
-                <div key={code} className="flex items-end gap-2">
-                  <div className="flex-1">
-                    <label className="text-body text-surface-700">{code}</label>
-                    <Input
-                      type="number"
-                      min="0"
-                      max={maxQty}
-                      value={lineItems[code] || ''}
-                      onChange={(e) => setLineItems(prev => ({ ...prev, [code]: e.target.value }))}
-                      placeholder="0"
-                    />
-                  </div>
-                  {lineItems[code] && (
-                    <div className="text-right text-caption text-surface-600">
-                      {fmtMoney((parseInt(lineItems[code], 10) || 0) * unitPrice)}
+              {batch.eggCodes.map((ec) => {
+                const codeKey = ec.code;
+                const codePrice = Number(ec.wholesalePrice || ec.retailPrice || unitPrice);
+                return (
+                  <div key={ec.id} className="flex items-center gap-3">
+                    <div className="flex-1">
+                      <label className="text-body text-surface-700 block mb-1">{codeKey}</label>
+                      <Input
+                        type="number"
+                        min="0"
+                        max={maxQty}
+                        value={lineItems[codeKey] || ''}
+                        onChange={(e) => setLineItems(prev => ({ ...prev, [codeKey]: e.target.value }))}
+                        placeholder="0"
+                      />
                     </div>
-                  )}
-                </div>
-              ))}
+                    {lineItems[codeKey] && parseInt(lineItems[codeKey], 10) > 0 && (
+                      <div className="text-right text-caption text-surface-600 whitespace-nowrap pt-5">
+                        {fmtMoney((parseInt(lineItems[codeKey], 10) || 0) * codePrice)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </>
         ) : (
