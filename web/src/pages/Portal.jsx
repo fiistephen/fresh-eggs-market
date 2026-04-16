@@ -1490,30 +1490,6 @@ export default function Portal() {
                   </div>
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="rounded-xl border border-surface-200 bg-surface-0 p-5">
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-11 w-11 items-center justify-center rounded-full bg-success-50 text-success-700">{Icon.package}</span>
-                      <div>
-                        <h3 className="text-heading text-surface-900">Buy eggs now</h3>
-                        <p className="text-caption text-surface-500">For batches already available for pickup</p>
-                      </div>
-                    </div>
-                    <p className="mt-4 text-body text-surface-700">See the current retail price, choose your crates, then sign in to buy now.</p>
-                    <p className="mt-3 text-caption-medium text-success-700">{readyBatches.length} batch{readyBatches.length === 1 ? '' : 'es'} ready now</p>
-                  </div>
-                  <div className="rounded-xl border border-surface-200 bg-surface-0 p-5">
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-11 w-11 items-center justify-center rounded-full bg-brand-50 text-brand-700">{Icon.truck}</span>
-                      <div>
-                        <h3 className="text-heading text-surface-900">Book upcoming batch</h3>
-                        <p className="text-caption text-surface-500">For batches still on the way at wholesale price</p>
-                      </div>
-                    </div>
-                    <p className="mt-4 text-body text-surface-700">Choose how many crates you want, pay now, and we will hold your booking for you.</p>
-                    <p className="mt-3 text-caption-medium text-brand-700">{upcomingBatches.length} upcoming batch{upcomingBatches.length === 1 ? '' : 'es'}</p>
-                  </div>
-                </div>
               </div>
             )}
 
