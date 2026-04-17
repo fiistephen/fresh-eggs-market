@@ -610,6 +610,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
   const [error, setError] = useState('');
   const [showAdvancedItems, setShowAdvancedItems] = useState(false);
   const [quickLineIndex, setQuickLineIndex] = useState(0);
+  const [completedSale, setCompletedSale] = useState(null);
 
   useEffect(() => {
     if (!customerSearch.trim()) {
@@ -911,7 +912,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
             amount: Number(row.amount),
           }))
         : [];
-      await api.post('/sales', {
+      const result = await api.post('/sales', {
         customerId: selectedCustomer.id,
         bookingId: workflow === 'BOOKING' ? selectedBooking.id : undefined,
         batchId: workflow === 'DIRECT' ? selectedBatch?.id : undefined,
@@ -926,24 +927,8 @@ function RecordSaleModal({ onClose, onRecorded }) {
         })),
       });
 
-      // Post-sale banking feedback
-      if (workflow === 'BOOKING') {
-        toast.success('Booking pickup completed. Receipt is ready.');
-      } else {
-        const methods = paymentPayload.map(r => r.paymentMethod);
-        const hasCash = methods.includes('CASH');
-        const hasTransferOrCard = methods.some(m => m === 'TRANSFER' || m === 'POS_CARD');
-
-        if (hasCash && hasTransferOrCard) {
-          toast.success('Sale recorded. Cash portion added to undeposited cash in Banking. Transfer/card will appear when entered from the bank statement.');
-        } else if (hasCash) {
-          toast.success('Sale recorded. Added to undeposited cash in Banking.');
-        } else {
-          toast.success('Sale recorded. Will appear in Banking when the record keeper enters it from the bank statement.');
-        }
-      }
-
-      onRecorded();
+      // Show the receipt as the final screen
+      setCompletedSale(result.sale);
     } catch (err) {
       setError(err.error || 'Failed to record sale');
     } finally {
@@ -965,13 +950,155 @@ function RecordSaleModal({ onClose, onRecorded }) {
   const hasSelection = workflow === 'BOOKING' || workflow === 'DIRECT';
 
   // Dynamic modal title
-  const modalTitle = workflow === 'BOOKING' ? 'Complete Pickup'
+  const modalTitle = completedSale ? 'Receipt'
+    : workflow === 'BOOKING' ? 'Complete Pickup'
     : workflow === 'DIRECT' ? 'Record Sale'
     : 'New Sale';
 
-  return (
-    <Modal open={true} onClose={onClose} title={modalTitle} size="xl" footer={false}>
+  // ── Print receipt handler ──
+  function handlePrintReceipt() {
+    const printContent = document.getElementById('receipt-print-area');
+    if (!printContent) return;
+    const printWindow = window.open('', '_blank', 'width=400,height=600');
+    printWindow.document.write(`<!DOCTYPE html><html><head><title>Receipt ${completedSale.receiptNumber}</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Courier New', monospace; padding: 16px; max-width: 380px; margin: 0 auto; font-size: 13px; }
+        .header { text-align: center; margin-bottom: 12px; border-bottom: 1px dashed #999; padding-bottom: 12px; }
+        .header h1 { font-size: 18px; font-weight: bold; margin-bottom: 2px; }
+        .header p { font-size: 11px; color: #666; }
+        .receipt-no { text-align: center; font-weight: bold; font-size: 14px; margin: 8px 0; }
+        .info-row { display: flex; justify-content: space-between; margin: 3px 0; }
+        .info-row .label { color: #666; }
+        .divider { border-top: 1px dashed #999; margin: 10px 0; }
+        .items-header { display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 4px; font-size: 12px; }
+        .item-row { display: flex; justify-content: space-between; margin: 4px 0; }
+        .item-detail { font-size: 11px; color: #666; padding-left: 8px; }
+        .total-row { display: flex; justify-content: space-between; font-weight: bold; font-size: 15px; margin-top: 6px; }
+        .payment-badge { display: inline-block; background: #f0f0f0; padding: 2px 8px; border-radius: 4px; font-size: 11px; margin-top: 4px; }
+        .footer { text-align: center; margin-top: 16px; font-size: 11px; color: #888; border-top: 1px dashed #999; padding-top: 12px; }
+        @media print { body { padding: 8px; } }
+      </style>
+    </head><body>`);
+    printWindow.document.write(printContent.innerHTML);
+    printWindow.document.write('</body></html>');
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+  }
 
+  // ── Handle "Done" after receipt ──
+  function handleReceiptDone() {
+    onRecorded();
+  }
+
+  return (
+    <Modal open={true} onClose={completedSale ? handleReceiptDone : onClose} title={modalTitle} size={completedSale ? 'md' : 'xl'} footer={false}>
+
+      {/* ────────── RECEIPT VIEW ────────── */}
+      {completedSale ? (
+        <div>
+          <div id="receipt-print-area">
+            <div className="header" style={{ textAlign: 'center', marginBottom: 16, paddingBottom: 12, borderBottom: '1px dashed #d1d5db' }}>
+              <div style={{ fontSize: 18, fontWeight: 'bold' }}>Fresh Eggs Market</div>
+              <div style={{ fontSize: 12, color: '#6b7280' }}>Depot Sales Receipt</div>
+            </div>
+
+            <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: 16, marginBottom: 12, fontFamily: 'monospace' }}>
+              {completedSale.receiptNumber}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: 14 }}>
+              <span style={{ color: '#6b7280' }}>Customer</span>
+              <span style={{ fontWeight: 600 }}>{completedSale.customer?.name}</span>
+            </div>
+            {completedSale.customer?.phone && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: 14 }}>
+                <span style={{ color: '#6b7280' }}>Phone</span>
+                <span>{completedSale.customer.phone}</span>
+              </div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: 14 }}>
+              <span style={{ color: '#6b7280' }}>Date</span>
+              <span>{new Date(completedSale.saleDate || completedSale.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+            </div>
+            {completedSale.batch?.name && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: 14 }}>
+                <span style={{ color: '#6b7280' }}>Batch</span>
+                <span>{completedSale.batch.name}</span>
+              </div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: 14 }}>
+              <span style={{ color: '#6b7280' }}>Type</span>
+              <span>{completedSale.sourceType === 'BOOKING' ? 'Booking Pickup' : 'Direct Sale'}</span>
+            </div>
+
+            <div style={{ borderTop: '1px dashed #d1d5db', margin: '12px 0' }} />
+
+            {/* Line items */}
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 6 }}>ITEMS</div>
+            {(completedSale.lineItems || []).map((item, i) => (
+              <div key={i} style={{ marginBottom: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
+                  <span>{item.batchEggCode?.code || `Item ${i + 1}`} x {item.quantity}</span>
+                  <span style={{ fontWeight: 600 }}>{'\u20A6'}{Number(item.lineTotal).toLocaleString()}</span>
+                </div>
+                <div style={{ fontSize: 12, color: '#9ca3af', paddingLeft: 8 }}>
+                  {item.saleType === 'WHOLESALE' ? 'Wholesale' : item.saleType === 'RETAIL' ? 'Retail' : item.saleType === 'CRACKED' ? 'Cracked' : 'Write-off'} @ {'\u20A6'}{Number(item.unitPrice).toLocaleString()}/crate
+                </div>
+              </div>
+            ))}
+
+            <div style={{ borderTop: '1px dashed #d1d5db', margin: '12px 0' }} />
+
+            {/* Total */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 18, fontWeight: 'bold' }}>
+              <span>Total</span>
+              <span>{'\u20A6'}{Number(completedSale.totalAmount).toLocaleString()}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginTop: 4 }}>
+              <span style={{ color: '#6b7280' }}>Crates</span>
+              <span>{completedSale.totalQuantity}</span>
+            </div>
+
+            {/* Payment method */}
+            <div style={{ marginTop: 8 }}>
+              {(() => {
+                const rows = salePaymentRows(completedSale);
+                return rows.map((row, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginTop: 2 }}>
+                    <span style={{ color: '#6b7280' }}>Paid via</span>
+                    <span style={{ background: '#f3f4f6', padding: '2px 8px', borderRadius: 4, fontSize: 12 }}>
+                      {row.label}{rows.length > 1 ? ` — ${'\u20A6'}${Number(row.amount).toLocaleString()}` : ''}
+                    </span>
+                  </div>
+                ));
+              })()}
+            </div>
+
+            <div style={{ borderTop: '1px dashed #d1d5db', margin: '16px 0 12px' }} />
+            <div style={{ textAlign: 'center', fontSize: 12, color: '#9ca3af' }}>
+              Thank you for shopping with Fresh Eggs Market!
+            </div>
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex items-center justify-between mt-6 pt-4 border-t border-surface-100">
+            <Button variant="secondary" size="md" onClick={handlePrintReceipt}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
+                <polyline points="6 9 6 2 18 2 18 9" />
+                <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+                <rect x="6" y="14" width="12" height="8" />
+              </svg>
+              Print receipt
+            </Button>
+            <Button variant="primary" size="md" onClick={handleReceiptDone}>
+              Done
+            </Button>
+          </div>
+        </div>
+      ) : (
+      <>
       {(error || workspaceError) && (
         <Card variant="outlined" padding="compact" className="mb-4 border-error-200 bg-error-50">
           <p className="text-body text-error-700">{error || workspaceError}</p>
@@ -1566,12 +1693,14 @@ function RecordSaleModal({ onClose, onRecorded }) {
                     ? 'Complete pickup'
                     : totalAmount > 0
                       ? `Save \u00B7 ${formatCurrency(totalAmount)}`
-                      : 'Save sale'}
+                      : 'Complete sale'}
                 </Button>
               )}
             </div>
           </div>
         </form>
+      )}
+      </>
       )}
     </Modal>
   );
