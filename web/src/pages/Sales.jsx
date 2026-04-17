@@ -865,8 +865,6 @@ function RecordSaleModal({ onClose, onRecorded }) {
   const canReturnToSimple = activeItems.length <= 1;
   const totalQty = activeItems.reduce((sum, lineItem) => sum + Number(lineItem.quantity), 0);
   const totalAmount = activeItems.reduce((sum, lineItem) => sum + Number(lineItem.quantity) * Number(lineItem.unitPrice), 0);
-  const totalCost = activeItems.reduce((sum, lineItem) => sum + Number(lineItem.quantity) * Number(lineItem.costPrice), 0);
-  const profit = totalAmount - totalCost;
   const bookingQuantityGap = selectedBooking ? selectedBooking.quantity - totalQty : 0;
   const isBookingQuantityReady = !selectedBooking || bookingQuantityGap === 0;
   const orderLimitProfile = customerWorkspace.customer?.orderLimitProfile || null;
@@ -1639,10 +1637,6 @@ function RecordSaleModal({ onClose, onRecorded }) {
                       <div className="flex justify-between text-body">
                         <span className="text-surface-500">{totalQty.toLocaleString()} crates</span>
                         <span className="text-metric font-bold text-surface-900">{formatCurrency(totalAmount)}</span>
-                      </div>
-                      <div className="flex justify-between text-caption text-surface-400">
-                        <span>Profit</span>
-                        <span className={profit >= 0 ? 'text-success-600' : 'text-error-600'}>{formatCurrency(profit)}</span>
                       </div>
                     </div>
                   )}
