@@ -770,7 +770,6 @@ function RecordSaleModal({ onClose, onRecorded }) {
       { presetQuantity: booking.quantity },
     );
     setError('');
-    setStep(3);
   }
 
   function chooseDirectSale(batch) {
@@ -785,7 +784,6 @@ function RecordSaleModal({ onClose, onRecorded }) {
     setQuickLineIndex(0);
     initializeLineItems(batch);
     setError('');
-    setStep(3);
   }
 
   function chooseMixedDirectSale() {
@@ -800,7 +798,18 @@ function RecordSaleModal({ onClose, onRecorded }) {
     setQuickLineIndex(0);
     initializeLineItemsFromRows(customerWorkspace.mixedDirectSaleStock || []);
     setError('');
-    setStep(3);
+  }
+
+  function clearSelection() {
+    setWorkflow('');
+    setSelectedBooking(null);
+    setSelectedBatch(null);
+    setSaleScopeLabel('');
+    setLineItems([]);
+    setPaymentMethod('');
+    setPaymentBreakdown([{ paymentMethod: '', amount: '' }]);
+    setLimitOverrideNote('');
+    setError('');
   }
 
   function updateLineItem(index, field, value) {
@@ -954,10 +963,11 @@ function RecordSaleModal({ onClose, onRecorded }) {
 
   const isSplitPayment = paymentBreakdown.length > 1;
   const singlePaymentMethod = !isSplitPayment ? (paymentBreakdown[0]?.paymentMethod || '') : '';
+  const hasSelection = workflow === 'BOOKING' || workflow === 'DIRECT';
 
   // Dynamic modal title
-  const modalTitle = step === 3
-    ? (workflow === 'BOOKING' ? 'Complete Pickup' : 'Record Sale')
+  const modalTitle = workflow === 'BOOKING' ? 'Complete Pickup'
+    : workflow === 'DIRECT' ? 'Record Sale'
     : 'New Sale';
 
   return (
@@ -969,7 +979,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
         </Card>
       )}
 
-      {/* ────────── STEP 1: FIND CUSTOMER ────────── */}
+      {/* ────────── STEP 1: FIND OR CREATE CUSTOMER ────────── */}
       {step === 1 && (
         <div className="space-y-4">
           {!showCreateCustomer ? (
@@ -1005,10 +1015,9 @@ function RecordSaleModal({ onClose, onRecorded }) {
               )}
 
               {customerSearch && !searchingCustomers && customers.length === 0 && (
-                <p className="text-body text-surface-500 text-center py-2">No results for "{customerSearch}"</p>
+                <p className="text-body text-surface-500 text-center py-2">No results for &ldquo;{customerSearch}&rdquo;</p>
               )}
 
-              {/* Always-visible new customer option */}
               <div className="flex items-center gap-3 text-body text-surface-400">
                 <div className="flex-1 border-t border-surface-100" />
                 <span>or</span>
@@ -1031,7 +1040,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
             <Card variant="outlined" padding="comfortable">
               <form onSubmit={handleCreateCustomer} className="space-y-4">
                 <p className="text-body-medium font-semibold text-surface-800">New customer</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Input
                     label="Name"
                     value={newCustomerForm.name}
@@ -1049,21 +1058,28 @@ function RecordSaleModal({ onClose, onRecorded }) {
                     size="md"
                   />
                 </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Input
+                    label="Email"
+                    type="email"
+                    value={newCustomerForm.email}
+                    onChange={(e) => setNewCustomerForm((current) => ({ ...current, email: e.target.value }))}
+                    placeholder="Optional"
+                    size="md"
+                  />
+                  <Input
+                    label="Notes"
+                    value={newCustomerForm.notes}
+                    onChange={(e) => setNewCustomerForm((current) => ({ ...current, notes: e.target.value }))}
+                    placeholder="Optional"
+                    size="md"
+                  />
+                </div>
                 <div className="flex items-center justify-between gap-3">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowCreateCustomer(false)}
-                  >
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setShowCreateCustomer(false)}>
                     Back to search
                   </Button>
-                  <Button
-                    type="submit"
-                    variant="primary"
-                    size="md"
-                    loading={creatingCustomer}
-                  >
+                  <Button type="submit" variant="primary" size="md" loading={creatingCustomer}>
                     Save and continue
                   </Button>
                 </div>
@@ -1077,10 +1093,11 @@ function RecordSaleModal({ onClose, onRecorded }) {
         </div>
       )}
 
-      {/* ────────── STEP 2: CHOOSE BOOKING OR BATCH ────────── */}
+      {/* ────────── STEP 2: EVERYTHING — SELECT + DETAILS + PAYMENT + SUBMIT ────────── */}
       {step === 2 && (
-        <div className="space-y-4">
-          {/* Customer bar */}
+        <form onSubmit={handleSubmit} className="space-y-5">
+
+          {/* ── Customer bar ── */}
           <div className="flex items-center gap-3 rounded-lg bg-surface-50 px-4 py-2.5">
             <span className="text-body-medium font-semibold text-surface-900">{selectedCustomer?.name}</span>
             <span className="text-caption text-surface-400">{selectedCustomer?.phone}</span>
@@ -1088,7 +1105,8 @@ function RecordSaleModal({ onClose, onRecorded }) {
               <Badge color="warning" dot>Max {orderLimitProfile.currentPerOrderLimit}</Badge>
             )}
             <button
-              onClick={() => { setStep(1); setWorkflow(''); setLineItems([]); }}
+              type="button"
+              onClick={() => { setStep(1); clearSelection(); }}
               className="ml-auto text-caption text-brand-600 hover:text-brand-700 font-medium"
             >
               Change
@@ -1101,22 +1119,28 @@ function RecordSaleModal({ onClose, onRecorded }) {
             </div>
           ) : (
             <>
-              {/* Bookings */}
+              {/* ── Bookings section ── */}
               {customerWorkspace.bookings.length > 0 && (
                 <section className="space-y-2">
                   <p className="text-overline text-surface-400">Bookings</p>
                   {customerWorkspace.bookings.map((booking) => {
                     const sourceMeta = bookingSourceMeta(booking);
+                    const isSelected = workflow === 'BOOKING' && selectedBooking?.id === booking.id;
                     return (
                       <button
                         key={booking.id}
                         type="button"
                         disabled={!booking.isFullyPaid}
-                        onClick={() => booking.isFullyPaid && chooseBooking(booking)}
-                        className={`w-full text-left rounded-lg border px-4 py-3 transition-colors ${
-                          booking.isFullyPaid
-                            ? 'border-success-200 bg-success-50/40 hover:bg-success-50 cursor-pointer'
-                            : 'border-surface-200 bg-surface-50 opacity-60 cursor-not-allowed'
+                        onClick={() => {
+                          if (!booking.isFullyPaid) return;
+                          if (isSelected) { clearSelection(); } else { chooseBooking(booking); }
+                        }}
+                        className={`w-full text-left rounded-lg border-2 px-4 py-3 transition-all ${
+                          isSelected
+                            ? 'border-brand-500 bg-brand-50/40 ring-1 ring-brand-200'
+                            : booking.isFullyPaid
+                              ? 'border-surface-200 hover:border-surface-300 hover:bg-surface-50 cursor-pointer'
+                              : 'border-surface-200 bg-surface-50 opacity-60 cursor-not-allowed'
                         }`}
                       >
                         <div className="flex items-center justify-between gap-3">
@@ -1126,7 +1150,9 @@ function RecordSaleModal({ onClose, onRecorded }) {
                             <Badge color={sourceMeta.color} dot>{sourceMeta.label}</Badge>
                           </div>
                           {booking.isFullyPaid ? (
-                            <span className="text-caption font-medium text-success-700 whitespace-nowrap">Complete pickup →</span>
+                            <span className={`text-caption font-medium whitespace-nowrap ${isSelected ? 'text-brand-600' : 'text-success-700'}`}>
+                              {isSelected ? 'Selected' : 'Complete pickup \u2192'}
+                            </span>
                           ) : (
                             <Badge color="warning" dot>{formatCurrency(booking.balance)} due</Badge>
                           )}
@@ -1137,7 +1163,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
                 </section>
               )}
 
-              {/* Divider */}
+              {/* ── Divider between bookings and direct sale ── */}
               {customerWorkspace.bookings.length > 0 && customerWorkspace.directSaleBatches.length > 0 && (
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-surface-200" /></div>
@@ -1147,53 +1173,73 @@ function RecordSaleModal({ onClose, onRecorded }) {
                 </div>
               )}
 
-              {/* Direct sale batches */}
+              {/* ── Direct sale batches ── */}
               {customerWorkspace.directSaleBatches.length > 0 && (
                 <section className="space-y-2">
-                  {customerWorkspace.bookings.length === 0 && (
+                  {customerWorkspace.bookings.length === 0 && !hasSelection && (
                     <p className="text-overline text-surface-400">Choose a batch</p>
                   )}
 
                   {customerWorkspace.mixedDirectSaleStock?.length > 0 && customerWorkspace.directSaleBatches.length > 1 && (
                     <button
                       type="button"
-                      onClick={() => chooseMixedDirectSale()}
-                      className="w-full text-left rounded-lg border border-brand-200 bg-brand-50/30 px-4 py-3 hover:bg-brand-50 transition-colors"
+                      onClick={() => {
+                        if (workflow === 'DIRECT' && !selectedBatch) { clearSelection(); } else { chooseMixedDirectSale(); }
+                      }}
+                      className={`w-full text-left rounded-lg border-2 px-4 py-3 transition-all ${
+                        workflow === 'DIRECT' && !selectedBatch
+                          ? 'border-brand-500 bg-brand-50/40 ring-1 ring-brand-200'
+                          : 'border-surface-200 hover:border-surface-300 hover:bg-surface-50'
+                      }`}
                     >
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-body-medium font-semibold text-surface-900">All stock ({customerWorkspace.directSaleBatches.length} batches)</span>
-                        <span className="text-caption text-brand-600 font-medium">Recommended →</span>
+                        <span className="text-caption text-brand-600 font-medium">
+                          {workflow === 'DIRECT' && !selectedBatch ? 'Selected' : 'Recommended \u2192'}
+                        </span>
                       </div>
                     </button>
                   )}
 
-                  {customerWorkspace.directSaleBatches.map((batch) => (
-                    <button
-                      key={batch.id}
-                      type="button"
-                      onClick={() => chooseDirectSale(batch)}
-                      className="w-full text-left border border-surface-200 rounded-lg px-4 py-3 hover:border-surface-300 hover:bg-surface-50 transition-colors"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2.5 flex-wrap min-w-0">
-                          <span className="text-body-medium font-semibold text-surface-900">{batch.name}</span>
-                          <span className="text-body text-surface-500">
-                            W {formatCurrency(batch.wholesalePrice)} · R {formatCurrency(batch.retailPrice)}
-                          </span>
-                          <span className="text-caption text-surface-400">
-                            {batch.availableForSale?.toLocaleString?.() || 0} available
-                          </span>
-                        </div>
-                        <div className="flex gap-1.5 shrink-0">
-                          {batch.eggCodes.map((eggCode) => (
-                            <span key={eggCode.id} className="text-caption font-mono bg-surface-100 text-surface-500 px-1.5 py-0.5 rounded">
-                              {eggCode.code}
+                  {customerWorkspace.directSaleBatches.map((batch) => {
+                    const isSelected = workflow === 'DIRECT' && selectedBatch?.id === batch.id;
+                    return (
+                      <button
+                        key={batch.id}
+                        type="button"
+                        onClick={() => {
+                          if (isSelected) { clearSelection(); } else { chooseDirectSale(batch); }
+                        }}
+                        className={`w-full text-left rounded-lg border-2 px-4 py-3 transition-all ${
+                          isSelected
+                            ? 'border-brand-500 bg-brand-50/40 ring-1 ring-brand-200'
+                            : 'border-surface-200 hover:border-surface-300 hover:bg-surface-50'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2.5 flex-wrap min-w-0">
+                            <span className="text-body-medium font-semibold text-surface-900">{batch.name}</span>
+                            <span className="text-body text-surface-500">
+                              W {formatCurrency(batch.wholesalePrice)} &middot; R {formatCurrency(batch.retailPrice)}
                             </span>
-                          ))}
+                            <span className="text-caption text-surface-400">
+                              {batch.availableForSale?.toLocaleString?.() || 0} available
+                            </span>
+                          </div>
+                          <div className="flex gap-1.5 shrink-0">
+                            {isSelected
+                              ? <span className="text-caption font-medium text-brand-600">Selected</span>
+                              : batch.eggCodes.map((eggCode) => (
+                                  <span key={eggCode.id} className="text-caption font-mono bg-surface-100 text-surface-500 px-1.5 py-0.5 rounded">
+                                    {eggCode.code}
+                                  </span>
+                                ))
+                            }
+                          </div>
                         </div>
-                      </div>
-                    </button>
-                  ))}
+                      </button>
+                    );
+                  })}
                 </section>
               )}
 
@@ -1203,8 +1249,282 @@ function RecordSaleModal({ onClose, onRecorded }) {
                 </div>
               )}
 
-              {/* Recent sales — small, collapsed */}
-              {customerWorkspace.recentFulfilments?.length > 0 && (
+              {/* ────── INLINE DETAILS (appears when something is selected) ────── */}
+              {hasSelection && (
+                <>
+                  <div className="border-t border-surface-200" />
+
+                  {workflow === 'BOOKING' && !selectedBooking?.isFullyPaid && (
+                    <p className="text-body text-warning-700 bg-warning-50 border border-warning-200 rounded-lg px-4 py-2">
+                      Payment is still outstanding. Complete it in Banking first.
+                    </p>
+                  )}
+
+                  {needsLimitOverride && (
+                    <div className="border border-error-200 bg-error-50 rounded-lg px-4 py-3">
+                      <p className="text-body text-error-800">
+                        Exceeds {orderLimitProfile.currentPerOrderLimit}-crate limit.
+                      </p>
+                      <textarea
+                        value={limitOverrideNote}
+                        onChange={(e) => setLimitOverrideNote(e.target.value)}
+                        rows={2}
+                        placeholder="Reason for override (required)"
+                        className="w-full mt-2 border border-error-300 rounded-lg px-3 py-2 text-body focus:ring-2 focus:ring-error-500 focus:border-error-500 outline-none"
+                      />
+                    </div>
+                  )}
+
+                  {/* ── Line items ── */}
+                  <div>
+                    <div className="flex items-center justify-between gap-3 mb-2">
+                      <label className="text-body-medium font-semibold text-surface-900">
+                        {workflow === 'BOOKING' ? 'Pickup items' : 'Items'}
+                      </label>
+                      {lineItems.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (showAdvancedItems && !canReturnToSimple) return;
+                            setShowAdvancedItems((c) => !c);
+                          }}
+                          className="text-caption font-medium text-brand-600 hover:text-brand-700"
+                          disabled={showAdvancedItems && !canReturnToSimple}
+                        >
+                          {showAdvancedItems ? 'Simple view' : 'Split by egg code'}
+                        </button>
+                      )}
+                    </div>
+
+                    {!showAdvancedItems && quickLineItem ? (
+                      <div className="border border-surface-200 rounded-lg p-4 bg-surface-50 space-y-3">
+                        {lineItems.length > 1 && (
+                          <Select
+                            value={String(quickLineIndex)}
+                            onChange={(e) => setQuickEditorLine(Number(e.target.value))}
+                            size="md"
+                          >
+                            {lineItems.map((li, i) => (
+                              <option key={li.batchEggCodeId} value={i}>{li.code} &middot; {li.batchName}</option>
+                            ))}
+                          </Select>
+                        )}
+
+                        <div className="grid grid-cols-3 gap-3">
+                          <div>
+                            <label className="block text-caption text-surface-500 mb-1">Type</label>
+                            <Select
+                              value={quickLineItem.saleType}
+                              onChange={(e) => updateLineItem(quickLineIndex, 'saleType', e.target.value)}
+                              size="md"
+                            >
+                              {Object.entries(SALE_TYPE_LABELS).map(([k, v]) => (
+                                <option key={k} value={k}>{v}</option>
+                              ))}
+                            </Select>
+                          </div>
+                          <div>
+                            <label className="block text-caption text-surface-500 mb-1">Qty</label>
+                            <Input
+                              type="number"
+                              min="0"
+                              value={quickLineItem.quantity}
+                              onChange={(e) => updateLineItem(quickLineIndex, 'quantity', e.target.value)}
+                              placeholder="0"
+                              size="md"
+                              autoFocus={workflow === 'DIRECT'}
+                            />
+                            <p className="mt-1 text-caption text-surface-400">{Number(quickLineItem.remainingQuantity || 0).toLocaleString()} left</p>
+                          </div>
+                          <div>
+                            <label className="block text-caption text-surface-500 mb-1">Price ({'\u20A6'})</label>
+                            <Input
+                              type="number"
+                              min="0"
+                              value={quickLineItem.unitPrice}
+                              onChange={(e) => updateLineItem(quickLineIndex, 'unitPrice', e.target.value)}
+                              size="md"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ) : showAdvancedItems ? (
+                      <div className="space-y-3 overflow-x-auto custom-scrollbar">
+                        {lineItems.map((lineItem, index) => (
+                          <div key={lineItem.batchEggCodeId} className="grid grid-cols-12 gap-1 sm:gap-2 items-end min-w-[320px]">
+                            <div className="col-span-2">
+                              {index === 0 && <label className="block text-caption text-surface-500 mb-1">Code</label>}
+                              <div className="border border-surface-200 bg-surface-50 rounded-lg px-3 py-2">
+                                <p className="text-body-medium font-mono font-semibold text-brand-600">{lineItem.code}</p>
+                              </div>
+                            </div>
+                            <div className="col-span-3">
+                              {index === 0 && <label className="block text-caption text-surface-500 mb-1">Type</label>}
+                              <Select value={lineItem.saleType} onChange={(e) => updateLineItem(index, 'saleType', e.target.value)} size="md">
+                                {Object.entries(SALE_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                              </Select>
+                            </div>
+                            <div className="col-span-2">
+                              {index === 0 && <label className="block text-caption text-surface-500 mb-1">Qty</label>}
+                              <input type="number" min="0" placeholder="0" value={lineItem.quantity}
+                                onChange={(e) => updateLineItem(index, 'quantity', e.target.value)}
+                                className="w-full border border-surface-300 rounded-lg px-2 py-2 text-body focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none" />
+                              <p className="text-caption text-surface-400 mt-0.5">{Number(lineItem.remainingQuantity || 0).toLocaleString()} left</p>
+                            </div>
+                            <div className="col-span-3">
+                              {index === 0 && <label className="block text-caption text-surface-500 mb-1">Price ({'\u20A6'})</label>}
+                              <input type="number" min="0" value={lineItem.unitPrice}
+                                onChange={(e) => updateLineItem(index, 'unitPrice', e.target.value)}
+                                className="w-full border border-surface-300 rounded-lg px-2 py-2 text-body focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none" />
+                            </div>
+                            <div className="col-span-2 text-right">
+                              {index === 0 && <label className="block text-caption text-surface-500 mb-1">Total</label>}
+                              <p className="py-2 text-body-medium font-semibold text-surface-800">
+                                {lineItem.quantity && Number(lineItem.quantity) > 0
+                                  ? formatCurrency(Number(lineItem.quantity) * Number(lineItem.unitPrice))
+                                  : '\u2014'}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {/* ── Payment method (direct sales only) — big one-click buttons ── */}
+                  {workflow === 'DIRECT' && (
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-body-medium font-semibold text-surface-900">Payment method</label>
+                        {!isSplitPayment && singlePaymentMethod && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPaymentBreakdown([
+                                { paymentMethod: singlePaymentMethod, amount: String(totalAmount) },
+                                { paymentMethod: '', amount: '' },
+                              ]);
+                            }}
+                            className="text-caption font-medium text-brand-600 hover:text-brand-700"
+                          >
+                            Split payment
+                          </button>
+                        )}
+                        {isSplitPayment && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const first = paymentBreakdown.find((r) => r.paymentMethod) || paymentBreakdown[0];
+                              setPaymentBreakdown([{ paymentMethod: first?.paymentMethod || '', amount: String(totalAmount) }]);
+                            }}
+                            className="text-caption font-medium text-brand-600 hover:text-brand-700"
+                          >
+                            Single payment
+                          </button>
+                        )}
+                      </div>
+
+                      {!isSplitPayment ? (
+                        <div className="grid grid-cols-3 gap-3">
+                          {[
+                            { key: 'CASH', label: 'Cash' },
+                            { key: 'TRANSFER', label: 'Transfer' },
+                            { key: 'POS_CARD', label: 'POS' },
+                          ].map(({ key, label }) => (
+                            <button
+                              key={key}
+                              type="button"
+                              onClick={() => {
+                                const newMethod = singlePaymentMethod === key ? '' : key;
+                                if (newMethod) {
+                                  setPaymentBreakdown([{ paymentMethod: newMethod, amount: totalAmount > 0 ? String(totalAmount) : '' }]);
+                                } else {
+                                  setPaymentBreakdown([{ paymentMethod: '', amount: '' }]);
+                                }
+                              }}
+                              className={`rounded-lg border-2 py-3.5 text-center text-body-medium font-semibold transition-all ${
+                                singlePaymentMethod === key
+                                  ? 'border-brand-500 bg-brand-50 text-brand-700 shadow-sm'
+                                  : 'border-surface-200 hover:border-surface-300 text-surface-600 hover:bg-surface-50'
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {paymentBreakdown.map((row, index) => (
+                            <div key={`pr-${index}`} className="grid grid-cols-1 sm:grid-cols-[1fr_150px_auto] gap-2 border border-surface-200 rounded-lg p-3">
+                              <Select
+                                value={row.paymentMethod}
+                                onChange={(e) => updatePaymentRow(index, 'paymentMethod', e.target.value)}
+                                size="md"
+                              >
+                                <option value="">Method</option>
+                                {Object.entries(PAYMENT_LABELS)
+                                  .filter(([k]) => !['PRE_ORDER', 'MIXED'].includes(k))
+                                  .map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                              </Select>
+                              <Input
+                                type="number" min="0"
+                                value={row.amount}
+                                onChange={(e) => updatePaymentRow(index, 'amount', e.target.value)}
+                                placeholder="0"
+                                size="md"
+                              />
+                              <Button type="button" variant="ghost" size="sm" onClick={() => removePaymentRow(index)} disabled={paymentBreakdown.length <= 2}>
+                                <XIcon />
+                              </Button>
+                            </div>
+                          ))}
+                          <Button type="button" variant="ghost" size="sm" onClick={addPaymentRow}>
+                            + Add row
+                          </Button>
+                        </div>
+                      )}
+
+                      {/* Payment balance indicator */}
+                      {isSplitPayment && activePaymentRows.length > 0 && totalAmount > 0 && (
+                        <p className={`mt-2 text-caption ${Math.abs(paymentGap) <= 0.009 ? 'text-success-600' : 'text-warning-600'}`}>
+                          {Math.abs(paymentGap) <= 0.009
+                            ? 'Payment matches total'
+                            : paymentGap > 0
+                              ? `${formatCurrency(paymentGap)} remaining`
+                              : `${formatCurrency(Math.abs(paymentGap))} over`}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── Order summary ── */}
+                  {totalQty > 0 && (
+                    <div className="border-t border-surface-200 pt-4 space-y-1.5">
+                      {workflow === 'BOOKING' && selectedBooking && bookingQuantityGap !== 0 && (
+                        <div className="flex justify-between text-body">
+                          <span className="text-surface-500">Booking</span>
+                          <span className={`font-semibold ${bookingQuantityGap > 0 ? 'text-warning-600' : 'text-error-600'}`}>
+                            {bookingQuantityGap > 0
+                              ? `${bookingQuantityGap} crates still needed`
+                              : `${Math.abs(bookingQuantityGap)} too many`}
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex justify-between text-body">
+                        <span className="text-surface-500">{totalQty.toLocaleString()} crates</span>
+                        <span className="text-metric font-bold text-surface-900">{formatCurrency(totalAmount)}</span>
+                      </div>
+                      <div className="flex justify-between text-caption text-surface-400">
+                        <span>Profit</span>
+                        <span className={profit >= 0 ? 'text-success-600' : 'text-error-600'}>{formatCurrency(profit)}</span>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Recent sales — collapsed */}
+              {!hasSelection && customerWorkspace.recentFulfilments?.length > 0 && (
                 <details>
                   <summary className="cursor-pointer text-caption text-surface-400 hover:text-surface-500 select-none">
                     Recent sales ({customerWorkspace.recentFulfilments.length})
@@ -1213,306 +1533,13 @@ function RecordSaleModal({ onClose, onRecorded }) {
                     {customerWorkspace.recentFulfilments.map((sale) => (
                       <div key={sale.id} className="flex items-center justify-between gap-3 px-3 py-1.5 bg-surface-50 rounded text-caption text-surface-500">
                         <span className="font-mono">{sale.receiptNumber}</span>
-                        <span>{sale.totalQuantity} crates · {formatCurrency(sale.totalAmount)} · {formatDate(sale.saleDate)}</span>
+                        <span>{sale.totalQuantity} crates &middot; {formatCurrency(sale.totalAmount)} &middot; {formatDate(sale.saleDate)}</span>
                       </div>
                     ))}
                   </div>
                 </details>
               )}
             </>
-          )}
-
-          <div className="flex justify-between pt-1">
-            <Button onClick={() => setStep(1)} variant="ghost" size="md" icon={<ChevronLeftIcon />}>Back</Button>
-            <Button onClick={onClose} variant="ghost" size="md">Cancel</Button>
-          </div>
-        </div>
-      )}
-
-      {/* ────────── STEP 3: ITEMS + PAYMENT + CONFIRM ────────── */}
-      {step === 3 && (
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Compact context line */}
-          <div className="flex items-center gap-2 flex-wrap text-body text-surface-600 bg-surface-50 rounded-lg px-4 py-2.5">
-            <span className="font-semibold text-surface-900">{selectedCustomer?.name}</span>
-            <span className="text-surface-300">·</span>
-            <span>{saleScopeLabel || selectedBatch?.name || '—'}</span>
-            {workflow === 'BOOKING' && <Badge color="success" dot>Pickup</Badge>}
-            {orderLimitProfile?.isUsingEarlyOrderLimit && workflow === 'DIRECT' && (
-              <Badge color="warning" dot>Max {orderLimitProfile.currentPerOrderLimit}</Badge>
-            )}
-            <button
-              type="button"
-              onClick={() => { setStep(2); setError(''); }}
-              className="ml-auto text-caption text-brand-600 hover:text-brand-700 font-medium"
-            >
-              Change
-            </button>
-          </div>
-
-          {workflow === 'BOOKING' && !selectedBooking?.isFullyPaid && (
-            <p className="text-body text-warning-700 bg-warning-50 border border-warning-200 rounded-lg px-4 py-2">
-              Payment is still outstanding. Complete it in Banking first.
-            </p>
-          )}
-
-          {needsLimitOverride && (
-            <div className="border border-error-200 bg-error-50 rounded-lg px-4 py-3">
-              <p className="text-body text-error-800">
-                Exceeds {orderLimitProfile.currentPerOrderLimit}-crate limit.
-              </p>
-              <textarea
-                value={limitOverrideNote}
-                onChange={(e) => setLimitOverrideNote(e.target.value)}
-                rows={2}
-                placeholder="Reason for override (required)"
-                className="w-full mt-2 border border-error-300 rounded-lg px-3 py-2 text-body focus:ring-2 focus:ring-error-500 focus:border-error-500 outline-none"
-              />
-            </div>
-          )}
-
-          {/* ── Line items ── */}
-          <div>
-            <div className="flex items-center justify-between gap-3 mb-2">
-              <label className="text-body-medium font-semibold text-surface-900">
-                {workflow === 'BOOKING' ? 'Pickup items' : 'Sale items'}
-              </label>
-              {lineItems.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (showAdvancedItems && !canReturnToSimple) return;
-                    setShowAdvancedItems((c) => !c);
-                  }}
-                  className="text-caption font-medium text-brand-600 hover:text-brand-700"
-                  disabled={showAdvancedItems && !canReturnToSimple}
-                >
-                  {showAdvancedItems ? 'Simple view' : 'Split by egg code'}
-                </button>
-              )}
-            </div>
-
-            {!showAdvancedItems && quickLineItem ? (
-              <div className="border border-surface-200 rounded-lg p-4 bg-surface-50 space-y-4">
-                {lineItems.length > 1 && (
-                  <Select
-                    value={String(quickLineIndex)}
-                    onChange={(e) => setQuickEditorLine(Number(e.target.value))}
-                    size="md"
-                  >
-                    {lineItems.map((li, i) => (
-                      <option key={li.batchEggCodeId} value={i}>{li.code} · {li.batchName}</option>
-                    ))}
-                  </Select>
-                )}
-
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-caption text-surface-500 mb-1">Type</label>
-                    <Select
-                      value={quickLineItem.saleType}
-                      onChange={(e) => updateLineItem(quickLineIndex, 'saleType', e.target.value)}
-                      size="md"
-                    >
-                      {Object.entries(SALE_TYPE_LABELS).map(([k, v]) => (
-                        <option key={k} value={k}>{v}</option>
-                      ))}
-                    </Select>
-                  </div>
-                  <div>
-                    <label className="block text-caption text-surface-500 mb-1">Qty</label>
-                    <Input
-                      type="number"
-                      min="0"
-                      value={quickLineItem.quantity}
-                      onChange={(e) => updateLineItem(quickLineIndex, 'quantity', e.target.value)}
-                      placeholder="0"
-                      size="md"
-                      autoFocus={workflow === 'DIRECT'}
-                    />
-                    <p className="mt-1 text-caption text-surface-400">{Number(quickLineItem.remainingQuantity || 0).toLocaleString()} left</p>
-                  </div>
-                  <div>
-                    <label className="block text-caption text-surface-500 mb-1">Price (₦)</label>
-                    <Input
-                      type="number"
-                      min="0"
-                      value={quickLineItem.unitPrice}
-                      onChange={(e) => updateLineItem(quickLineIndex, 'unitPrice', e.target.value)}
-                      size="md"
-                    />
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-3 overflow-x-auto custom-scrollbar">
-                {lineItems.map((lineItem, index) => (
-                  <div key={lineItem.batchEggCodeId} className="grid grid-cols-12 gap-1 sm:gap-2 items-end min-w-[320px]">
-                    <div className="col-span-2">
-                      {index === 0 && <label className="block text-caption text-surface-500 mb-1">Code</label>}
-                      <div className="border border-surface-200 bg-surface-50 rounded-lg px-3 py-2">
-                        <p className="text-body-medium font-mono font-semibold text-brand-600">{lineItem.code}</p>
-                        <p className="text-caption text-surface-400 mt-0.5 truncate">{lineItem.batchName}</p>
-                      </div>
-                    </div>
-                    <div className="col-span-3">
-                      {index === 0 && <label className="block text-caption text-surface-500 mb-1">Type</label>}
-                      <Select value={lineItem.saleType} onChange={(e) => updateLineItem(index, 'saleType', e.target.value)} size="md">
-                        {Object.entries(SALE_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                      </Select>
-                    </div>
-                    <div className="col-span-2">
-                      {index === 0 && <label className="block text-caption text-surface-500 mb-1">Qty</label>}
-                      <input type="number" min="0" placeholder="0" value={lineItem.quantity}
-                        onChange={(e) => updateLineItem(index, 'quantity', e.target.value)}
-                        className="w-full border border-surface-300 rounded-lg px-2 py-2 text-body focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none" />
-                      <p className="text-caption text-surface-400 mt-0.5">{Number(lineItem.remainingQuantity || 0).toLocaleString()} left</p>
-                    </div>
-                    <div className="col-span-3">
-                      {index === 0 && <label className="block text-caption text-surface-500 mb-1">Price (₦)</label>}
-                      <input type="number" min="0" value={lineItem.unitPrice}
-                        onChange={(e) => updateLineItem(index, 'unitPrice', e.target.value)}
-                        className="w-full border border-surface-300 rounded-lg px-2 py-2 text-body focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none" />
-                    </div>
-                    <div className="col-span-2 text-right">
-                      {index === 0 && <label className="block text-caption text-surface-500 mb-1">Total</label>}
-                      <p className="py-2 text-body-medium font-semibold text-surface-800">
-                        {lineItem.quantity && Number(lineItem.quantity) > 0
-                          ? formatCurrency(Number(lineItem.quantity) * Number(lineItem.unitPrice))
-                          : '—'}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* ── Payment (direct sales only) ── */}
-          {workflow === 'DIRECT' && (
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-body-medium font-semibold text-surface-900">Payment</label>
-                {!isSplitPayment && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPaymentBreakdown([
-                        { paymentMethod: singlePaymentMethod, amount: singlePaymentMethod ? String(totalAmount) : '' },
-                        { paymentMethod: '', amount: '' },
-                      ]);
-                    }}
-                    className="text-caption font-medium text-brand-600 hover:text-brand-700"
-                  >
-                    Split payment
-                  </button>
-                )}
-                {isSplitPayment && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const first = paymentBreakdown.find((r) => r.paymentMethod) || paymentBreakdown[0];
-                      setPaymentBreakdown([{ paymentMethod: first?.paymentMethod || '', amount: String(totalAmount) }]);
-                    }}
-                    className="text-caption font-medium text-brand-600 hover:text-brand-700"
-                  >
-                    Single payment
-                  </button>
-                )}
-              </div>
-
-              {!isSplitPayment ? (
-                /* Single payment — one row: method + auto-filled amount */
-                <div className="grid grid-cols-1 sm:grid-cols-[1fr_180px] gap-3 border border-surface-200 rounded-lg p-3">
-                  <Select
-                    value={singlePaymentMethod}
-                    onChange={(e) => handleSinglePaymentMethod(e.target.value)}
-                    size="md"
-                  >
-                    <option value="">Select method</option>
-                    {Object.entries(PAYMENT_LABELS)
-                      .filter(([k]) => !['PRE_ORDER', 'MIXED'].includes(k))
-                      .map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                  </Select>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="number"
-                      min="0"
-                      value={paymentBreakdown[0]?.amount || ''}
-                      onChange={(e) => updatePaymentRow(0, 'amount', e.target.value)}
-                      placeholder="0"
-                      size="md"
-                    />
-                  </div>
-                </div>
-              ) : (
-                /* Split payment — multiple rows */
-                <div className="space-y-2">
-                  {paymentBreakdown.map((row, index) => (
-                    <div key={`pr-${index}`} className="grid grid-cols-1 sm:grid-cols-[1fr_150px_auto] gap-2 border border-surface-200 rounded-lg p-3">
-                      <Select
-                        value={row.paymentMethod}
-                        onChange={(e) => updatePaymentRow(index, 'paymentMethod', e.target.value)}
-                        size="md"
-                      >
-                        <option value="">Method</option>
-                        {Object.entries(PAYMENT_LABELS)
-                          .filter(([k]) => !['PRE_ORDER', 'MIXED'].includes(k))
-                          .map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                      </Select>
-                      <Input
-                        type="number" min="0"
-                        value={row.amount}
-                        onChange={(e) => updatePaymentRow(index, 'amount', e.target.value)}
-                        placeholder="0"
-                        size="md"
-                      />
-                      <Button type="button" variant="ghost" size="sm" onClick={() => removePaymentRow(index)} disabled={paymentBreakdown.length <= 2}>
-                        <XIcon />
-                      </Button>
-                    </div>
-                  ))}
-                  <Button type="button" variant="ghost" size="sm" onClick={addPaymentRow}>
-                    + Add row
-                  </Button>
-                </div>
-              )}
-
-              {/* Payment status — one line */}
-              {activePaymentRows.length > 0 && totalAmount > 0 && (
-                <p className={`mt-2 text-caption ${Math.abs(paymentGap) <= 0.009 ? 'text-success-600' : 'text-warning-600'}`}>
-                  {Math.abs(paymentGap) <= 0.009
-                    ? 'Payment matches total'
-                    : paymentGap > 0
-                      ? `${formatCurrency(paymentGap)} remaining`
-                      : `${formatCurrency(Math.abs(paymentGap))} over`}
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* ── Order summary ── */}
-          {totalQty > 0 && (
-            <div className="border-t border-surface-200 pt-4 space-y-1.5">
-              {workflow === 'BOOKING' && selectedBooking && bookingQuantityGap !== 0 && (
-                <div className="flex justify-between text-body">
-                  <span className="text-surface-500">Booking</span>
-                  <span className={`font-semibold ${bookingQuantityGap > 0 ? 'text-warning-600' : 'text-error-600'}`}>
-                    {bookingQuantityGap > 0
-                      ? `${bookingQuantityGap} crates still needed`
-                      : `${Math.abs(bookingQuantityGap)} too many`}
-                  </span>
-                </div>
-              )}
-              <div className="flex justify-between text-body">
-                <span className="text-surface-500">{totalQty.toLocaleString()} crates</span>
-                <span className="text-metric font-bold text-surface-900">{formatCurrency(totalAmount)}</span>
-              </div>
-              <div className="flex justify-between text-caption text-surface-400">
-                <span>Profit</span>
-                <span className={profit >= 0 ? 'text-success-600' : 'text-error-600'}>{formatCurrency(profit)}</span>
-              </div>
-            </div>
           )}
 
           {/* ── Actions ── */}
@@ -1522,26 +1549,27 @@ function RecordSaleModal({ onClose, onRecorded }) {
               variant="ghost"
               size="md"
               icon={<ChevronLeftIcon />}
-              onClick={() => { setStep(2); setError(''); }}
+              onClick={() => { setStep(1); clearSelection(); }}
             >
               Back
             </Button>
-
             <div className="flex gap-3">
               <Button type="button" variant="ghost" size="md" onClick={onClose}>Cancel</Button>
-              <Button
-                type="submit"
-                variant="primary"
-                size="md"
-                disabled={submitting || !canSubmit}
-                loading={submitting}
-              >
-                {workflow === 'BOOKING'
-                  ? 'Complete pickup'
-                  : totalAmount > 0
-                    ? `Save · ${formatCurrency(totalAmount)}`
-                    : 'Save sale'}
-              </Button>
+              {hasSelection && (
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="md"
+                  disabled={submitting || !canSubmit}
+                  loading={submitting}
+                >
+                  {workflow === 'BOOKING'
+                    ? 'Complete pickup'
+                    : totalAmount > 0
+                      ? `Save \u00B7 ${formatCurrency(totalAmount)}`
+                      : 'Save sale'}
+                </Button>
+              )}
             </div>
           </div>
         </form>
