@@ -953,36 +953,191 @@ function RecordSaleModal({ onClose, onRecorded }) {
     : workflow === 'DIRECT' ? 'Record Sale'
     : 'New Sale';
 
-  // ── Print receipt handler ──
+  // ── Receipt line items (customer-friendly labels) ──
+  function receiptLineItems(sale) {
+    return (sale.lineItems || []).map((li) => ({
+      label: `Crate of Eggs (${SALE_TYPE_LABELS[li.saleType] || li.saleType})`,
+      quantity: li.quantity,
+      unitPrice: Number(li.unitPrice),
+      lineTotal: Number(li.lineTotal),
+    }));
+  }
+
+  // ── Print receipt — opens thermal/A4-friendly print window ──
   function handlePrintReceipt() {
-    const printContent = document.getElementById('receipt-print-area');
-    if (!printContent) return;
-    const printWindow = window.open('', '_blank', 'width=400,height=600');
-    printWindow.document.write(`<!DOCTYPE html><html><head><title>Receipt ${completedSale.receiptNumber}</title>
-      <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Courier New', monospace; padding: 16px; max-width: 380px; margin: 0 auto; font-size: 13px; }
-        .header { text-align: center; margin-bottom: 12px; border-bottom: 1px dashed #999; padding-bottom: 12px; }
-        .header h1 { font-size: 18px; font-weight: bold; margin-bottom: 2px; }
-        .header p { font-size: 11px; color: #666; }
-        .receipt-no { text-align: center; font-weight: bold; font-size: 14px; margin: 8px 0; }
-        .info-row { display: flex; justify-content: space-between; margin: 3px 0; }
-        .info-row .label { color: #666; }
-        .divider { border-top: 1px dashed #999; margin: 10px 0; }
-        .items-header { display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 4px; font-size: 12px; }
-        .item-row { display: flex; justify-content: space-between; margin: 4px 0; }
-        .item-detail { font-size: 11px; color: #666; padding-left: 8px; }
-        .total-row { display: flex; justify-content: space-between; font-weight: bold; font-size: 15px; margin-top: 6px; }
-        .payment-badge { display: inline-block; background: #f0f0f0; padding: 2px 8px; border-radius: 4px; font-size: 11px; margin-top: 4px; }
-        .footer { text-align: center; margin-top: 16px; font-size: 11px; color: #888; border-top: 1px dashed #999; padding-top: 12px; }
-        @media print { body { padding: 8px; } }
-      </style>
-    </head><body>`);
-    printWindow.document.write(printContent.innerHTML);
-    printWindow.document.write('</body></html>');
+    if (!completedSale) return;
+    const printWindow = window.open('', '_blank', 'width=420,height=900');
+    if (!printWindow) return;
+
+    const items = receiptLineItems(completedSale);
+    const rows = items.map((li) => `
+      <tr>
+        <td class="item">
+          <div class="name">${li.label}</div>
+          <div class="meta">${li.quantity} x ${formatCurrency(li.unitPrice)}</div>
+        </td>
+        <td class="amount">${formatCurrency(li.lineTotal)}</td>
+      </tr>
+    `).join('');
+
+    const pRows = salePaymentRows(completedSale);
+    const paymentHtml = pRows.map((row) => `
+      <tr class="summary-row">
+        <td class="summary-label">${paymentRowLabel(row, completedSale.paymentMethod)}</td>
+        <td class="summary-value">${formatCurrency(row.amount)}</td>
+      </tr>
+    `).join('');
+
+    const employeeName = completedSale.recordedBy
+      ? `${completedSale.recordedBy.firstName} ${completedSale.recordedBy.lastName}`.trim()
+      : '';
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Customer Receipt ${completedSale.receiptNumber}</title>
+          <style>
+            @page { size: 80mm auto; margin: 6mm; }
+            body {
+              margin: 0;
+              font-family: Arial, Helvetica, sans-serif;
+              color: #111827;
+              background: #ffffff;
+            }
+            .receipt {
+              width: 72mm;
+              margin: 0 auto;
+              padding: 2mm 0;
+              font-size: 13px;
+              line-height: 1.5;
+            }
+            .center { text-align: center; }
+            .hero-amount {
+              font-size: 18px;
+              font-weight: 700;
+              margin-bottom: 2px;
+            }
+            .hero-label {
+              font-size: 11px;
+              color: #6b7280;
+            }
+            .rule {
+              border-top: 1px solid #d1d5db;
+              margin: 10px 0;
+            }
+            .meta-row {
+              display: flex;
+              justify-content: space-between;
+              gap: 12px;
+              margin: 4px 0;
+            }
+            .meta-stack {
+              margin: 6px 0;
+            }
+            .meta-stack-label {
+              color: #374151;
+              font-weight: 400;
+              margin-bottom: 2px;
+            }
+            .meta-stack-value {
+              font-weight: 500;
+            }
+            .muted { color: #6b7280; }
+            table { width: 100%; border-collapse: collapse; }
+            td { vertical-align: top; padding: 5px 0; }
+            .item { width: 70%; }
+            .amount { width: 30%; text-align: right; white-space: nowrap; font-weight: 600; }
+            .name { font-weight: 500; font-size: 13px; }
+            .meta { color: #6b7280; font-size: 12px; }
+            .summary-row td { padding: 3px 0; }
+            .summary-label { color: #4b5563; }
+            .summary-value { text-align: right; font-weight: 600; }
+            .total-row td { padding-top: 6px; font-size: 14px; font-weight: 700; }
+            .footer-row {
+              display: flex;
+              justify-content: space-between;
+              gap: 12px;
+              margin-top: 8px;
+              color: #6b7280;
+              font-size: 12px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="receipt">
+            <div class="center" style="margin-bottom:8px;">
+              <img src="/logo.webp" alt="Fresh Eggs" style="width:80px;height:auto;margin:0 auto 6px;" onerror="this.style.display='none'" />
+              <div style="font-size:16px;font-weight:700;letter-spacing:0.5px;">Fresh Eggs Market</div>
+              <div style="font-size:12px;color:#6b7280;margin-top:2px;">SALES RECEIPT</div>
+              <div style="font-size:11px;color:#6b7280;margin-top:6px;line-height:1.5;">
+                Spring Valley Estate, Alasia Bus-stop,<br/>
+                Lekki-Epe Expressway, Lagos<br/>
+                0916-000-7184 &nbsp; info@fresheggsmarket.ng<br/>
+                www.fresheggsmarket.ng
+              </div>
+            </div>
+
+            <div class="rule"></div>
+
+            <div class="center">
+              <div class="hero-amount">${formatCurrency(completedSale.totalAmount)}</div>
+              <div class="hero-label">Total</div>
+            </div>
+
+            <div class="rule"></div>
+
+            ${employeeName ? `<div class="meta-stack">
+              <div class="meta-stack-label">Employee: ${employeeName}</div>
+              <div class="meta-stack-value">POS: Shop Floor POS</div>
+            </div>
+            <div class="rule"></div>` : ''}
+
+            <div class="meta-stack">
+              <div class="meta-stack-label">Customer: ${completedSale.customer?.name || 'Walk-in customer'}</div>
+              ${completedSale.customer?.phone ? `<div class="meta-stack-value">${completedSale.customer.phone}</div>` : ''}
+            </div>
+
+            <div class="rule"></div>
+
+            <table><tbody>${rows}</tbody></table>
+
+            <div class="rule"></div>
+
+            <table>
+              <tbody>
+                <tr class="summary-row">
+                  <td class="summary-label">Subtotal</td>
+                  <td class="summary-value">${formatCurrency(completedSale.totalAmount)}</td>
+                </tr>
+                <tr class="summary-row total-row">
+                  <td class="summary-label">Total</td>
+                  <td class="summary-value">${formatCurrency(completedSale.totalAmount)}</td>
+                </tr>
+                ${paymentHtml}
+              </tbody>
+            </table>
+
+            <div class="rule"></div>
+
+            <div class="footer-row">
+              <span>${formatDateTime(completedSale.saleDate || completedSale.createdAt)}</span>
+              <span>No ${completedSale.receiptNumber}</span>
+            </div>
+
+            <div class="center" style="margin-top:12px;color:#6b7280;font-size:11px;">
+              Thank you for shopping with Fresh Eggs Market!
+            </div>
+          </div>
+          <script>
+            window.onload = function () {
+              window.focus();
+              window.print();
+            };
+          </script>
+        </body>
+      </html>
+    `);
     printWindow.document.close();
-    printWindow.focus();
-    printWindow.print();
   }
 
   // ── Handle "Done" after receipt ──
@@ -996,98 +1151,106 @@ function RecordSaleModal({ onClose, onRecorded }) {
       {/* ────────── RECEIPT VIEW ────────── */}
       {completedSale ? (
         <div>
-          <div id="receipt-print-area">
-            <div className="header" style={{ textAlign: 'center', marginBottom: 16, paddingBottom: 12, borderBottom: '1px dashed #d1d5db' }}>
-              <div style={{ fontSize: 18, fontWeight: 'bold' }}>Fresh Eggs Market</div>
-              <div style={{ fontSize: 12, color: '#6b7280' }}>Depot Sales Receipt</div>
+          {/* Success banner */}
+          <div className="flex items-center gap-3 p-3 rounded-lg bg-success-50 border border-success-200 mb-5">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-success-600 flex-shrink-0">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+              <polyline points="22 4 12 14.01 9 11.01" />
+            </svg>
+            <span className="text-body-medium text-success-700 font-medium">Sale recorded successfully</span>
+          </div>
+
+          {/* Receipt card — styled like a real receipt */}
+          <div className="border border-surface-200 rounded-lg bg-white overflow-hidden">
+            {/* Business header */}
+            <div className="text-center py-4 px-6 border-b border-surface-100">
+              <img src="/logo.webp" alt="Fresh Eggs" className="w-16 h-auto mx-auto mb-2" onError={(e) => { e.target.style.display = 'none'; }} />
+              <p className="text-heading text-surface-900 font-bold">Fresh Eggs Market</p>
+              <p className="text-caption text-surface-400 uppercase tracking-wider mt-0.5">Sales Receipt</p>
+              <p className="text-caption text-surface-500 mt-2 leading-relaxed">
+                Spring Valley Estate, Alasia Bus-stop,<br />
+                Lekki-Epe Expressway, Lagos<br />
+                0916-000-7184 &middot; info@fresheggsmarket.ng
+              </p>
             </div>
 
-            <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: 16, marginBottom: 12, fontFamily: 'monospace' }}>
-              {completedSale.receiptNumber}
+            {/* Hero total */}
+            <div className="text-center py-4 bg-surface-50">
+              <p className="text-[28px] font-bold text-surface-900">{formatCurrency(completedSale.totalAmount)}</p>
+              <p className="text-caption text-surface-400 mt-0.5">{completedSale.totalQuantity} crate{completedSale.totalQuantity !== 1 ? 's' : ''}</p>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: 14 }}>
-              <span style={{ color: '#6b7280' }}>Customer</span>
-              <span style={{ fontWeight: 600 }}>{completedSale.customer?.name}</span>
-            </div>
-            {completedSale.customer?.phone && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: 14 }}>
-                <span style={{ color: '#6b7280' }}>Phone</span>
-                <span>{completedSale.customer.phone}</span>
-              </div>
-            )}
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: 14 }}>
-              <span style={{ color: '#6b7280' }}>Date</span>
-              <span>{new Date(completedSale.saleDate || completedSale.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-            </div>
-            {completedSale.batch?.name && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: 14 }}>
-                <span style={{ color: '#6b7280' }}>Batch</span>
-                <span>{completedSale.batch.name}</span>
-              </div>
-            )}
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: 14 }}>
-              <span style={{ color: '#6b7280' }}>Type</span>
-              <span>{completedSale.sourceType === 'BOOKING' ? 'Booking Pickup' : 'Direct Sale'}</span>
-            </div>
-
-            <div style={{ borderTop: '1px dashed #d1d5db', margin: '12px 0' }} />
-
-            {/* Line items */}
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 6 }}>ITEMS</div>
-            {(completedSale.lineItems || []).map((item, i) => (
-              <div key={i} style={{ marginBottom: 8 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
-                  <span>{item.batchEggCode?.code || `Item ${i + 1}`} x {item.quantity}</span>
-                  <span style={{ fontWeight: 600 }}>{'\u20A6'}{Number(item.lineTotal).toLocaleString()}</span>
+            <div className="px-6 py-4 space-y-4">
+              {/* Customer & Employee info */}
+              <div className="flex justify-between items-start text-body">
+                <div>
+                  <p className="text-surface-500 text-caption">Customer</p>
+                  <p className="font-semibold text-surface-900">{completedSale.customer?.name || 'Walk-in customer'}</p>
+                  {completedSale.customer?.phone && <p className="text-caption text-surface-500">{completedSale.customer.phone}</p>}
                 </div>
-                <div style={{ fontSize: 12, color: '#9ca3af', paddingLeft: 8 }}>
-                  {item.saleType === 'WHOLESALE' ? 'Wholesale' : item.saleType === 'RETAIL' ? 'Retail' : item.saleType === 'CRACKED' ? 'Cracked' : 'Write-off'} @ {'\u20A6'}{Number(item.unitPrice).toLocaleString()}/crate
+                <div className="text-right">
+                  <p className="text-surface-500 text-caption">Employee</p>
+                  <p className="font-semibold text-surface-900">
+                    {completedSale.recordedBy ? `${completedSale.recordedBy.firstName} ${completedSale.recordedBy.lastName}`.trim() : '\u2014'}
+                  </p>
                 </div>
               </div>
-            ))}
 
-            <div style={{ borderTop: '1px dashed #d1d5db', margin: '12px 0' }} />
+              {/* Divider */}
+              <div className="border-t border-dashed border-surface-200" />
 
-            {/* Total */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 18, fontWeight: 'bold' }}>
-              <span>Total</span>
-              <span>{'\u20A6'}{Number(completedSale.totalAmount).toLocaleString()}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginTop: 4 }}>
-              <span style={{ color: '#6b7280' }}>Crates</span>
-              <span>{completedSale.totalQuantity}</span>
-            </div>
-
-            {/* Payment method */}
-            <div style={{ marginTop: 8 }}>
-              {(() => {
-                const rows = salePaymentRows(completedSale);
-                return rows.map((row, i) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginTop: 2 }}>
-                    <span style={{ color: '#6b7280' }}>Paid via</span>
-                    <span style={{ background: '#f3f4f6', padding: '2px 8px', borderRadius: 4, fontSize: 12 }}>
-                      {row.label}{rows.length > 1 ? ` — ${'\u20A6'}${Number(row.amount).toLocaleString()}` : ''}
-                    </span>
+              {/* Line items */}
+              <div>
+                {receiptLineItems(completedSale).map((li, i) => (
+                  <div key={i} className="flex justify-between items-start py-1.5">
+                    <div>
+                      <p className="text-body text-surface-800 font-medium">{li.label}</p>
+                      <p className="text-caption text-surface-400">{li.quantity} x {formatCurrency(li.unitPrice)}</p>
+                    </div>
+                    <p className="text-body font-semibold text-surface-900 whitespace-nowrap">{formatCurrency(li.lineTotal)}</p>
                   </div>
-                ));
-              })()}
-            </div>
+                ))}
+              </div>
 
-            <div style={{ borderTop: '1px dashed #d1d5db', margin: '16px 0 12px' }} />
-            <div style={{ textAlign: 'center', fontSize: 12, color: '#9ca3af' }}>
-              Thank you for shopping with Fresh Eggs Market!
+              {/* Divider */}
+              <div className="border-t border-dashed border-surface-200" />
+
+              {/* Subtotal / Total / Payment */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-body text-surface-600">
+                  <span>Subtotal</span>
+                  <span className="font-semibold">{formatCurrency(completedSale.totalAmount)}</span>
+                </div>
+                <div className="flex justify-between text-body-medium font-bold text-surface-900">
+                  <span>Total</span>
+                  <span>{formatCurrency(completedSale.totalAmount)}</span>
+                </div>
+                {salePaymentRows(completedSale).map((row, i) => (
+                  <div key={i} className="flex justify-between text-body text-surface-600">
+                    <span>{paymentRowLabel(row, completedSale.paymentMethod)}</span>
+                    <span className="font-semibold">{formatCurrency(row.amount)}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Divider */}
+              <div className="border-t border-dashed border-surface-200" />
+
+              {/* Footer: date + receipt number */}
+              <div className="flex justify-between text-caption text-surface-400">
+                <span>{formatDateTime(completedSale.saleDate || completedSale.createdAt)}</span>
+                <span className="font-mono">No {completedSale.receiptNumber}</span>
+              </div>
+
+              <p className="text-center text-caption text-surface-400 pt-1">
+                Thank you for shopping with Fresh Eggs Market!
+              </p>
             </div>
           </div>
 
           {/* Action buttons */}
-          <div className="flex items-center justify-between mt-6 pt-4 border-t border-surface-100">
-            <Button variant="secondary" size="md" onClick={handlePrintReceipt}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
-                <polyline points="6 9 6 2 18 2 18 9" />
-                <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-                <rect x="6" y="14" width="12" height="8" />
-              </svg>
+          <div className="flex items-center justify-between mt-5 pt-4 border-t border-surface-100">
+            <Button variant="secondary" size="md" onClick={handlePrintReceipt} icon={<PrintIcon />}>
               Print receipt
             </Button>
             <Button variant="primary" size="md" onClick={handleReceiptDone}>
