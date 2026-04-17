@@ -971,6 +971,15 @@ function ReceiveBatchModal({ batch, onClose, onReceived }) {
       }
     }
 
+    // Auto-generate the FE code from cost price (e.g. costPrice 4600 → code FE4600)
+    if (field === 'costPrice') {
+      const digits = String(value).replace(/\D/g, '');
+      updated[index] = {
+        ...updated[index],
+        code: digits ? `FE${digits}` : 'FE',
+      };
+    }
+
     setEggCodes(updated);
   }
 
