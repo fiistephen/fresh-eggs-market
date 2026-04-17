@@ -25,7 +25,8 @@ class ApiClient {
   }
 
   async request(method, path, body = null) {
-    const headers = { 'Content-Type': 'application/json' };
+    const headers = {};
+    if (body) headers['Content-Type'] = 'application/json';
     if (this.accessToken) {
       headers['Authorization'] = `Bearer ${this.accessToken}`;
     }
@@ -33,7 +34,7 @@ class ApiClient {
     let res = await fetch(`${API_BASE}${path}`, {
       method,
       headers,
-      body: body ? JSON.stringify(body) : null,
+      body: body ? JSON.stringify(body) : undefined,
     });
 
     // If 401 and we have a refresh token, try refreshing
@@ -45,7 +46,7 @@ class ApiClient {
           res = await fetch(`${API_BASE}${path}`, {
             method,
             headers,
-            body: body ? JSON.stringify(body) : null,
+            body: body ? JSON.stringify(body) : undefined,
           });
         }
       } else {

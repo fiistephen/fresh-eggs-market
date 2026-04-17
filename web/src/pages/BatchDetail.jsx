@@ -1601,7 +1601,7 @@ function DeleteBatchModal({ batch, onClose, onDeleted }) {
       await api.delete(`/batches/${batch.id}`);
       onDeleted();
     } catch (err) {
-      setError(err.error || 'Failed to delete batch');
+      setError(err.error || err.message || 'Failed to delete batch');
     } finally {
       setSubmitting(false);
     }
