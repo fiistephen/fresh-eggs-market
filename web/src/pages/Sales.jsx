@@ -333,7 +333,7 @@ export default function Sales() {
         <div>
           <h1 className="text-display text-surface-900">Sales</h1>
           <p className="text-body text-surface-600 mt-2">
-            Finish paid bookings, record walk-in sales, and review what was sold today.
+            Start with the customer, finish ready pickups first, then record a direct sale only when there is no booking.
           </p>
         </div>
         {canRecord && (
@@ -343,16 +343,10 @@ export default function Sales() {
             onClick={() => setShowRecordSale(true)}
             icon={<PlusIcon />}
           >
-            Record Sale
+            Fulfill or Record Sale
           </Button>
         )}
       </div>
-
-      <Card variant="outlined" padding="comfortable" className="mb-6">
-        <p className="text-body text-surface-600">
-          Start with the customer. If they have a paid booking, finish the pickup. Otherwise, record a direct sale.
-        </p>
-      </Card>
 
       <div className="flex flex-wrap items-end gap-4 mb-6">
         <div className="flex-1 min-w-[220px]">
@@ -465,7 +459,7 @@ export default function Sales() {
           title={`No sales for ${formatDate(dateFilter)}`}
           description="Start recording sales to see them here"
           action={canRecord}
-          actionLabel="Record a sale"
+          actionLabel="Fulfill or record sale"
           onAction={() => setShowRecordSale(true)}
         />
       ) : (
@@ -615,6 +609,8 @@ function RecordSaleModal({ onClose, onRecorded }) {
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [showAdvancedItems, setShowAdvancedItems] = useState(false);
+  const [quickLineIndex, setQuickLineIndex] = useState(0);
 
   useEffect(() => {
     if (!customerSearch.trim()) {
@@ -703,6 +699,8 @@ function RecordSaleModal({ onClose, onRecorded }) {
     setPaymentMethod('');
     setPaymentBreakdown([{ paymentMethod: '', amount: '' }]);
     setLimitOverrideNote('');
+    setShowAdvancedItems(false);
+    setQuickLineIndex(0);
     setError('');
     setStep(2);
   }
@@ -742,6 +740,8 @@ function RecordSaleModal({ onClose, onRecorded }) {
     setPaymentMethod('PRE_ORDER');
     setPaymentBreakdown([]);
     setLimitOverrideNote('');
+    setShowAdvancedItems(false);
+    setQuickLineIndex(0);
     const preferredRows = booking.batchEggCodeId
       ? (booking.batch?.eggCodes || []).filter((eggCode) => eggCode.id === booking.batchEggCodeId)
       : booking.batch?.eggCodes || [];
@@ -765,6 +765,8 @@ function RecordSaleModal({ onClose, onRecorded }) {
     setPaymentMethod('');
     setPaymentBreakdown([{ paymentMethod: '', amount: '' }]);
     setLimitOverrideNote('');
+    setShowAdvancedItems(false);
+    setQuickLineIndex(0);
     initializeLineItems(batch);
     setError('');
     setStep(3);
@@ -778,6 +780,8 @@ function RecordSaleModal({ onClose, onRecorded }) {
     setPaymentMethod('');
     setPaymentBreakdown([{ paymentMethod: '', amount: '' }]);
     setLimitOverrideNote('');
+    setShowAdvancedItems(false);
+    setQuickLineIndex(0);
     initializeLineItemsFromRows(customerWorkspace.mixedDirectSaleStock || []);
     setError('');
     setStep(3);
@@ -795,6 +799,23 @@ function RecordSaleModal({ onClose, onRecorded }) {
     }
 
     setLineItems(updated);
+  }
+
+  function setQuickEditorLine(nextIndex) {
+    const currentPrimaryQuantity = lineItems.reduce((sum, lineItem) => sum + Number(lineItem.quantity || 0), 0);
+    setQuickLineIndex(nextIndex);
+    if (showAdvancedItems) return;
+
+    setLineItems((current) => current.map((lineItem, index) => ({
+      ...lineItem,
+      quantity: index === nextIndex
+        ? currentPrimaryQuantity > 0
+          ? String(currentPrimaryQuantity)
+          : workflow === 'BOOKING' && selectedBooking
+            ? String(selectedBooking.quantity)
+            : lineItem.quantity
+        : '',
+    })));
   }
 
   function updatePaymentRow(index, field, value) {
@@ -815,6 +836,8 @@ function RecordSaleModal({ onClose, onRecorded }) {
   }
 
   const activeItems = lineItems.filter((lineItem) => lineItem.quantity && Number(lineItem.quantity) > 0);
+  const quickLineItem = lineItems[quickLineIndex] || lineItems[0] || null;
+  const canReturnToSimple = activeItems.length <= 1;
   const totalQty = activeItems.reduce((sum, lineItem) => sum + Number(lineItem.quantity), 0);
   const totalAmount = activeItems.reduce((sum, lineItem) => sum + Number(lineItem.quantity) * Number(lineItem.unitPrice), 0);
   const totalCost = activeItems.reduce((sum, lineItem) => sum + Number(lineItem.quantity) * Number(lineItem.costPrice), 0);
@@ -907,7 +930,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
   return (
     <Modal open={true} onClose={onClose} title="Record or Fulfill Sale" size="xl" footer={false}>
       <div className="flex gap-2 mb-4 flex-wrap">
-        {['1. Customer', '2. Choose sale path', '3. Confirm items'].map((label, index) => (
+        {['1. Customer', '2. Choose path', '3. Review and save'].map((label, index) => (
           <span
             key={label}
             className={`text-caption font-semibold px-2 py-1 rounded-md ${
@@ -1061,13 +1084,23 @@ function RecordSaleModal({ onClose, onRecorded }) {
             </div>
           ) : (
             <>
+              <Card variant="outlined" padding="compact" className="bg-brand-50/40 border-brand-200">
+                <p className="text-body text-brand-800">
+                  Choose a ready booking first. Use direct sale only when the customer is buying without a booking.
+                </p>
+              </Card>
+
               {/* Bookings section */}
               {customerWorkspace.bookings.length > 0 && (
                 <section className="space-y-3">
-                  <h3 className="text-overline text-surface-500">Open bookings</h3>
+                  <div>
+                    <h3 className="text-overline text-surface-500">Ready bookings and pickups</h3>
+                    <p className="mt-1 text-caption text-surface-500">These should be completed before starting a new direct sale.</p>
+                  </div>
                   <div className="space-y-2">
                     {customerWorkspace.bookings.map((booking) => {
                       const sourceMeta = bookingSourceMeta(booking);
+                      const paymentMeta = bookingPaymentTruthMeta(booking);
                       return (
                         <button
                           key={booking.id}
@@ -1077,27 +1110,36 @@ function RecordSaleModal({ onClose, onRecorded }) {
                           className={`w-full text-left rounded-lg border px-4 py-3 transition-colors ${
                             booking.isFullyPaid
                               ? 'border-success-200 bg-success-50/50 hover:bg-success-50 cursor-pointer'
-                              : 'border-surface-200 bg-surface-50 opacity-75 cursor-not-allowed'
+                              : 'border-warning-200 bg-warning-50/40 cursor-not-allowed'
                           }`}
                         >
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-3 flex-wrap">
-                              <span className="text-body-medium font-semibold text-surface-900">
-                                {booking.batch?.name || 'Batch'}
-                              </span>
-                              <span className="text-body text-surface-600">
-                                {booking.quantity} crates
-                              </span>
-                              <Badge color={sourceMeta.color} dot>{sourceMeta.label}</Badge>
-                              {booking.portalCheckout?.reference && (
-                                <span className="text-caption text-surface-400 font-mono">{booking.portalCheckout.reference}</span>
-                              )}
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-3 flex-wrap">
+                                <span className="text-body-medium font-semibold text-surface-900">
+                                  {booking.batch?.name || 'Batch'}
+                                </span>
+                                <span className="text-body text-surface-600">
+                                  {booking.quantity} crates
+                                </span>
+                                <Badge color={sourceMeta.color} dot>{sourceMeta.label}</Badge>
+                                {booking.portalCheckout?.reference && (
+                                  <span className="text-caption text-surface-400 font-mono">{booking.portalCheckout.reference}</span>
+                                )}
+                              </div>
+                              <p className="text-caption text-surface-600">{paymentMeta.description}</p>
                             </div>
-                            <div className="flex items-center gap-2 shrink-0">
+                            <div className="flex flex-col items-end gap-2 shrink-0">
                               {booking.isFullyPaid ? (
-                                <Badge color="success" dot>Ready for pickup</Badge>
+                                <>
+                                  <Badge color="success" dot>Ready for pickup</Badge>
+                                  <span className="text-caption font-medium text-success-700">{sourceMeta.cta}</span>
+                                </>
                               ) : (
-                                <Badge color="warning" dot>{formatCurrency(booking.balance)} due</Badge>
+                                <>
+                                  <Badge color="warning" dot>{formatCurrency(booking.balance)} due</Badge>
+                                  <span className="text-caption font-medium text-warning-700">Finish payment in Banking first</span>
+                                </>
                               )}
                             </div>
                           </div>
@@ -1120,7 +1162,10 @@ function RecordSaleModal({ onClose, onRecorded }) {
 
               {/* Direct sale section */}
               <section className="space-y-3">
-                <h3 className="text-overline text-surface-500">Direct sale</h3>
+                <div>
+                  <h3 className="text-overline text-surface-500">Direct sale</h3>
+                  <p className="mt-1 text-caption text-surface-500">Use this only when the customer is buying without an existing booking.</p>
+                </div>
 
                 {customerWorkspace.mixedDirectSaleStock?.length > 0 && customerWorkspace.directSaleBatches.length > 1 && (
                   <button
@@ -1217,14 +1262,14 @@ function RecordSaleModal({ onClose, onRecorded }) {
               <p className="text-body-medium font-semibold text-surface-900 mt-1">{workflow === 'BOOKING' ? 'Booking or portal pickup' : 'New direct sale'}</p>
             </Card>
             <Card variant="outlined" padding="compact" className="bg-surface-50">
-              <p className="text-body text-surface-600">Batch</p>
+              <p className="text-body text-surface-600">Source</p>
               <p className="text-body-medium font-semibold text-surface-900 mt-1">{saleScopeLabel || selectedBatch?.name || '—'}</p>
             </Card>
           </div>
 
           {workflow === 'BOOKING' && !selectedBooking?.isFullyPaid && (
             <p className="text-body text-warning-700 bg-warning-50 border border-warning-200 rounded-lg px-4 py-2">
-              This booking still has a balance. Record the remaining payment in Banking first.
+              This pickup is blocked until the remaining payment is recorded and matched in Banking.
             </p>
           )}
 
@@ -1245,28 +1290,45 @@ function RecordSaleModal({ onClose, onRecorded }) {
 
           <div>
             <div className="flex items-center justify-between gap-3 mb-3">
-              <label className="block text-body-medium font-semibold text-surface-900">Line Items</label>
-              {workflow === 'BOOKING' && (
-                <p className="text-caption text-surface-600">
-                  Tip: if the customer picked different egg codes, split the quantity across the rows below.
-                </p>
+              <label className="block text-body-medium font-semibold text-surface-900">Items to record</label>
+              {lineItems.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (showAdvancedItems && !canReturnToSimple) return;
+                    setShowAdvancedItems((current) => !current);
+                  }}
+                  className="text-caption font-medium text-brand-700 hover:text-brand-800 disabled:text-surface-400"
+                  disabled={showAdvancedItems && !canReturnToSimple}
+                >
+                  {showAdvancedItems ? 'Use simple mode' : 'Split across egg codes'}
+                </button>
               )}
             </div>
-            <div className="space-y-3 overflow-x-auto custom-scrollbar">
-              {lineItems.map((lineItem, index) => (
-                <div key={lineItem.batchEggCodeId} className="grid grid-cols-12 gap-1 sm:gap-2 items-end min-w-[320px]">
-                  <div className="col-span-2">
-                    {index === 0 && <label className="block text-caption text-surface-600 mb-1">Egg Code</label>}
-                    <div className="border border-surface-200 bg-surface-50 rounded-lg px-3 py-2">
-                      <p className="text-body-medium font-mono font-semibold text-brand-600">{lineItem.code}</p>
-                      <p className="text-caption text-surface-500 mt-1 truncate">{lineItem.batchName}</p>
-                    </div>
-                  </div>
-                  <div className="col-span-3">
-                    {index === 0 && <label className="block text-caption text-surface-600 mb-1">Sale Type</label>}
+
+            {!showAdvancedItems && quickLineItem ? (
+              <Card variant="outlined" padding="comfortable" className="space-y-4 bg-surface-50">
+                {lineItems.length > 1 && (
+                  <div>
+                    <label className="block text-caption text-surface-600 mb-1">Egg code</label>
                     <Select
-                      value={lineItem.saleType}
-                      onChange={(e) => updateLineItem(index, 'saleType', e.target.value)}
+                      value={String(quickLineIndex)}
+                      onChange={(e) => setQuickEditorLine(Number(e.target.value))}
+                      size="md"
+                    >
+                      {lineItems.map((lineItem, index) => (
+                        <option key={lineItem.batchEggCodeId} value={index}>{lineItem.code} · {lineItem.batchName}</option>
+                      ))}
+                    </Select>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <div>
+                    <label className="block text-caption text-surface-600 mb-1">Sale type</label>
+                    <Select
+                      value={quickLineItem.saleType}
+                      onChange={(e) => updateLineItem(quickLineIndex, 'saleType', e.target.value)}
                       size="md"
                     >
                       {Object.entries(SALE_TYPE_LABELS).map(([key, label]) => (
@@ -1274,43 +1336,109 @@ function RecordSaleModal({ onClose, onRecorded }) {
                       ))}
                     </Select>
                   </div>
-                  <div className="col-span-2">
-                    {index === 0 && <label className="block text-caption text-surface-600 mb-1">Quantity</label>}
-                    <div>
+                  <div>
+                    <label className="block text-caption text-surface-600 mb-1">Quantity</label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={quickLineItem.quantity}
+                      onChange={(e) => updateLineItem(quickLineIndex, 'quantity', e.target.value)}
+                      placeholder="0"
+                      size="md"
+                    />
+                    <p className="mt-1 text-caption text-surface-500">Available {Number(quickLineItem.remainingQuantity || 0).toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <label className="block text-caption text-surface-600 mb-1">Unit price (₦)</label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={quickLineItem.unitPrice}
+                      onChange={(e) => updateLineItem(quickLineIndex, 'unitPrice', e.target.value)}
+                      size="md"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between rounded-lg border border-surface-200 bg-white px-4 py-3">
+                  <div>
+                    <p className="text-body-medium font-semibold text-surface-900">{quickLineItem.code}</p>
+                    <p className="text-caption text-surface-500">{quickLineItem.batchName}</p>
+                  </div>
+                  <p className="text-body-medium font-semibold text-surface-900">
+                    {quickLineItem.quantity && Number(quickLineItem.quantity) > 0
+                      ? formatCurrency(Number(quickLineItem.quantity) * Number(quickLineItem.unitPrice))
+                      : '—'}
+                  </p>
+                </div>
+
+                {workflow === 'BOOKING' && lineItems.length > 1 && (
+                  <p className="text-caption text-surface-500">
+                    If the customer is collecting more than one egg code today, switch to “Split across egg codes”.
+                  </p>
+                )}
+              </Card>
+            ) : (
+              <div className="space-y-3 overflow-x-auto custom-scrollbar">
+                {lineItems.map((lineItem, index) => (
+                  <div key={lineItem.batchEggCodeId} className="grid grid-cols-12 gap-1 sm:gap-2 items-end min-w-[320px]">
+                    <div className="col-span-2">
+                      {index === 0 && <label className="block text-caption text-surface-600 mb-1">Egg Code</label>}
+                      <div className="border border-surface-200 bg-surface-50 rounded-lg px-3 py-2">
+                        <p className="text-body-medium font-mono font-semibold text-brand-600">{lineItem.code}</p>
+                        <p className="text-caption text-surface-500 mt-1 truncate">{lineItem.batchName}</p>
+                      </div>
+                    </div>
+                    <div className="col-span-3">
+                      {index === 0 && <label className="block text-caption text-surface-600 mb-1">Sale Type</label>}
+                      <Select
+                        value={lineItem.saleType}
+                        onChange={(e) => updateLineItem(index, 'saleType', e.target.value)}
+                        size="md"
+                      >
+                        {Object.entries(SALE_TYPE_LABELS).map(([key, label]) => (
+                          <option key={key} value={key}>{label}</option>
+                        ))}
+                      </Select>
+                    </div>
+                    <div className="col-span-2">
+                      {index === 0 && <label className="block text-caption text-surface-600 mb-1">Quantity</label>}
+                      <div>
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="0"
+                          value={lineItem.quantity}
+                          onChange={(e) => updateLineItem(index, 'quantity', e.target.value)}
+                          className="w-full border border-surface-300 rounded-lg px-2 py-2 text-body focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+                        />
+                        <p className="text-caption text-surface-500 mt-1">
+                          Available {Number(lineItem.remainingQuantity || 0).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="col-span-3">
+                      {index === 0 && <label className="block text-caption text-surface-600 mb-1">Unit Price (₦)</label>}
                       <input
                         type="number"
                         min="0"
-                        placeholder="0"
-                        value={lineItem.quantity}
-                        onChange={(e) => updateLineItem(index, 'quantity', e.target.value)}
+                        value={lineItem.unitPrice}
+                        onChange={(e) => updateLineItem(index, 'unitPrice', e.target.value)}
                         className="w-full border border-surface-300 rounded-lg px-2 py-2 text-body focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
                       />
-                      <p className="text-caption text-surface-500 mt-1">
-                        Remain {Number(lineItem.remainingQuantity || 0).toLocaleString()}
+                    </div>
+                    <div className="col-span-2 text-right">
+                      {index === 0 && <label className="block text-caption text-surface-600 mb-1">Line Total</label>}
+                      <p className="py-2 text-body-medium font-semibold text-surface-800">
+                        {lineItem.quantity && Number(lineItem.quantity) > 0
+                          ? formatCurrency(Number(lineItem.quantity) * Number(lineItem.unitPrice))
+                          : '—'}
                       </p>
                     </div>
                   </div>
-                  <div className="col-span-3">
-                    {index === 0 && <label className="block text-caption text-surface-600 mb-1">Unit Price (₦)</label>}
-                    <input
-                      type="number"
-                      min="0"
-                      value={lineItem.unitPrice}
-                      onChange={(e) => updateLineItem(index, 'unitPrice', e.target.value)}
-                      className="w-full border border-surface-300 rounded-lg px-2 py-2 text-body focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-                    />
-                  </div>
-                  <div className="col-span-2 text-right">
-                    {index === 0 && <label className="block text-caption text-surface-600 mb-1">Line Total</label>}
-                    <p className="py-2 text-body-medium font-semibold text-surface-800">
-                      {lineItem.quantity && Number(lineItem.quantity) > 0
-                        ? formatCurrency(Number(lineItem.quantity) * Number(lineItem.unitPrice))
-                        : '—'}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {workflow === 'DIRECT' ? (
@@ -1421,16 +1549,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
                   </div>
                 </>
               )}
-              <div className="flex justify-between text-body">
-                <span className="text-surface-600">Total Cost</span>
-                <span className="text-body-medium font-semibold text-surface-700">{formatCurrency(totalCost)}</span>
-              </div>
-              <div className="flex justify-between text-body border-t border-surface-200 pt-2">
-                <span className="text-surface-600">Gross Profit</span>
-                <span className={`text-metric font-bold ${profit >= 0 ? 'text-success-600' : 'text-error-600'}`}>
-                  {formatCurrency(profit)}
-                </span>
-              </div>
+
             </Card>
           )}
 
@@ -1460,8 +1579,8 @@ function RecordSaleModal({ onClose, onRecorded }) {
                 loading={submitting}
               >
                 {workflow === 'BOOKING'
-                  ? 'Complete booking pickup'
-                  : `Record sale — ${formatCurrency(totalAmount)}`}
+                  ? 'Complete pickup'
+                  : `Save sale — ${formatCurrency(totalAmount)}`}
               </Button>
             </div>
           </div>
