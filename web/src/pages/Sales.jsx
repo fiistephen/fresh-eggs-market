@@ -972,59 +972,65 @@ function RecordSaleModal({ onClose, onRecorded }) {
       {/* ────────── STEP 1: FIND CUSTOMER ────────── */}
       {step === 1 && (
         <div className="space-y-4">
-          <Input
-            placeholder="Customer name or phone number"
-            value={customerSearch}
-            onChange={(e) => setCustomerSearch(e.target.value)}
-            autoFocus
-            size="md"
-          />
+          {!showCreateCustomer ? (
+            <>
+              <Input
+                placeholder="Search existing customer by name or phone"
+                value={customerSearch}
+                onChange={(e) => setCustomerSearch(e.target.value)}
+                autoFocus
+                size="md"
+              />
 
-          {searchingCustomers && (
-            <div className="flex items-center gap-2 text-body text-surface-500">
-              <span className="inline-block w-4 h-4 border-2 border-surface-300 border-t-brand-500 rounded-full animate-spin" />
-              Searching...
-            </div>
-          )}
-
-          {customers.length > 0 && (
-            <div className="border border-surface-200 rounded-lg divide-y divide-surface-100 max-h-72 overflow-y-auto custom-scrollbar">
-              {customers.map((customer) => (
-                <button
-                  key={customer.id}
-                  onClick={() => chooseCustomer(customer)}
-                  className="w-full text-left px-4 py-3 hover:bg-surface-50 transition-colors flex items-center gap-3"
-                >
-                  <span className="text-body-medium font-semibold text-surface-900">{customer.name}</span>
-                  <span className="text-body text-surface-400">{customer.phone}</span>
-                </button>
-              ))}
-            </div>
-          )}
-
-          {customerSearch && !searchingCustomers && customers.length === 0 && (
-            <div className="border border-dashed border-surface-200 rounded-lg px-4 py-4 text-center space-y-3">
-              <p className="text-body text-surface-500">No customer found for "{customerSearch}"</p>
-              {!showCreateCustomer && (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => {
-                    setShowCreateCustomer(true);
-                    setNewCustomerForm((f) => ({ ...f, name: customerSearch }));
-                    setError('');
-                  }}
-                >
-                  Create new customer
-                </Button>
+              {searchingCustomers && (
+                <div className="flex items-center gap-2 text-body text-surface-500">
+                  <span className="inline-block w-4 h-4 border-2 border-surface-300 border-t-brand-500 rounded-full animate-spin" />
+                  Searching...
+                </div>
               )}
-            </div>
-          )}
 
-          {showCreateCustomer && (
+              {customers.length > 0 && (
+                <div className="border border-surface-200 rounded-lg divide-y divide-surface-100 max-h-72 overflow-y-auto custom-scrollbar">
+                  {customers.map((customer) => (
+                    <button
+                      key={customer.id}
+                      onClick={() => chooseCustomer(customer)}
+                      className="w-full text-left px-4 py-3 hover:bg-surface-50 transition-colors flex items-center gap-3"
+                    >
+                      <span className="text-body-medium font-semibold text-surface-900">{customer.name}</span>
+                      <span className="text-body text-surface-400">{customer.phone}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {customerSearch && !searchingCustomers && customers.length === 0 && (
+                <p className="text-body text-surface-500 text-center py-2">No results for "{customerSearch}"</p>
+              )}
+
+              {/* Always-visible new customer option */}
+              <div className="flex items-center gap-3 text-body text-surface-400">
+                <div className="flex-1 border-t border-surface-100" />
+                <span>or</span>
+                <div className="flex-1 border-t border-surface-100" />
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCreateCustomer(true);
+                  setNewCustomerForm((f) => ({ ...f, name: customerSearch || '' }));
+                  setError('');
+                }}
+                className="w-full text-left px-4 py-3 border border-dashed border-surface-300 rounded-lg hover:border-brand-400 hover:bg-brand-50/30 transition-colors flex items-center gap-3"
+              >
+                <span className="flex items-center justify-center w-7 h-7 rounded-full bg-brand-100 text-brand-600 text-sm font-bold">+</span>
+                <span className="text-body-medium font-semibold text-surface-700">Add new customer</span>
+              </button>
+            </>
+          ) : (
             <Card variant="outlined" padding="comfortable">
               <form onSubmit={handleCreateCustomer} className="space-y-4">
+                <p className="text-body-medium font-semibold text-surface-800">New customer</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <Input
                     label="Name"
@@ -1050,7 +1056,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
                     size="sm"
                     onClick={() => setShowCreateCustomer(false)}
                   >
-                    Cancel
+                    Back to search
                   </Button>
                   <Button
                     type="submit"
