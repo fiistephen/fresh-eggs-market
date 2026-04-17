@@ -458,9 +458,8 @@ export default function Sales() {
           }
           title={`No sales for ${formatDate(dateFilter)}`}
           description="Start recording sales to see them here"
-          action={canRecord}
+          action={canRecord ? () => setShowRecordSale(true) : undefined}
           actionLabel="Fulfill or record sale"
-          onAction={() => setShowRecordSale(true)}
         />
       ) : (
         <div className="overflow-x-auto custom-scrollbar">
