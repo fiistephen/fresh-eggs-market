@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { fmtDate, fmtMoney } from './shared/constants';
 import { EmptyState } from './shared/ui';
 
@@ -116,31 +116,101 @@ function BatchCard({ batch, title, subtitle, statusLabel, statusTone, entriesTit
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  Tab definitions                                                    */
+/* ------------------------------------------------------------------ */
+const TABS = [
+  {
+    key: 'undeposited',
+    label: 'Undeposited',
+    icon: '💵',
+    borderActive: 'border-warning-500',
+    bgActive: 'bg-warning-50',
+    textActive: 'text-warning-700',
+    bgIdle: 'bg-surface-0',
+    borderIdle: 'border-surface-200',
+  },
+  {
+    key: 'pending',
+    label: 'Pending',
+    icon: '⏳',
+    borderActive: 'border-brand-500',
+    bgActive: 'bg-brand-50',
+    textActive: 'text-brand-700',
+    bgIdle: 'bg-surface-0',
+    borderIdle: 'border-surface-200',
+  },
+  {
+    key: 'confirmed',
+    label: 'Confirmed',
+    icon: '✅',
+    borderActive: 'border-success-500',
+    bgActive: 'bg-success-50',
+    textActive: 'text-success-700',
+    bgIdle: 'bg-surface-0',
+    borderIdle: 'border-surface-200',
+  },
+];
+
+function tabBadge(count) {
+  if (!count) return null;
+  return (
+    <span className="ml-1.5 inline-flex min-w-[20px] items-center justify-center rounded-full bg-surface-200 px-1.5 py-0.5 text-xs font-semibold leading-none text-surface-700">
+      {count}
+    </span>
+  );
+}
+
 export default function CashDepositsView({ loading, data, onMoveMoney, onOpenStatements, onRefresh, onMatchFromBank }) {
   const undepositedCash = data?.undepositedCash || { count: 0, total: 0, thresholdHours: 24, transactions: [] };
   const pendingDeposits = data?.pendingDeposits || { count: 0, total: 0, thresholdHours: 24, batches: [] };
   const confirmedRecently = data?.confirmedRecently || [];
 
+  // Smart default: show undeposited if any exist, else pending, else confirmed
+  const smartDefault = undepositedCash.transactions.length > 0
+    ? 'undeposited'
+    : pendingDeposits.batches.length > 0
+      ? 'pending'
+      : 'confirmed';
+
+  const [activeTab, setActiveTab] = useState(smartDefault);
+
+  // Update default when data changes (e.g. after a match clears undeposited)
+  useEffect(() => {
+    if (activeTab === 'undeposited' && undepositedCash.transactions.length === 0 && pendingDeposits.batches.length > 0) {
+      setActiveTab('pending');
+    }
+  }, [undepositedCash.transactions.length, pendingDeposits.batches.length]);
+
   if (loading) {
     return <div className="rounded-lg border border-surface-200 bg-surface-0 px-6 py-20 text-center text-sm text-surface-500">Loading cash deposits…</div>;
   }
 
+  // Counts for each tab badge
+  const counts = {
+    undeposited: undepositedCash.transactions.length,
+    pending: pendingDeposits.batches.length,
+    confirmed: confirmedRecently.length,
+  };
+
+  // Totals for the stat line under each tab card
+  const totals = {
+    undeposited: undepositedCash.total,
+    pending: pendingDeposits.total,
+    confirmed: confirmedRecently.reduce((sum, b) => sum + Number(b.amount || 0), 0),
+  };
+
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-surface-200 bg-surface-0 px-5 py-4">
+    <div className="space-y-4">
+      {/* Header row */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-heading text-surface-900">Cash Sales</h2>
-          <p className="mt-1 text-body text-surface-500">
-            Track cash sales that have not yet been banked, and match each bank deposit to the exact cash sales it includes.
+          <p className="mt-0.5 text-body text-surface-500">
+            Track cash from sale to bank deposit.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {/* V3 Phase 2: primary (and only) flow — match a manually-entered
-              bank inflow to the cash sales that made it up. The V2 "Move cash
-              to bank" button was hidden per Chioma's feedback: the V3 match
-              flow replaces it entirely. The InternalTransferModal code is
-              preserved (still reachable programmatically via `onMoveMoney`
-              from the "More" menu if ever needed again). */}
           <button
             type="button"
             onClick={onMatchFromBank}
@@ -158,112 +228,134 @@ export default function CashDepositsView({ loading, data, onMoveMoney, onOpenSta
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-3">
-        <div className="rounded-lg border border-warning-200 bg-warning-50 p-4">
-          <p className="text-caption uppercase tracking-wide text-warning-700">Undeposited cash</p>
-          <p className="mt-2 text-2xl font-bold text-surface-900">{fmtMoney(undepositedCash.total)}</p>
-          <p className="mt-1 text-body text-surface-600">{undepositedCash.count} cash sale{undepositedCash.count === 1 ? '' : 's'} older than {undepositedCash.thresholdHours} hours</p>
-        </div>
-        <div className="rounded-lg border border-brand-200 bg-brand-50 p-4">
-          <p className="text-caption uppercase tracking-wide text-brand-700">Pending confirmation</p>
-          <p className="mt-2 text-2xl font-bold text-surface-900">{fmtMoney(pendingDeposits.total)}</p>
-          <p className="mt-1 text-body text-surface-600">{pendingDeposits.count} deposit batch{pendingDeposits.count === 1 ? '' : 'es'} waiting for bank statement confirmation</p>
-        </div>
-        <div className="rounded-lg border border-success-200 bg-success-50 p-4">
-          <p className="text-caption uppercase tracking-wide text-success-700">Confirmed recently</p>
-          <p className="mt-2 text-2xl font-bold text-surface-900">{confirmedRecently.length}</p>
-          <p className="mt-1 text-body text-surface-600">Grouped banked history with the exact sale lines included in each deposit</p>
-        </div>
+      {/* Stat-card tabs */}
+      <div className="grid gap-3 sm:grid-cols-3">
+        {TABS.map((tab) => {
+          const isActive = activeTab === tab.key;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveTab(tab.key)}
+              className={`relative rounded-lg border-2 p-4 text-left transition-all duration-fast ${
+                isActive
+                  ? `${tab.borderActive} ${tab.bgActive} shadow-sm`
+                  : `${tab.borderIdle} ${tab.bgIdle} hover:border-surface-300 hover:shadow-sm`
+              }`}
+            >
+              {/* Active indicator dot */}
+              {isActive && (
+                <span className={`absolute right-3 top-3 h-2.5 w-2.5 rounded-full ${tab.borderActive.replace('border-', 'bg-')}`} />
+              )}
+              <p className={`text-caption font-semibold uppercase tracking-wide ${isActive ? tab.textActive : 'text-surface-500'}`}>
+                {tab.icon} {tab.label}{tabBadge(counts[tab.key])}
+              </p>
+              <p className="mt-2 text-2xl font-bold text-surface-900">{fmtMoney(totals[tab.key])}</p>
+              <p className="mt-1 text-body text-surface-600">
+                {tab.key === 'undeposited' && `${counts.undeposited} cash sale${counts.undeposited === 1 ? '' : 's'} not yet banked`}
+                {tab.key === 'pending' && `${counts.pending} deposit${counts.pending === 1 ? '' : 's'} awaiting bank confirmation`}
+                {tab.key === 'confirmed' && `${counts.confirmed} deposit${counts.confirmed === 1 ? '' : 's'} confirmed by bank`}
+              </p>
+            </button>
+          );
+        })}
       </div>
 
-      <section className="rounded-lg border border-surface-200 bg-surface-0">
-        <div className="border-b border-surface-100 px-5 py-4">
-          <h3 className="text-body-medium font-semibold text-surface-900">Undeposited cash</h3>
-          <p className="mt-1 text-body text-surface-500">
-            These cash sale amounts are still sitting in Cash Account and have not yet been grouped into a pending bank deposit.
-          </p>
-        </div>
-        {undepositedCash.transactions.length === 0 ? (
-          <div className="px-6 py-12">
-            <EmptyState title="No overdue undeposited cash" body="All older cash sales are already included in a pending or confirmed bank deposit flow." />
+      {/* Tab content */}
+      {activeTab === 'undeposited' && (
+        <section className="rounded-lg border border-surface-200 bg-surface-0">
+          <div className="border-b border-surface-100 px-5 py-4">
+            <h3 className="text-body-medium font-semibold text-surface-900">Undeposited cash</h3>
+            <p className="mt-1 text-body text-surface-500">
+              Cash sale amounts sitting in the Cash Account, not yet grouped into a bank deposit.
+            </p>
           </div>
-        ) : (
-          <div className="space-y-3 px-5 py-4">
-            {undepositedCash.transactions.map((entry) => (
-              <div key={entry.id} className="rounded-lg border border-warning-200 bg-warning-50 px-4 py-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-body-medium font-semibold text-surface-900">{entry.sale?.receiptNumber || 'Cash sale awaiting deposit'}</p>
-                    <p className="mt-1 text-body text-surface-600">{entry.customer?.name || 'Walk-in customer'} • {fmtDate(entry.transactionDate, true)}</p>
-                    <p className="mt-1 text-body text-surface-500">{entry.description || entry.reference || 'Cash sale'}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-body-medium font-semibold text-warning-700">{fmtMoney(entry.availableAmount)}</p>
-                    <p className="mt-1 text-caption text-surface-500">{ageLabel(entry.ageHours || ((Date.now() - new Date(entry.transactionDate).getTime()) / 36e5))}</p>
+          {undepositedCash.transactions.length === 0 ? (
+            <div className="px-6 py-12">
+              <EmptyState title="All clear" body="Every cash sale has been included in a pending or confirmed deposit." />
+            </div>
+          ) : (
+            <div className="space-y-3 px-5 py-4">
+              {undepositedCash.transactions.map((entry) => (
+                <div key={entry.id} className="rounded-lg border border-warning-200 bg-warning-50 px-4 py-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-body-medium font-semibold text-surface-900">{entry.sale?.receiptNumber || 'Cash sale awaiting deposit'}</p>
+                      <p className="mt-1 text-body text-surface-600">{entry.customer?.name || 'Walk-in customer'} · {fmtDate(entry.transactionDate, true)}</p>
+                      <p className="mt-1 text-body text-surface-500">{entry.description || entry.reference || 'Cash sale'}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-body-medium font-semibold text-warning-700">{fmtMoney(entry.availableAmount)}</p>
+                      <p className="mt-1 text-caption text-surface-500">{ageLabel(entry.ageHours || ((Date.now() - new Date(entry.transactionDate).getTime()) / 36e5))}</p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
-      <section className="rounded-lg border border-surface-200 bg-surface-0">
-        <div className="border-b border-surface-100 px-5 py-4">
-          <h3 className="text-body-medium font-semibold text-surface-900">Pending confirmation</h3>
-          <p className="mt-1 text-body text-surface-500">
-            These deposits have already been grouped and recorded from Cash Account, but the bank statement has not confirmed them yet.
-          </p>
-        </div>
-        {pendingDeposits.batches.length === 0 ? (
-          <div className="px-6 py-12">
-            <EmptyState title="No pending cash deposits" body="Any cash already sent to the bank has either been confirmed or there are no cash deposit batches yet." />
+      {activeTab === 'pending' && (
+        <section className="rounded-lg border border-surface-200 bg-surface-0">
+          <div className="border-b border-surface-100 px-5 py-4">
+            <h3 className="text-body-medium font-semibold text-surface-900">Pending confirmation</h3>
+            <p className="mt-1 text-body text-surface-500">
+              Deposits matched to cash sales but not yet confirmed on the bank statement.
+            </p>
           </div>
-        ) : (
-          <div className="space-y-4 px-5 py-4">
-            {pendingDeposits.batches.map((batch) => (
-              <BatchCard
-                key={batch.id}
-                batch={batch}
-                title={`${fmtMoney(batch.amount)} pending bank confirmation`}
-                subtitle={`Deposited on ${fmtDate(batch.depositDate, true)} by ${staffName(batch.createdBy)} • ${ageLabel(batch.ageHours)}`}
-                statusLabel={batch.isOverdue ? 'Overdue' : 'Waiting for confirmation'}
-                statusTone={severityTone(batch.isOverdue)}
-                entriesTitle="Cash sales included in this pending deposit"
-              />
-            ))}
-          </div>
-        )}
-      </section>
+          {pendingDeposits.batches.length === 0 ? (
+            <div className="px-6 py-12">
+              <EmptyState title="No pending deposits" body="All matched deposits have been confirmed, or there are none yet." />
+            </div>
+          ) : (
+            <div className="space-y-4 px-5 py-4">
+              {pendingDeposits.batches.map((batch) => (
+                <BatchCard
+                  key={batch.id}
+                  batch={batch}
+                  title={`${fmtMoney(batch.amount)} pending bank confirmation`}
+                  subtitle={`Deposited on ${fmtDate(batch.depositDate, true)} by ${staffName(batch.createdBy)} · ${ageLabel(batch.ageHours)}`}
+                  statusLabel={batch.isOverdue ? 'Overdue' : 'Waiting for confirmation'}
+                  statusTone={severityTone(batch.isOverdue)}
+                  entriesTitle="Cash sales included in this pending deposit"
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
-      <section className="rounded-lg border border-surface-200 bg-surface-0">
-        <div className="border-b border-surface-100 px-5 py-4">
-          <h3 className="text-body-medium font-semibold text-surface-900">Confirmed recently</h3>
-          <p className="mt-1 text-body text-surface-500">
-            This is the grouped banked history: each confirmed deposit shows the exact cash sale lines that were banked together.
-          </p>
-        </div>
-        {confirmedRecently.length === 0 ? (
-          <div className="px-6 py-12">
-            <EmptyState title="No confirmed cash deposits yet" body="Once a bank statement inflow confirms a pending cash deposit, it will appear here." />
+      {activeTab === 'confirmed' && (
+        <section className="rounded-lg border border-surface-200 bg-surface-0">
+          <div className="border-b border-surface-100 px-5 py-4">
+            <h3 className="text-body-medium font-semibold text-surface-900">Confirmed deposits</h3>
+            <p className="mt-1 text-body text-surface-500">
+              Bank-confirmed deposits showing exactly which cash sales were included.
+            </p>
           </div>
-        ) : (
-          <div className="space-y-4 px-5 py-4">
-            {confirmedRecently.map((batch, index) => (
-              <BatchCard
-                key={batch.id}
-                batch={batch}
-                title={`${fmtMoney(batch.amount)} confirmed in bank`}
-                subtitle={`Deposited on ${fmtDate(batch.depositDate, true)} • confirmed ${fmtDate(batch.confirmedAt, true)}`}
-                statusLabel="Confirmed"
-                statusTone="border-success-200 bg-success-50 text-success-700"
-                entriesTitle="Cash sales included in this confirmed deposit"
-                defaultOpen={index === 0}
-              />
-            ))}
-          </div>
-        )}
-      </section>
+          {confirmedRecently.length === 0 ? (
+            <div className="px-6 py-12">
+              <EmptyState title="No confirmed deposits yet" body="Once a bank statement confirms a matched deposit, it will appear here." />
+            </div>
+          ) : (
+            <div className="space-y-4 px-5 py-4">
+              {confirmedRecently.map((batch, index) => (
+                <BatchCard
+                  key={batch.id}
+                  batch={batch}
+                  title={`${fmtMoney(batch.amount)} confirmed in bank`}
+                  subtitle={`Deposited on ${fmtDate(batch.depositDate, true)} · confirmed ${fmtDate(batch.confirmedAt, true)}`}
+                  statusLabel="Confirmed"
+                  statusTone="border-success-200 bg-success-50 text-success-700"
+                  entriesTitle="Cash sales included in this confirmed deposit"
+                  defaultOpen={index === 0}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 }
