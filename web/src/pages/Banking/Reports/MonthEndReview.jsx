@@ -198,7 +198,7 @@ function AccountCard({ account, month, onSaved, onGoToTransactions }) {
             </button>
           </div>
         </div>
-      ) : !hasBal || (isBalanced && !editing) ? (
+      ) : !hasBal || isBalanced ? (
         <button
           type="button"
           onClick={() => setEditing(true)}
@@ -206,7 +206,7 @@ function AccountCard({ account, month, onSaved, onGoToTransactions }) {
         >
           {hasBal ? 'Update balance' : 'Enter bank balance'}
         </button>
-      )}
+      ) : null}
     </div>
   );
 }
