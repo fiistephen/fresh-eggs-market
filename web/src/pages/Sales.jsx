@@ -1409,7 +1409,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
               {/* ── Bookings section ── */}
               {customerWorkspace.bookings.length > 0 && (
                 <section className="space-y-2">
-                  <p className="text-overline text-surface-400">Bookings</p>
+                  <p className="text-overline text-surface-400">Ready pickups</p>
                   {customerWorkspace.bookings.map((booking) => {
                     const sourceMeta = bookingSourceMeta(booking);
                     const isSelected = workflow === 'BOOKING' && selectedBooking?.id === booking.id;
@@ -1441,7 +1441,10 @@ function RecordSaleModal({ onClose, onRecorded }) {
                               {isSelected ? 'Selected' : 'Complete pickup \u2192'}
                             </span>
                           ) : (
-                            <Badge color="warning" dot>{formatCurrency(booking.balance)} due</Badge>
+                            <div className="text-right">
+                              <Badge color="warning" dot>{formatCurrency(booking.balance)} due</Badge>
+                              <p className="mt-1 text-caption text-warning-700">Finish payment in Banking first.</p>
+                            </div>
                           )}
                         </div>
                       </button>
@@ -1455,7 +1458,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-surface-200" /></div>
                   <div className="relative flex justify-center">
-                    <span className="bg-white px-3 text-caption text-surface-300">or direct sale</span>
+                    <span className="bg-white px-3 text-caption text-surface-300">or sell now</span>
                   </div>
                 </div>
               )}
@@ -1464,7 +1467,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
               {customerWorkspace.directSaleBatches.length > 0 && (
                 <section className="space-y-2">
                   {customerWorkspace.bookings.length === 0 && !hasSelection && (
-                    <p className="text-overline text-surface-400">Choose a batch</p>
+                    <p className="text-overline text-surface-400">Available batches</p>
                   )}
 
                   {customerWorkspace.mixedDirectSaleStock?.length > 0 && customerWorkspace.directSaleBatches.length > 1 && (
@@ -1563,7 +1566,8 @@ function RecordSaleModal({ onClose, onRecorded }) {
                   )}
 
                   {/* ── Line items ── */}
-                  <div>
+                  <div className="grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(280px,0.95fr)]">
+                    <div className="space-y-4 xl:pr-2">
                     <div className="flex items-center justify-between gap-3 mb-2">
                       <label className="text-body-medium font-semibold text-surface-900">
                         {workflow === 'BOOKING' ? 'Pickup items' : 'Items'}
@@ -1676,8 +1680,9 @@ function RecordSaleModal({ onClose, onRecorded }) {
                         ))}
                       </div>
                     ) : null}
-                  </div>
+                    </div>
 
+                    <div className="space-y-4 xl:pl-2">
                   {/* ── Payment method (direct sales only) — big one-click buttons ── */}
                   {workflow === 'DIRECT' && (
                     <div>
@@ -1784,8 +1789,8 @@ function RecordSaleModal({ onClose, onRecorded }) {
                     </div>
                   )}
 
-                  {/* ── Order summary ── */}
-                  {totalQty > 0 && (
+                    {/* ── Order summary ── */}
+                    {totalQty > 0 && (
                     <div className="border-t border-surface-200 pt-4 space-y-1.5">
                       {workflow === 'BOOKING' && selectedBooking && bookingQuantityGap !== 0 && (
                         <div className="flex justify-between text-body">
@@ -1803,57 +1808,32 @@ function RecordSaleModal({ onClose, onRecorded }) {
                       </div>
                     </div>
                   )}
+                    </div>
+                  </div>
                 </>
               )}
 
-              {/* Recent sales — collapsed */}
-              {!hasSelection && customerWorkspace.recentFulfilments?.length > 0 && (
-                <details>
-                  <summary className="cursor-pointer text-caption text-surface-400 hover:text-surface-500 select-none">
-                    Recent sales ({customerWorkspace.recentFulfilments.length})
-                  </summary>
-                  <div className="mt-2 space-y-1">
-                    {customerWorkspace.recentFulfilments.map((sale) => (
-                      <div key={sale.id} className="flex items-center justify-between gap-3 px-3 py-1.5 bg-surface-50 rounded text-caption text-surface-500">
-                        <span className="font-mono">{sale.receiptNumber}</span>
-                        <span>{sale.totalQuantity} crates &middot; {formatCurrency(sale.totalAmount)} &middot; {formatDate(sale.saleDate)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </details>
-              )}
             </>
           )}
 
           {/* ── Actions ── */}
-          <div className="flex items-center justify-between gap-3 pt-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="md"
-              icon={<ChevronLeftIcon />}
-              onClick={() => { setStep(1); clearSelection(); }}
-            >
-              Back
-            </Button>
-            <div className="flex gap-3">
-              <Button type="button" variant="ghost" size="md" onClick={onClose}>Cancel</Button>
-              {hasSelection && (
-                <Button
-                  type="submit"
-                  variant="primary"
-                  size="md"
-                  disabled={submitting || !canSubmit}
-                  loading={submitting}
-                >
-                  {workflow === 'BOOKING'
-                    ? 'Complete pickup'
-                    : totalAmount > 0
-                      ? `Save \u00B7 ${formatCurrency(totalAmount)}`
-                      : 'Complete sale'}
-                </Button>
-              )}
-            </div>
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <Button type="button" variant="ghost" size="md" onClick={onClose}>Cancel</Button>
+            {hasSelection && (
+              <Button
+                type="submit"
+                variant="primary"
+                size="md"
+                disabled={submitting || !canSubmit}
+                loading={submitting}
+              >
+                {workflow === 'BOOKING'
+                  ? 'Complete pickup'
+                  : totalAmount > 0
+                    ? `Save · ${formatCurrency(totalAmount)}`
+                    : 'Complete sale'}
+              </Button>
+            )}
           </div>
         </form>
       )}
