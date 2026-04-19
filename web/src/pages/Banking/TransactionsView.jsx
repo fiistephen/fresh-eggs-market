@@ -135,6 +135,21 @@ export default function TransactionsView({
             </label>
 
             <label className="text-xs text-surface-500">
+              Category
+              <select
+                value={filters.category}
+                onChange={(e) => onFilterChange({ category: e.target.value })}
+                className="mt-1 block w-full rounded-md border border-surface-300 bg-surface-0 px-2.5 py-1.5 text-sm text-surface-900 focus:ring-2 focus:ring-brand-500 outline-none duration-fast"
+              >
+                <option value="">All</option>
+                <option value={CATEGORY_FILTER_PRESETS.unallocated.value}>Unallocated</option>
+                {Object.keys(categoryMap).sort().map((cat) => (
+                  <option key={cat} value={cat}>{categoryLabel(cat, categoryMap)}</option>
+                ))}
+              </select>
+            </label>
+
+            <label className="text-xs text-surface-500">
               Source
               <select
                 value={filters.sourceType}

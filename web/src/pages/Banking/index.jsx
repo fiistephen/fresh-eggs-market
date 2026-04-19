@@ -539,10 +539,6 @@ export default function Banking() {
 
       {activeView === 'cash-deposits' && (
         <CashDepositsView
-          loading={cashDepositsLoading}
-          data={cashDeposits}
-          onOpenStatements={() => setActiveView('imports')}
-          onRefresh={loadCashDeposits}
           onMatchFromBank={() => setShowMatchDepositModal(true)}
         />
       )}

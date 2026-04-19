@@ -574,41 +574,65 @@ function hoursBetween(fromDate, toDate = new Date()) {
   return (new Date(toDate).getTime() - new Date(fromDate).getTime()) / (1000 * 60 * 60);
 }
 
-async function getCashDepositWorkspace(policyInput) {
+async function getCashDepositWorkspace(policyInput, { dateFrom, dateTo, undepositedLimit, undepositedOffset, depositedLimit, depositedOffset } = {}) {
   const policy = policyInput || await getOperationsPolicy();
   const undepositedThresholdHours = Number(policy.undepositedCashAlertHours || 24);
 
-  // Two lists only: undeposited cash sales, and deposited batches (all statuses
-  // merged — per Meeting 3, no per-deposit bank statement confirmation needed;
-  // reconciliation happens monthly via the manager's month-end close).
-  const [availableCashTransactions, depositedBatches] = await Promise.all([
-    getAvailableCashSaleTransactions(),
-    prisma.cashDepositBatch.findMany({
-      where: { status: { in: ['CONFIRMED', 'PENDING_CONFIRMATION', 'OVERDUE'] } },
+  // Date filter for deposited batches
+  const depositedWhere = { status: { in: ['CONFIRMED', 'PENDING_CONFIRMATION', 'OVERDUE'] } };
+  if (dateFrom || dateTo) {
+    depositedWhere.depositDate = {};
+    if (dateFrom) depositedWhere.depositDate.gte = new Date(dateFrom);
+    if (dateTo) { const end = new Date(dateTo); end.setDate(end.getDate() + 1); depositedWhere.depositDate.lt = end; }
+  }
+
+  const depositedInclude = {
+    createdBy: { select: { firstName: true, lastName: true } },
+    confirmedBy: { select: { firstName: true, lastName: true } },
+    fromBankAccount: { select: { id: true, name: true, accountType: true, lastFour: true, isVirtual: true, supportsStatementImport: true } },
+    toBankAccount: { select: { id: true, name: true, accountType: true, lastFour: true, isVirtual: true, supportsStatementImport: true } },
+    transactions: {
       include: {
-        createdBy: { select: { firstName: true, lastName: true } },
-        confirmedBy: { select: { firstName: true, lastName: true } },
-        fromBankAccount: { select: { id: true, name: true, accountType: true, lastFour: true, isVirtual: true, supportsStatementImport: true } },
-        toBankAccount: { select: { id: true, name: true, accountType: true, lastFour: true, isVirtual: true, supportsStatementImport: true } },
-        transactions: {
+        bankTransaction: {
           include: {
-            bankTransaction: {
-              include: {
-                customer: { select: { id: true, name: true, phone: true } },
-                sale: { select: { id: true, receiptNumber: true, saleDate: true } },
-              },
-            },
+            customer: { select: { id: true, name: true, phone: true } },
+            sale: { select: { id: true, receiptNumber: true, saleDate: true } },
           },
-          orderBy: { createdAt: 'asc' },
         },
       },
+      orderBy: { createdAt: 'asc' },
+    },
+  };
+
+  const [availableCashTransactions, depositedBatches, depositedTotal] = await Promise.all([
+    getAvailableCashSaleTransactions(),
+    prisma.cashDepositBatch.findMany({
+      where: depositedWhere,
+      include: depositedInclude,
       orderBy: [{ depositDate: 'desc' }, { createdAt: 'desc' }],
-      take: 20,
+      take: depositedLimit || 20,
+      skip: depositedOffset || 0,
     }),
+    prisma.cashDepositBatch.count({ where: depositedWhere }),
   ]);
 
-  const undepositedTransactions = availableCashTransactions.filter((transaction) => hoursBetween(transaction.transactionDate) >= undepositedThresholdHours);
-  const undepositedTotal = undepositedTransactions.reduce((sum, transaction) => sum + Number(transaction.availableAmount), 0);
+  // Apply date filter to undeposited cash too
+  let undepositedTransactions = availableCashTransactions;
+  if (dateFrom) {
+    const from = new Date(dateFrom);
+    undepositedTransactions = undepositedTransactions.filter((t) => new Date(t.transactionDate) >= from);
+  }
+  if (dateTo) {
+    const to = new Date(dateTo); to.setDate(to.getDate() + 1);
+    undepositedTransactions = undepositedTransactions.filter((t) => new Date(t.transactionDate) < to);
+  }
+
+  const undepositedTotalCount = undepositedTransactions.length;
+  const undepositedTotalAmount = undepositedTransactions.reduce((sum, t) => sum + Number(t.availableAmount), 0);
+
+  // Apply pagination to undeposited
+  if (undepositedOffset) undepositedTransactions = undepositedTransactions.slice(undepositedOffset);
+  if (undepositedLimit) undepositedTransactions = undepositedTransactions.slice(0, undepositedLimit);
 
   const depositedNormalized = depositedBatches.map((batch) => ({
     ...batch,
@@ -622,18 +646,16 @@ async function getCashDepositWorkspace(policyInput) {
 
   return {
     undepositedCash: {
-      count: undepositedTransactions.length,
-      total: undepositedTotal,
+      count: undepositedTotalCount,
+      total: undepositedTotalAmount,
       thresholdHours: undepositedThresholdHours,
       transactions: undepositedTransactions,
     },
-    // Backward compat: keep pendingDeposits and confirmedRecently keys
-    // pointing to empty arrays so the frontend doesn't break on rollout.
+    // Backward compat
     pendingDeposits: { count: 0, total: 0, thresholdHours: 24, batches: [] },
     confirmedRecently: [],
-    // New simplified shape
     deposited: {
-      count: depositedNormalized.length,
+      count: depositedTotal,
       total: depositedNormalized.reduce((sum, batch) => sum + Number(batch.amount || 0), 0),
       batches: depositedNormalized,
     },
@@ -1980,9 +2002,16 @@ export default async function bankingRoutes(fastify) {
 
   fastify.get('/banking/cash-deposits', {
     preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
-    handler: async () => {
+    handler: async (request) => {
+      const { dateFrom, dateTo, undepositedLimit, undepositedOffset, depositedLimit, depositedOffset } = request.query;
       const policy = await getOperationsPolicy();
-      const workspace = await getCashDepositWorkspace(policy);
+      const workspace = await getCashDepositWorkspace(policy, {
+        dateFrom, dateTo,
+        undepositedLimit: undepositedLimit ? Number(undepositedLimit) : undefined,
+        undepositedOffset: undepositedOffset ? Number(undepositedOffset) : undefined,
+        depositedLimit: depositedLimit ? Number(depositedLimit) : undefined,
+        depositedOffset: depositedOffset ? Number(depositedOffset) : undefined,
+      });
       return {
         policy,
         ...workspace,
