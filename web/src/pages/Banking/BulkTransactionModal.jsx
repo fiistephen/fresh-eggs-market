@@ -13,7 +13,6 @@ function createRow(defaults = {}) {
     transactionDate: defaults.transactionDate || todayStr(),
     amount: '',
     description: '',
-    reference: defaults.reference || '',
     farmerId: defaults.farmerId || '',
   };
 }
@@ -83,7 +82,6 @@ export default function BulkTransactionModal({ accounts, transactionCategories, 
       direction: lastRow.direction,
       category: lastRow.category,
       transactionDate: lastRow.transactionDate,
-      reference: lastRow.reference,
     } : initialDefaults)]);
   }
 
@@ -94,7 +92,6 @@ export default function BulkTransactionModal({ accounts, transactionCategories, 
       direction: source.direction,
       category: source.category,
       transactionDate: source.transactionDate,
-      reference: source.reference,
     });
     setRows((current) => {
       const next = [...current];
@@ -107,7 +104,7 @@ export default function BulkTransactionModal({ accounts, transactionCategories, 
     event.preventDefault();
     const partiallyFilledRows = rows
       .map((row, index) => ({ row, index }))
-      .filter(({ row }) => (row.description?.trim() || row.reference?.trim()) && Number(row.amount) <= 0);
+      .filter(({ row }) => row.description?.trim() && Number(row.amount) <= 0);
     if (partiallyFilledRows.length > 0) {
       setError(`Enter an amount for row ${partiallyFilledRows[0].index + 1}, or clear the extra text in that row.`);
       return;
@@ -129,7 +126,6 @@ export default function BulkTransactionModal({ accounts, transactionCategories, 
           transactionDate: row.transactionDate,
           amount: Number(row.amount),
           description: row.description,
-          reference: row.reference,
           farmerId: row.farmerId,
         })),
       });
@@ -149,14 +145,13 @@ export default function BulkTransactionModal({ accounts, transactionCategories, 
     <form onSubmit={handleSubmit} className="space-y-4">
       {error && <div className="rounded-lg border border-error-100 bg-error-50 px-3 py-2 text-body text-error-700">{error}</div>}
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-body text-surface-600">Fill in the rows below. New rows copy the settings from the row above.</p>
+      <div className="flex justify-end">
         <button
           type="button"
           onClick={() => setShowCategoryCreator((c) => !c)}
           className="text-body-medium font-medium text-brand-600 hover:text-brand-700"
         >
-          {showCategoryCreator ? 'Close new category' : 'Need a new category?'}
+          {showCategoryCreator ? 'Close new category' : 'Add new category'}
         </button>
       </div>
 
@@ -171,7 +166,7 @@ export default function BulkTransactionModal({ accounts, transactionCategories, 
       )}
 
       <div className="overflow-x-auto custom-scrollbar rounded-lg border border-surface-200">
-        <table className="w-full min-w-[1040px]">
+        <table className="w-full min-w-[880px]">
           <thead className="sticky top-0 z-10 bg-surface-50">
             {/* V3 Meeting 3 fix: Farmer column removed from bulk entry — it was
                 empty for most rows (only filled when category is FARMER_PAYMENT)
@@ -184,7 +179,6 @@ export default function BulkTransactionModal({ accounts, transactionCategories, 
               <th className="px-3 py-2.5 text-left text-overline text-surface-500 w-[120px]">Date</th>
               <th className="px-3 py-2.5 text-right text-overline text-surface-500 w-[120px]">Amount</th>
               <th className="px-3 py-2.5 text-left text-overline text-surface-500">Description</th>
-              <th className="px-3 py-2.5 text-left text-overline text-surface-500 w-[160px]">Reference</th>
               <th className="px-3 py-2.5 text-left text-overline text-surface-500 w-[90px]"></th>
             </tr>
           </thead>
@@ -251,15 +245,6 @@ export default function BulkTransactionModal({ accounts, transactionCategories, 
                       onChange={(e) => updateRow(index, { description: e.target.value })}
                       className="w-full rounded-md border border-surface-200 px-2 py-1.5 text-body outline-none focus:ring-2 focus:ring-brand-500"
                       placeholder="e.g. GTBank – Mrs Balogun"
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <input
-                      type="text"
-                      value={row.reference}
-                      onChange={(e) => updateRow(index, { reference: e.target.value })}
-                      className="w-full rounded-md border border-surface-200 px-2 py-1.5 text-body outline-none focus:ring-2 focus:ring-brand-500"
-                      placeholder="e.g. teller or transfer ref"
                     />
                   </td>
                   <td className="px-3 py-2">

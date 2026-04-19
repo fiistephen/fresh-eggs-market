@@ -7,12 +7,10 @@ const MODES = [
   {
     key: 'bulk',
     label: 'Enter many',
-    description: 'Best for daily banking work when you want to capture several rows at once.',
   },
   {
     key: 'single',
     label: 'Record one',
-    description: 'Use this when you only need to save one entry quickly.',
   },
 ];
 
@@ -38,9 +36,6 @@ export default function EntryModal(props) {
                   }`}
                 >
                   <div className="text-body-medium font-semibold">{entryMode.label}</div>
-                  <div className={`mt-1 text-caption ${isActive ? 'text-surface-800/80' : 'text-surface-500'}`}>
-                    {entryMode.description}
-                  </div>
                 </button>
               );
             })}

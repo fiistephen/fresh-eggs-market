@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
-import { categoryOptionsForDirection, categoryLabel, categoryDescription, displayAccountName, fmtMoney, todayStr } from './shared/constants';
+import { categoryOptionsForDirection, categoryLabel, displayAccountName, fmtMoney, todayStr } from './shared/constants';
 import { ModalShell, Field } from './shared/ui';
 import QuickCategoryCreator from './QuickCategoryCreator';
 
@@ -31,7 +31,6 @@ export default function RecordTransactionModal({
     category: defaultCategory,
     amount: '',
     description: '',
-    reference: '',
     transactionDate: todayStr(),
   });
   const [customerSearch, setCustomerSearch] = useState('');
@@ -119,7 +118,6 @@ export default function RecordTransactionModal({
         ...current,
         amount: '',
         description: '',
-        reference: '',
       }));
       setSelectedCustomer(null);
       setCustomerSearch('');
@@ -196,7 +194,6 @@ export default function RecordTransactionModal({
               <option key={category} value={category}>{categoryLabel(category, categoryMap)}</option>
             ))}
           </select>
-          <p className="mt-1 text-caption text-surface-500">{categoryDescription(form.category, categoryMap) || 'Choose the clearest category for this entry.'}</p>
           <button
             type="button"
             onClick={() => setShowCategoryCreator((current) => !current)}
@@ -229,12 +226,6 @@ export default function RecordTransactionModal({
             setShowCategoryCreator(false);
           }}
         />
-      )}
-
-      {['CUSTOMER_DEPOSIT', 'CUSTOMER_BOOKING'].includes(form.category) && (
-        <div className="rounded-lg border border-info-100 bg-info-50 px-4 py-3 text-body text-info-700">
-          Save the money here first. After saving, go to <span className="font-semibold">Bookings</span> to match the deposit to a portal booking or create a manual booking from it.
-        </div>
       )}
 
       {needsCustomer && (
@@ -290,25 +281,16 @@ export default function RecordTransactionModal({
               </option>
             ))}
           </select>
-          <p className="text-caption text-surface-500">This will increase the farmer’s prepaid balance from Banking truth.</p>
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4">
         <Field label="Description">
           <input
             type="text"
             value={form.description}
             onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
             placeholder="e.g. First Bank – Adebayo Oluwaseun"
-            className="w-full rounded-md border border-surface-200 px-3 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500"
-          />
-        </Field>
-        <Field label="Reference">
-          <input
-            type="text"
-            value={form.reference}
-            onChange={(event) => setForm((current) => ({ ...current, reference: event.target.value }))}
             className="w-full rounded-md border border-surface-200 px-3 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500"
           />
         </Field>
