@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { api } from '../../lib/api';
@@ -19,10 +19,11 @@ import MonthEndReview from './Reports/MonthEndReview';
 
 // Modals
 import EntryModal from './EntryModal';
-import InternalTransferModal from './InternalTransferModal';
+// InternalTransferModal removed — inter-account transfers are recorded as
+// individual transactions on each account (one outflow, one inflow).
 import MatchCashDepositModal from './MatchCashDepositModal';
 import StatementImportModal from './StatementImportModal';
-import ReconciliationModal from './ReconciliationModal';
+// ReconciliationModal removed — balance entry is inline on the Reconciliation page.
 import RequestDeleteApprovalModal from './RequestDeleteApprovalModal';
 import RequestEditApprovalModal from './RequestEditApprovalModal';
 
@@ -105,6 +106,7 @@ export default function Banking() {
     query: '',
     bankAccountId: '',
     direction: '',
+    category: '',
     sourceType: '',
     dateFrom: '',
     dateTo: '',
@@ -112,19 +114,17 @@ export default function Banking() {
 
   /* ── Modal visibility ────────────────────────────────── */
   const [showEntryModal, setShowEntryModal] = useState(false);
-  const [showTransferModal, setShowTransferModal] = useState(false);
+  // showTransferModal removed — "Move money" feature retired.
   // V3 Phase 2: toggles the "Match a bank deposit" modal on the Cash Sales tab.
   const [showMatchDepositModal, setShowMatchDepositModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
-  const [showReconcileModal, setShowReconcileModal] = useState(false);
+  // showReconcileModal removed — balance entry is inline on the Reconciliation page.
   const [postingImport, setPostingImport] = useState(false);
   const [requestEditTransaction, setRequestEditTransaction] = useState(null);
   const [requestDeleteTransaction, setRequestDeleteTransaction] = useState(null);
   const [workingApprovalId, setWorkingApprovalId] = useState('');
 
-  /* ── Action menu state ───────────────────────────────── */
-  const [showMoreMenu, setShowMoreMenu] = useState(false);
-  const moreRef = useRef(null);
+  /* ── (More menu removed — only "Record entry" button remains) ── */
 
   /* ── Derived ─────────────────────────────────────────── */
   const canRecord = ['ADMIN', 'MANAGER', 'RECORD_KEEPER'].includes(user?.role);
@@ -133,14 +133,7 @@ export default function Banking() {
   const isAdmin = user?.role === 'ADMIN';
   const categoryMap = buildCategoryMap(transactionCategories);
 
-  /* ── Close menus on outside click ────────────────────── */
-  useEffect(() => {
-    function handleClick(e) {
-      if (moreRef.current && !moreRef.current.contains(e.target)) setShowMoreMenu(false);
-    }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, []);
+  /* ── (Outside-click handler for "More" menu removed) ── */
 
   /* ── Effects ─────────────────────────────────────────── */
 
@@ -148,7 +141,7 @@ export default function Banking() {
 
   useEffect(() => {
     if (activeView === 'transactions') loadTransactions();
-  }, [activeView, transactionsPage, transactionsPageSize, filters.query, filters.bankAccountId, filters.direction, filters.sourceType, filters.dateFrom, filters.dateTo]);
+  }, [activeView, transactionsPage, transactionsPageSize, filters.query, filters.bankAccountId, filters.direction, filters.category, filters.sourceType, filters.dateFrom, filters.dateTo]);
 
   useEffect(() => {
     if (activeView === 'imports') loadImports();
@@ -177,7 +170,7 @@ export default function Banking() {
   // Reset page when filters change
   useEffect(() => {
     setTransactionsPage(1);
-  }, [filters.query, filters.bankAccountId, filters.direction, filters.sourceType, filters.dateFrom, filters.dateTo]);
+  }, [filters.query, filters.bankAccountId, filters.direction, filters.category, filters.sourceType, filters.dateFrom, filters.dateTo]);
 
   useEffect(() => {
     setImportsPage(1);
@@ -225,6 +218,7 @@ export default function Banking() {
       if (filters.query) params.set('q', filters.query);
       if (filters.bankAccountId) params.set('bankAccountId', filters.bankAccountId);
       if (filters.direction) params.set('direction', filters.direction);
+      if (filters.category) params.set('category', filters.category);
       if (filters.sourceType) params.set('sourceType', filters.sourceType);
       if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
       if (filters.dateTo) params.set('dateTo', filters.dateTo);
@@ -421,22 +415,6 @@ export default function Banking() {
             >
               Record entry
             </button>
-
-            {/* More actions */}
-            <div className="relative" ref={moreRef}>
-              <button
-                onClick={() => setShowMoreMenu((v) => !v)}
-                className="rounded-lg border border-surface-300 bg-surface-0 px-3 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 transition-colors duration-fast"
-              >
-                More <span className="text-surface-400">▼</span>
-              </button>
-              {showMoreMenu && (
-                <div className="absolute right-0 top-full z-20 mt-1 w-48 rounded-lg border border-surface-200 bg-surface-0 py-1 shadow-md">
-                  <button onClick={() => { setShowTransferModal(true); setShowMoreMenu(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 duration-fast">Move money</button>
-                  {canViewReports && <button onClick={() => { setShowReconcileModal(true); setShowMoreMenu(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 duration-fast">Reconcile balance</button>}
-                </div>
-              )}
-            </div>
           </div>
         )}
       </div>
@@ -563,7 +541,6 @@ export default function Banking() {
         <CashDepositsView
           loading={cashDepositsLoading}
           data={cashDeposits}
-          onMoveMoney={() => setShowTransferModal(true)}
           onOpenStatements={() => setActiveView('imports')}
           onRefresh={loadCashDeposits}
           onMatchFromBank={() => setShowMatchDepositModal(true)}
@@ -591,6 +568,9 @@ export default function Banking() {
               return;
             }
             if (options.reportKey) setActiveReport(options.reportKey);
+            if (options.filterCategory) {
+              setFilters((prev) => ({ ...prev, category: options.filterCategory }));
+            }
             setActiveView(view);
           }}
         />
@@ -637,17 +617,6 @@ export default function Banking() {
         />
       )}
 
-      {showTransferModal && (
-        <InternalTransferModal
-          accounts={accounts}
-          onClose={() => setShowTransferModal(false)}
-          onRecorded={() => {
-            setShowTransferModal(false);
-            refreshAfterMutation();
-          }}
-        />
-      )}
-
       {showMatchDepositModal && (
         <MatchCashDepositModal
           onClose={() => setShowMatchDepositModal(false)}
@@ -672,18 +641,6 @@ export default function Banking() {
             setSelectedImportId(importId);
             setActiveView('imports');
             loadAccounts();
-          }}
-        />
-      )}
-
-      {showReconcileModal && (
-        <ReconciliationModal
-          accounts={accounts}
-          imports={imports}
-          onClose={() => setShowReconcileModal(false)}
-          onSaved={() => {
-            setShowReconcileModal(false);
-            refreshAfterMutation();
           }}
         />
       )}

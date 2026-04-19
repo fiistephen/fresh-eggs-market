@@ -28,6 +28,14 @@ export const RECONCILIATION_STYLES = {
   OPEN: 'bg-warning-100 text-warning-700',
 };
 
+// Category filter presets (for TransactionsView)
+export const CATEGORY_FILTER_PRESETS = {
+  unallocated: {
+    label: 'Unallocated',
+    value: 'UNALLOCATED_INCOME,UNALLOCATED_EXPENSE',
+  },
+};
+
 // Transaction category display labels
 export const CATEGORY_LABELS = {
   CUSTOMER_DEPOSIT: 'Customer deposit',

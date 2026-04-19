@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { DIRECTION_COLORS, SOURCE_LABELS, fmtMoney, fmtDate, accountLabel, displayAccountName, categoryLabel } from './shared/constants';
+import { DIRECTION_COLORS, SOURCE_LABELS, fmtMoney, fmtDate, accountLabel, displayAccountName, categoryLabel, CATEGORY_FILTER_PRESETS } from './shared/constants';
 import { EmptyState } from './shared/ui';
 
 export default function TransactionsView({
@@ -28,7 +28,7 @@ export default function TransactionsView({
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
 
-  const hasActiveFilters = filters.query || filters.bankAccountId || filters.direction || filters.sourceType || filters.dateFrom || filters.dateTo;
+  const hasActiveFilters = filters.query || filters.bankAccountId || filters.direction || filters.category || filters.sourceType || filters.dateFrom || filters.dateTo;
   const rangeStart = Math.min((page - 1) * pageSize + 1, total);
   const rangeEnd = Math.min(page * pageSize, total);
 
@@ -40,6 +40,10 @@ export default function TransactionsView({
     chips.push({ key: 'bankAccountId', label: acct ? displayAccountName(acct) : 'Account' });
   }
   if (filters.direction) chips.push({ key: 'direction', label: filters.direction === 'INFLOW' ? 'Inflows' : 'Outflows' });
+  if (filters.category) {
+    const preset = Object.values(CATEGORY_FILTER_PRESETS).find((p) => p.value === filters.category);
+    chips.push({ key: 'category', label: preset ? preset.label : filters.category });
+  }
   if (filters.sourceType) chips.push({ key: 'sourceType', label: SOURCE_LABELS[filters.sourceType] || filters.sourceType });
   if (filters.dateFrom) chips.push({ key: 'dateFrom', label: `From ${filters.dateFrom}` });
   if (filters.dateTo) chips.push({ key: 'dateTo', label: `To ${filters.dateTo}` });
@@ -80,7 +84,7 @@ export default function TransactionsView({
 
           {hasActiveFilters && (
             <button
-              onClick={() => onFilterChange({ query: '', bankAccountId: '', direction: '', sourceType: '', dateFrom: '', dateTo: '' })}
+              onClick={() => onFilterChange({ query: '', bankAccountId: '', direction: '', category: '', sourceType: '', dateFrom: '', dateTo: '' })}
               className="text-xs text-surface-500 hover:text-surface-700 transition-colors duration-fast"
             >
               Clear all

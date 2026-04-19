@@ -12,18 +12,15 @@ export default function RecordTransactionModal({
   onClose,
   onRecorded,
   embedded = false,
+  fixedAccountId = null,
 }) {
   const defaultDirection = 'INFLOW';
-  // V3 Meeting 3: default category for a new manual inflow is always
-  // "Unallocated income". categoryOptionsForDirection sorts alphabetically,
-  // so its [0] is not reliable for defaults — pick UNALLOCATED_INCOME directly
-  // when it exists in the category map, otherwise fall back to the first option.
   const inflowOptions = categoryOptionsForDirection(defaultDirection, categoryMap, 'UNALLOCATED_INCOME');
   const defaultCategory = inflowOptions.includes('UNALLOCATED_INCOME')
     ? 'UNALLOCATED_INCOME'
     : inflowOptions[0] || 'UNALLOCATED_INCOME';
   const customerDepositAccount = accounts.find((a) => a.accountType === 'CUSTOMER_DEPOSIT');
-  const defaultAccountId = customerDepositAccount?.id || accounts[0]?.id || '';
+  const defaultAccountId = fixedAccountId || customerDepositAccount?.id || accounts[0]?.id || '';
 
   const [form, setForm] = useState({
     bankAccountId: defaultAccountId,
@@ -159,19 +156,21 @@ export default function RecordTransactionModal({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label="Account">
-          <select
-            value={form.bankAccountId}
-            onChange={(event) => setForm((current) => ({ ...current, bankAccountId: event.target.value }))}
-            className="w-full rounded-md border border-surface-200 px-3 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500"
-            required
-          >
-            {accounts.map((account) => (
-              <option key={account.id} value={account.id}>{displayAccountName(account)}</option>
-            ))}
-          </select>
-        </Field>
+      <div className={`grid grid-cols-1 gap-4 ${fixedAccountId ? '' : 'sm:grid-cols-2'}`}>
+        {!fixedAccountId && (
+          <Field label="Account">
+            <select
+              value={form.bankAccountId}
+              onChange={(event) => setForm((current) => ({ ...current, bankAccountId: event.target.value }))}
+              className="w-full rounded-md border border-surface-200 px-3 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500"
+              required
+            >
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id}>{displayAccountName(account)}</option>
+              ))}
+            </select>
+          </Field>
+        )}
         <Field label="Date">
           <input
             type="date"

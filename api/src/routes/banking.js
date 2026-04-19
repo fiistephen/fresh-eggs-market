@@ -985,7 +985,10 @@ export default async function bankingRoutes(fastify) {
 
       const where = {};
       if (bankAccountId) where.bankAccountId = bankAccountId;
-      if (category) where.category = category;
+      if (category) {
+        const cats = String(category).split(',').map((c) => c.trim()).filter(Boolean);
+        where.category = cats.length === 1 ? cats[0] : { in: cats };
+      }
       if (direction) where.direction = direction;
       if (customerId) where.customerId = customerId;
       if (sourceType) where.sourceType = sourceType;

@@ -17,8 +17,8 @@ function createRow(defaults = {}) {
   };
 }
 
-export default function BulkTransactionModal({ accounts, transactionCategories, categoryMap, onCategoriesChanged, onClose, onRecorded, embedded = false }) {
-  const defaultAccountId = accounts.find((a) => a.accountType === 'CUSTOMER_DEPOSIT')?.id || accounts[0]?.id || '';
+export default function BulkTransactionModal({ accounts, transactionCategories, categoryMap, onCategoriesChanged, onClose, onRecorded, embedded = false, fixedAccountId = null }) {
+  const defaultAccountId = fixedAccountId || accounts.find((a) => a.accountType === 'CUSTOMER_DEPOSIT')?.id || accounts[0]?.id || '';
   // V3 Meeting 3: default category is always "Unallocated income" for inflows.
   // categoryOptionsForDirection returns alphabetically-sorted options, so we
   // can't rely on [0] — pick UNALLOCATED_INCOME explicitly when present.
@@ -174,7 +174,7 @@ export default function BulkTransactionModal({ accounts, transactionCategories, 
                 single-entry "Record one" mode where the field is conditional. */}
             <tr className="border-b border-surface-200">
               <th className="px-3 py-2.5 text-left text-overline text-surface-500 w-[80px]">In / Out</th>
-              <th className="px-3 py-2.5 text-left text-overline text-surface-500">Account</th>
+              {!fixedAccountId && <th className="px-3 py-2.5 text-left text-overline text-surface-500">Account</th>}
               <th className="px-3 py-2.5 text-left text-overline text-surface-500">Category</th>
               <th className="px-3 py-2.5 text-left text-overline text-surface-500 w-[120px]">Date</th>
               <th className="px-3 py-2.5 text-right text-overline text-surface-500 w-[120px]">Amount</th>
@@ -196,17 +196,19 @@ export default function BulkTransactionModal({ accounts, transactionCategories, 
                       {row.direction === 'INFLOW' ? 'In' : 'Out'}
                     </button>
                   </td>
-                  <td className="px-3 py-2">
-                    <select
-                      value={row.bankAccountId}
-                      onChange={(e) => updateRow(index, { bankAccountId: e.target.value })}
-                      className="w-full rounded-md border border-surface-200 px-2 py-1.5 text-body outline-none focus:ring-2 focus:ring-brand-500"
-                    >
-                      {accounts.map((account) => (
-                        <option key={account.id} value={account.id}>{displayAccountName(account)}</option>
-                      ))}
-                    </select>
-                  </td>
+                  {!fixedAccountId && (
+                    <td className="px-3 py-2">
+                      <select
+                        value={row.bankAccountId}
+                        onChange={(e) => updateRow(index, { bankAccountId: e.target.value })}
+                        className="w-full rounded-md border border-surface-200 px-2 py-1.5 text-body outline-none focus:ring-2 focus:ring-brand-500"
+                      >
+                        {accounts.map((account) => (
+                          <option key={account.id} value={account.id}>{displayAccountName(account)}</option>
+                        ))}
+                      </select>
+                    </td>
+                  )}
                   <td className="px-3 py-2">
                     <select
                       value={row.category}

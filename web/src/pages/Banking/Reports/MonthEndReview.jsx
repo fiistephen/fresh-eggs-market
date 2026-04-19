@@ -309,7 +309,7 @@ export default function MonthEndReview({ onNavigate }) {
                 setNotice('Balance saved.');
                 load();
               }}
-              onGoToTransactions={() => onNavigate?.('transactions')}
+              onGoToTransactions={() => onNavigate?.('transactions', { filterCategory: 'UNALLOCATED_INCOME,UNALLOCATED_EXPENSE' })}
             />
           ))}
         </div>
@@ -318,7 +318,7 @@ export default function MonthEndReview({ onNavigate }) {
         {(unallocatedCount > 0 || unbankedCount > 0) && (
           <div className="flex flex-wrap items-center gap-4 rounded-lg border border-surface-200 bg-surface-50 px-4 py-3 text-body text-surface-600">
             {unallocatedCount > 0 && (
-              <button type="button" onClick={() => onNavigate?.('transactions')} className="hover:text-brand-700 hover:underline">
+              <button type="button" onClick={() => onNavigate?.('transactions', { filterCategory: 'UNALLOCATED_INCOME,UNALLOCATED_EXPENSE' })} className="hover:text-brand-700 hover:underline">
                 {unallocatedCount} unallocated transaction{unallocatedCount !== 1 ? 's' : ''}
               </button>
             )}
