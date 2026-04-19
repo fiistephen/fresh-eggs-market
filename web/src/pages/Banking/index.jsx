@@ -42,13 +42,9 @@ const TABS = [
   { key: 'reports', label: 'Reconciliations' },
 ];
 
-const REPORT_TABS = [
-  { key: 'month-end', label: 'Month-end review' },
-  { key: 'balances', label: 'Account Balances' },
-  { key: 'unbooked', label: 'Unbooked Deposits' },
-  { key: 'liability', label: 'Customer Liability' },
-  { key: 'expenses', label: 'Expenses' },
-];
+// Sub-reports accessible via links on the Reconciliation page.
+// No sub-tab bar — the main reconciliation view handles navigation.
+const REPORT_KEYS = ['month-end', 'balances', 'unbooked', 'liability', 'expenses'];
 
 /* ── Pagination config ─────────────────────────────────── */
 const DEFAULT_TRANSACTIONS_PAGE_SIZE = 25;
@@ -477,27 +473,7 @@ export default function Banking() {
         })}
       </div>
 
-      {canViewReports && isReportView && (
-        <div className="flex flex-wrap items-center gap-2">
-          {REPORT_TABS.map((reportTab) => {
-            const isActive = activeReport === reportTab.key;
-            return (
-              <button
-                key={reportTab.key}
-                type="button"
-                onClick={() => setActiveReport(reportTab.key)}
-                className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors duration-fast ${
-                  isActive
-                    ? 'bg-brand-100 text-brand-700'
-                    : 'bg-surface-0 text-surface-600 hover:bg-surface-100'
-                }`}
-              >
-                {reportTab.label}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      {/* Sub-report navigation removed — reconciliation page handles this via report links */}
 
       {/* Error banner */}
       {error && (
@@ -618,6 +594,14 @@ export default function Banking() {
             setActiveView(view);
           }}
         />
+      )}
+
+      {activeView === 'reports' && activeReport !== 'month-end' && (
+        <div className="mb-3">
+          <button type="button" onClick={() => setActiveReport('month-end')} className="text-body font-medium text-brand-700 hover:text-brand-900 transition-colors">
+            ← Back to reconciliation
+          </button>
+        </div>
       )}
 
       {activeView === 'reports' && activeReport === 'balances' && (

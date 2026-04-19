@@ -1,191 +1,34 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../../lib/api';
-import { fmtMoney, fmtDate, displayAccountName, RECONCILIATION_STYLES } from '../shared/constants';
-import { EmptyPanel, Field, ModalActions, ModalShell, PanelLoading, SummaryBanner, StatusChip } from '../shared/ui';
+import { fmtMoney, fmtDate, displayAccountName } from '../shared/constants';
+import { ModalShell, ModalActions, PanelLoading, EmptyPanel } from '../shared/ui';
 
-function toneForCount(count, amount = 0) {
-  return count > 0 || amount > 0 ? 'warning' : 'default';
+/* ── helpers ──────────────────────────────────────── */
+
+function lastDayOf(monthKey) {
+  const [y, m] = String(monthKey || '').split('-').map(Number);
+  if (!y || !m) return new Date().toISOString().slice(0, 10);
+  return new Date(Date.UTC(y, m, 0, 12)).toISOString().slice(0, 10);
 }
 
-function getMonthEndDateInput(monthKey) {
-  const [yearString, monthString] = String(monthKey || '').split('-');
-  const year = Number(yearString);
-  const monthIndex = Number(monthString) - 1;
-  if (!Number.isInteger(year) || !Number.isInteger(monthIndex) || monthIndex < 0 || monthIndex > 11) {
-    return new Date().toISOString().slice(0, 10);
-  }
-  const date = new Date(Date.UTC(year, monthIndex + 1, 0, 12, 0, 0, 0));
-  return date.toISOString().slice(0, 10);
+function staffLabel(user) {
+  if (!user) return '—';
+  return [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || '—';
 }
 
-function StatCard({ label, value, subtext, tone = 'default' }) {
-  const tones = {
-    default: 'border-surface-200 bg-surface-0',
-    warning: 'border-warning-200 bg-warning-50',
-    error: 'border-error-200 bg-error-50',
-    brand: 'border-brand-200 bg-brand-50',
-  };
+/* ── Close-month confirmation modal (lightweight) ─── */
 
-  return (
-    <div className={`rounded-xl border p-4 ${tones[tone] || tones.default}`}>
-      <p className="text-overline text-surface-500">{label}</p>
-      <p className="mt-2 text-title font-semibold text-surface-900">{value}</p>
-      {subtext ? <p className="mt-1 text-body text-surface-500">{subtext}</p> : null}
-    </div>
-  );
-}
-
-function ActionLink({ label, onClick, tone = 'brand' }) {
-  const toneStyles = {
-    brand: 'border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100',
-    warning: 'border-warning-200 bg-warning-50 text-warning-700 hover:bg-warning-100',
-    surface: 'border-surface-200 bg-surface-50 text-surface-700 hover:bg-surface-100',
-  };
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-md border px-3 py-2 text-sm font-medium transition-colors duration-fast ${toneStyles[tone] || toneStyles.brand}`}
-    >
-      {label}
-    </button>
-  );
-}
-
-function SectionCard({ title, subtitle, children, action = null }) {
-  return (
-    <div className="rounded-xl border border-surface-200 bg-surface-0">
-      <div className="flex flex-col gap-3 border-b border-surface-100 px-5 py-4 md:flex-row md:items-start md:justify-between">
-        <div>
-          <h3 className="text-title text-surface-900">{title}</h3>
-          {subtitle ? <p className="mt-1 text-body text-surface-500">{subtitle}</p> : null}
-        </div>
-        {action}
-      </div>
-      <div className="p-5">{children}</div>
-    </div>
-  );
-}
-
-function EmptyMini({ title }) {
-  return <div className="rounded-lg bg-surface-50 px-4 py-8 text-center text-body text-surface-500">{title}</div>;
-}
-
-function MonthEndBalanceModal({ account, month, onClose, onSaved }) {
-  const [form, setForm] = useState(() => ({
-    statementDate: getMonthEndDateInput(month),
-    openingBalance: '',
-    closingBalance: account?.monthEndReconciliation?.closingBalance != null
-      ? String(account.monthEndReconciliation.closingBalance)
-      : '',
-    notes: account?.monthEndReconciliation?.notes || `Month-end balance recorded from ${displayAccountName(account)} statement for ${month}.`,
-  }));
+function CloseMonthModal({ month, label, onClose, onClosed }) {
+  const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  async function handleSubmit(event) {
-    event.preventDefault();
+  async function handleSubmit(e) {
+    e.preventDefault();
     setSubmitting(true);
     setError('');
     try {
-      await api.post('/banking/reconciliations', {
-        bankAccountId: account.id,
-        statementDate: form.statementDate,
-        openingBalance: form.openingBalance === '' ? undefined : Number(form.openingBalance),
-        closingBalance: Number(form.closingBalance),
-        notes: form.notes?.trim() || undefined,
-      });
-      onSaved();
-    } catch (err) {
-      setError(err.error || 'Failed to save month-end balance');
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <ModalShell title={`Enter month-end balance for ${displayAccountName(account)}`} onClose={onClose} maxWidth="max-w-2xl">
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {error ? <div className="rounded-lg border border-error-100 bg-error-50 px-3 py-2 text-body text-error-700">{error}</div> : null}
-
-        <div className="rounded-lg border border-brand-100 bg-brand-50 px-4 py-3 text-body text-brand-700">
-          This records the statement balance for {month}. You can enter a revised balance later if the manager needs to correct it.
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <Field label="Account">
-            <div className="rounded-md border border-surface-200 bg-surface-50 px-3 py-2 text-body text-surface-800">
-              {displayAccountName(account)}
-            </div>
-          </Field>
-          <Field label="Statement date">
-            <input
-              type="date"
-              value={form.statementDate}
-              onChange={(event) => setForm((current) => ({ ...current, statementDate: event.target.value }))}
-              className="w-full rounded-md border border-surface-200 px-3 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500"
-              required
-            />
-          </Field>
-          <Field label="Closing balance">
-            <input
-              type="number"
-              step="0.01"
-              value={form.closingBalance}
-              onChange={(event) => setForm((current) => ({ ...current, closingBalance: event.target.value }))}
-              className="w-full rounded-md border border-surface-200 px-3 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500"
-              required
-            />
-          </Field>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Opening balance (optional)">
-            <input
-              type="number"
-              step="0.01"
-              value={form.openingBalance}
-              onChange={(event) => setForm((current) => ({ ...current, openingBalance: event.target.value }))}
-              className="w-full rounded-md border border-surface-200 px-3 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500"
-            />
-          </Field>
-          <Field label="System balance at month end">
-            <div className="rounded-md border border-surface-200 bg-surface-50 px-3 py-2 text-body font-semibold text-surface-900">
-              {fmtMoney(account.systemBalance)}
-            </div>
-          </Field>
-        </div>
-
-        <Field label="Notes (optional)">
-          <textarea
-            rows={3}
-            value={form.notes}
-            onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
-            className="w-full rounded-md border border-surface-200 px-3 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500"
-            placeholder="Optional month-end notes"
-          />
-        </Field>
-
-        <ModalActions onClose={onClose} submitting={submitting} submitLabel={submitting ? 'Saving…' : 'Save month-end balance'} />
-      </form>
-    </ModalShell>
-  );
-}
-
-function CloseMonthModal({ month, review, onClose, onClosed }) {
-  const [notes, setNotes] = useState(`Month reviewed and closed for ${review.label}.`);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState('');
-
-  async function handleSubmit(event) {
-    event.preventDefault();
-    setSubmitting(true);
-    setError('');
-    try {
-      await api.post('/banking/month-closes', {
-        month,
-        notes: notes.trim() || undefined,
-      });
+      await api.post('/banking/month-closes', { month, notes: notes.trim() || undefined });
       onClosed();
     } catch (err) {
       setError(err.error || 'Failed to close month');
@@ -195,456 +38,323 @@ function CloseMonthModal({ month, review, onClose, onClosed }) {
   }
 
   return (
-    <ModalShell title={`Close ${review.label}`} onClose={onClose} maxWidth="max-w-2xl">
+    <ModalShell title={`Close ${label}?`} onClose={onClose} maxWidth="max-w-lg">
       <form onSubmit={handleSubmit} className="space-y-4">
-        {error ? <div className="rounded-lg border border-error-100 bg-error-50 px-3 py-2 text-body text-error-700">{error}</div> : null}
-
-        <div className="rounded-lg border border-brand-100 bg-brand-50 px-4 py-3 text-body text-brand-700">
-          Closing this month stores the current balance picture as the formal month-end record. Any unresolved items (unallocated transactions, unbanked cash) will be captured in the snapshot for reference.
-        </div>
-
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div className="rounded-lg bg-surface-50 px-4 py-3">
-            <p className="text-overline text-surface-500">Accounts missing balance</p>
-            <p className="mt-1 text-body-medium font-semibold text-surface-900">{review.accountsMissingMonthEndBalance}</p>
-          </div>
-          <div className="rounded-lg bg-surface-50 px-4 py-3">
-            <p className="text-overline text-surface-500">Unallocated transactions</p>
-            <p className="mt-1 text-body-medium font-semibold text-surface-900">{review.unresolved?.unallocatedTransactions?.count || 0}</p>
-          </div>
-          <div className="rounded-lg bg-surface-50 px-4 py-3">
-            <p className="text-overline text-surface-500">Cash not yet banked</p>
-            <p className="mt-1 text-body-medium font-semibold text-surface-900">{review.unresolved?.undepositedCash?.count || 0}</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="rounded-lg border border-surface-100 px-4 py-3">
-            <p className="text-overline text-surface-500">Hanging customer deposits</p>
-            <p className="mt-1 text-body-medium font-semibold text-warning-700">{fmtMoney(review.unresolved?.hangingDeposits?.total || 0)}</p>
-          </div>
-          <div className="rounded-lg border border-surface-100 px-4 py-3">
-            <p className="text-overline text-surface-500">Pending approval requests</p>
-            <p className="mt-1 text-body-medium font-semibold text-warning-700">{review.unresolved?.pendingApprovals?.count || 0}</p>
-          </div>
-        </div>
-
-        <Field label="Manager close note (optional)">
+        {error && <div className="rounded-lg border border-error-100 bg-error-50 px-3 py-2 text-body text-error-700">{error}</div>}
+        <p className="text-body text-surface-600">
+          This stores the current balances as the formal month-end record. Any unresolved items are captured in the snapshot.
+        </p>
+        <div>
+          <label className="mb-1 block text-caption font-medium text-surface-600">Note (optional)</label>
           <textarea
-            rows={3}
+            rows={2}
             value={notes}
-            onChange={(event) => setNotes(event.target.value)}
+            onChange={(e) => setNotes(e.target.value)}
             className="w-full rounded-md border border-surface-200 px-3 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500"
-            placeholder="What was reviewed before closing this month?"
+            placeholder="Optional closing note"
           />
-        </Field>
-
+        </div>
         <ModalActions onClose={onClose} submitting={submitting} submitLabel={submitting ? 'Closing…' : 'Close month'} />
       </form>
     </ModalShell>
   );
 }
 
+/* ── Inline balance entry card per account ────────── */
+
+function AccountCard({ account, month, onSaved }) {
+  const monthEnd = account.monthEndReconciliation;
+  const hasBal = monthEnd != null;
+  const variance = hasBal ? Math.abs(Number(monthEnd.variance || 0)) : 0;
+  const isBalanced = hasBal && variance <= 0.009;
+
+  const [editing, setEditing] = useState(false);
+  const [balance, setBalance] = useState(hasBal ? String(monthEnd.closingBalance) : '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  // Reset when month/account changes
+  useEffect(() => {
+    const me = account.monthEndReconciliation;
+    setBalance(me ? String(me.closingBalance) : '');
+    setEditing(false);
+    setError('');
+  }, [month, account.id, account.monthEndReconciliation?.closingBalance]);
+
+  async function save() {
+    if (!balance || isNaN(Number(balance))) { setError('Enter a valid number'); return; }
+    setSaving(true);
+    setError('');
+    try {
+      await api.post('/banking/reconciliations', {
+        bankAccountId: account.id,
+        statementDate: lastDayOf(month),
+        closingBalance: Number(balance),
+      });
+      setEditing(false);
+      onSaved();
+    } catch (err) {
+      setError(err.error || 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // Status badge
+  let statusBadge;
+  if (hasBal && isBalanced) {
+    statusBadge = <span className="rounded-full bg-success-100 px-2.5 py-1 text-xs font-semibold text-success-700">Balanced</span>;
+  } else if (hasBal && !isBalanced) {
+    statusBadge = <span className="rounded-full bg-error-100 px-2.5 py-1 text-xs font-semibold text-error-700">Variance {fmtMoney(variance)}</span>;
+  } else {
+    statusBadge = <span className="rounded-full bg-warning-100 px-2.5 py-1 text-xs font-semibold text-warning-700">Missing</span>;
+  }
+
+  return (
+    <div className={`rounded-lg border-2 p-4 transition-colors ${hasBal && isBalanced ? 'border-success-200 bg-success-50/30' : hasBal ? 'border-error-200 bg-error-50/30' : 'border-surface-200 bg-surface-0'}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-body-medium font-semibold text-surface-900">{displayAccountName(account)}</p>
+          <p className="mt-0.5 text-caption text-surface-500">{account.accountType.replaceAll('_', ' ')}</p>
+        </div>
+        {statusBadge}
+      </div>
+
+      <div className="mt-3 flex items-baseline justify-between gap-4">
+        <div>
+          <p className="text-caption text-surface-500">System balance</p>
+          <p className="text-lg font-bold text-surface-900">{fmtMoney(account.systemBalance)}</p>
+        </div>
+        {hasBal && !editing && (
+          <div className="text-right">
+            <p className="text-caption text-surface-500">Bank statement</p>
+            <p className="text-lg font-bold text-surface-900">{fmtMoney(monthEnd.closingBalance)}</p>
+          </div>
+        )}
+      </div>
+
+      {/* Inline edit */}
+      {editing ? (
+        <div className="mt-3">
+          {error && <p className="mb-2 text-caption text-error-600">{error}</p>}
+          <div className="flex gap-2">
+            <input
+              type="number"
+              step="0.01"
+              value={balance}
+              onChange={(e) => setBalance(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && save()}
+              placeholder="Closing balance from bank statement"
+              className="flex-1 rounded-md border border-surface-300 px-3 py-2 text-body outline-none focus:ring-2 focus:ring-brand-500"
+              autoFocus
+            />
+            <button
+              type="button"
+              onClick={save}
+              disabled={saving}
+              className="rounded-md bg-brand-600 px-4 py-2 text-body font-medium text-white transition-colors hover:bg-brand-700 disabled:bg-surface-300"
+            >
+              {saving ? '…' : 'Save'}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setEditing(false); setError(''); }}
+              className="rounded-md px-3 py-2 text-body text-surface-500 hover:bg-surface-100"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="mt-3 w-full rounded-md border border-dashed border-surface-300 px-3 py-2 text-center text-body font-medium text-brand-700 transition-colors hover:border-brand-300 hover:bg-brand-50"
+        >
+          {hasBal ? 'Update balance' : 'Enter bank balance'}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ── Main view ───────────────────────────────────── */
+
 export default function MonthEndReview({ onNavigate }) {
   const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [selectedAccount, setSelectedAccount] = useState(null);
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [notice, setNotice] = useState('');
 
-  const loadReview = useCallback(() => {
+  const load = useCallback(() => {
     let alive = true;
     setLoading(true);
     api.get(`/banking/month-end-review?month=${month}`)
-      .then((response) => {
-        if (alive) setData(response);
-      })
-      .finally(() => {
-        if (alive) setLoading(false);
-      });
-    return () => {
-      alive = false;
-    };
+      .then((res) => { if (alive) setData(res); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
   }, [month]);
 
-  useEffect(() => loadReview(), [loadReview]);
+  useEffect(() => load(), [load]);
 
-  const summary = useMemo(() => {
-    if (!data) {
-      return {
-        unresolvedCount: 0,
-        unresolvedAmount: 0,
-      };
-    }
-
-    const unresolvedCount =
-      Number(data.unresolved?.hangingDeposits?.count || 0)
-      + Number(data.unresolved?.undepositedCash?.count || 0)
-      + Number(data.unresolved?.unallocatedTransactions?.count || 0)
-      + Number(data.unresolved?.pendingApprovals?.count || 0)
-      + Number(data.accountsMissingMonthEndBalance || 0);
-
-    const unresolvedAmount =
-      Number(data.unresolved?.hangingDeposits?.total || 0)
-      + Number(data.unresolved?.undepositedCash?.total || 0)
-      + Number(data.unresolved?.unallocatedTransactions?.total || 0);
-
-    return { unresolvedCount, unresolvedAmount };
-  }, [data]);
-
-  if (loading) return <PanelLoading label="Loading month-end review…" />;
-  if (!data) return <EmptyPanel title="Month-end review unavailable" body="We could not load the month-end review right now." />;
+  if (loading) return <PanelLoading label="Loading…" />;
+  if (!data) return <EmptyPanel title="Could not load reconciliation data." />;
 
   const accounts = data.accounts || [];
-  const unresolved = data.unresolved || {};
   const monthClose = data.monthClose;
-  const recentMonthCloses = data.recentMonthCloses || [];
-  // Only missing account balances block closing. Unallocated transactions and
-  // unbanked cash are warnings captured in the snapshot, not hard gates.
-  const canCloseMonth = !monthClose
-    && Number(data.accountsMissingMonthEndBalance || 0) === 0;
-  const hasUnallocated = Number(unresolved.unallocatedTransactions?.count || 0) > 0;
-  const hasUnbankedCash = Number(unresolved.undepositedCash?.count || 0) > 0;
-  const goToView = (view, options = {}) => onNavigate?.(view, options);
+  const unresolved = data.unresolved || {};
+  const missingCount = Number(data.accountsMissingMonthEndBalance || 0);
+  const canClose = !monthClose && missingCount === 0;
+  const unallocatedCount = Number(unresolved.unallocatedTransactions?.count || 0);
+  const unbankedCount = Number(unresolved.undepositedCash?.count || 0);
+  const recentCloses = data.recentMonthCloses || [];
 
   return (
     <>
-      <div className="space-y-5">
-        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+      <div className="space-y-4">
+        {/* Header */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-title text-surface-900">Month-end review</h2>
-            <p className="mt-1 text-body text-surface-500">
-              Review balances and unresolved items before the manager closes {data.label}. Long-hanging customer deposits can stay open; the goal here is visibility.
+            <h2 className="text-heading text-surface-900">Reconciliation</h2>
+            <p className="mt-0.5 text-body text-surface-500">
+              Enter each bank's closing balance, then close the month.
             </p>
           </div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div>
-              <label className="mb-2 block text-overline text-surface-500">Review month</label>
-              <input
-                type="month"
-                value={month}
-                onChange={(event) => {
-                  setMonth(event.target.value);
-                  setNotice('');
-                }}
-                className="rounded-lg border border-surface-300 bg-surface-0 px-3 py-2 text-body text-surface-800"
-              />
-            </div>
+          <div className="flex items-center gap-3">
+            <input
+              type="month"
+              value={month}
+              onChange={(e) => { setMonth(e.target.value); setNotice(''); }}
+              className="rounded-lg border border-surface-300 bg-surface-0 px-3 py-2 text-body text-surface-800"
+            />
             <button
               type="button"
               onClick={() => setShowCloseModal(true)}
-              disabled={!canCloseMonth}
-              className="rounded-lg bg-brand-500 px-4 py-2.5 text-body-medium text-surface-900 transition-colors duration-fast hover:bg-brand-400 disabled:cursor-not-allowed disabled:bg-surface-200 disabled:text-surface-500"
+              disabled={!canClose}
+              className="rounded-lg bg-brand-500 px-4 py-2 text-body font-medium text-surface-900 transition-colors hover:bg-brand-400 disabled:cursor-not-allowed disabled:bg-surface-200 disabled:text-surface-500"
             >
-              {monthClose ? 'Month already closed' : 'Close month'}
+              {monthClose ? 'Closed' : 'Close month'}
             </button>
           </div>
         </div>
 
-        {notice ? (
-          <div className="rounded-lg border border-success-100 bg-success-50 px-4 py-3 text-body text-success-700">
-            {notice}
-          </div>
-        ) : null}
+        {/* Success notice */}
+        {notice && (
+          <div className="rounded-lg border border-success-200 bg-success-50 px-4 py-3 text-body text-success-700">{notice}</div>
+        )}
 
-        {monthClose ? (
-          <div className="rounded-lg border border-brand-100 bg-brand-50 px-4 py-4 text-body text-brand-700">
-            <p className="font-semibold">{data.label} was closed on {fmtDate(monthClose.closedAt, true)}.</p>
-            <p className="mt-1 opacity-80">Closed by {monthClose.closedBy?.firstName || '—'} {monthClose.closedBy?.lastName || ''}.{monthClose.notes ? ` Note: ${monthClose.notes}` : ''}</p>
+        {/* Month closed banner */}
+        {monthClose && (
+          <div className="rounded-lg border border-success-200 bg-success-50 px-4 py-3 text-body text-success-700">
+            <span className="font-semibold">{data.label} closed</span> on {fmtDate(monthClose.closedAt, true)} by {staffLabel(monthClose.closedBy)}.
+            {monthClose.notes ? ` — ${monthClose.notes}` : ''}
           </div>
-        ) : !canCloseMonth ? (
-          <div className="rounded-lg border border-warning-100 bg-warning-50 px-4 py-4 text-body text-warning-700">
-            Enter a month-end balance for all active accounts before you close {data.label}.
-          </div>
-        ) : (hasUnallocated || hasUnbankedCash) ? (
-          <div className="rounded-lg border border-warning-100 bg-warning-50 px-4 py-4 text-body text-warning-700">
-            <p className="font-semibold">For your awareness before closing {data.label}:</p>
-            <ul className="mt-1 list-disc pl-5 space-y-0.5">
-              {hasUnallocated ? <li>{unresolved.unallocatedTransactions.count} transaction(s) still categorized as &ldquo;Unallocated&rdquo;.</li> : null}
-              {hasUnbankedCash ? <li>{unresolved.undepositedCash.count} cash sale(s) not yet matched to a bank deposit.</li> : null}
-            </ul>
-            <p className="mt-1 opacity-80">These items are captured in the close snapshot. You can still close the month.</p>
-          </div>
-        ) : null}
+        )}
 
-        <SummaryBanner
-          tone={summary.unresolvedCount > 0 ? 'warning' : 'brand'}
-          title={summary.unresolvedCount > 0
-            ? `${summary.unresolvedCount} review item${summary.unresolvedCount !== 1 ? 's' : ''} still need attention for ${data.label}`
-            : `${data.label} looks ready for manager close`}
-          body={summary.unresolvedCount > 0
-            ? `${fmtMoney(summary.unresolvedAmount)} is tied up across unallocated transactions, unbanked cash, or hanging deposits.`
-            : 'All balances entered, transactions categorized, and cash matched. Ready to close.'}
-        />
+        {/* Missing balances warning */}
+        {!monthClose && missingCount > 0 && (
+          <div className="rounded-lg border border-warning-200 bg-warning-50 px-4 py-3 text-body text-warning-700">
+            Enter bank balances for {missingCount} account{missingCount !== 1 ? 's' : ''} to enable closing.
+          </div>
+        )}
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <div className="space-y-2">
-            <StatCard label="Accounts reviewed" value={String(accounts.length)} subtext={`${data.accountsMissingMonthEndBalance || 0} still missing a month-end balance entry`} tone={data.accountsMissingMonthEndBalance > 0 ? 'warning' : 'brand'} />
-            <ActionLink label="Review account snapshot" onClick={() => goToView('reports', { reportKey: 'balances' })} tone="surface" />
-          </div>
-          <div className="space-y-2">
-            <StatCard label="Unallocated transactions" value={String(unresolved.unallocatedTransactions?.count || 0)} subtext={Number(unresolved.unallocatedTransactions?.count || 0) > 0 ? `${fmtMoney(unresolved.unallocatedTransactions?.total || 0)} still needs re-categorizing` : 'All transactions categorized'} tone={toneForCount(unresolved.unallocatedTransactions?.count)} />
-            <ActionLink label="Open transactions" onClick={() => goToView('transactions')} tone={Number(unresolved.unallocatedTransactions?.count || 0) > 0 ? 'warning' : 'surface'} />
-          </div>
-          <div className="space-y-2">
-            <StatCard label="Cash not yet banked" value={fmtMoney(unresolved.undepositedCash?.total || 0)} subtext={`${unresolved.undepositedCash?.count || 0} cash sale${Number(unresolved.undepositedCash?.count || 0) !== 1 ? 's' : ''} still not matched to a deposit`} tone={toneForCount(unresolved.undepositedCash?.count, unresolved.undepositedCash?.total)} />
-            <ActionLink label="Open cash sales" onClick={() => goToView('cash-deposits')} tone={Number(unresolved.undepositedCash?.count || 0) > 0 ? 'warning' : 'surface'} />
-          </div>
-          <div className="space-y-2">
-            <StatCard label="Hanging customer deposits" value={fmtMoney(unresolved.hangingDeposits?.total || 0)} subtext={`${unresolved.hangingDeposits?.count || 0} deposit${Number(unresolved.hangingDeposits?.count || 0) !== 1 ? 's' : ''} still not fully matched to bookings`} tone={toneForCount(unresolved.hangingDeposits?.count, unresolved.hangingDeposits?.total)} />
-            <ActionLink label="Open bookings desk" onClick={() => goToView('customer-bookings')} tone="warning" />
-          </div>
-          <div className="space-y-2">
-            <StatCard label="Pending approval requests" value={String(unresolved.pendingApprovals?.count || 0)} subtext="Banking edit/delete requests still waiting for decision" tone={unresolved.pendingApprovals?.count > 0 ? 'warning' : 'default'} />
-            <ActionLink label="Open approvals" onClick={() => goToView('approvals')} tone={Number(unresolved.pendingApprovals?.count || 0) > 0 ? 'warning' : 'surface'} />
-          </div>
+        {/* Account cards — inline balance entry */}
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {accounts.map((account) => (
+            <AccountCard
+              key={account.id}
+              account={account}
+              month={month}
+              onSaved={() => {
+                setNotice('Balance saved.');
+                load();
+              }}
+            />
+          ))}
         </div>
 
-        <SectionCard
-          title="Account snapshot"
-          subtitle="System balances are calculated up to the end of the selected month. The month-end balance status shows whether someone recorded a statement balance for that month."
-          action={<ActionLink label="Open account balances report" onClick={() => goToView('reports', { reportKey: 'balances' })} tone="surface" />}
-        >
-          {accounts.length === 0 ? (
-            <EmptyMini title="No bank accounts found." />
-          ) : (
-            <div className="overflow-x-auto custom-scrollbar">
-              <table className="w-full min-w-[1120px]">
+        {/* Awareness counters — only show if there are items */}
+        {(unallocatedCount > 0 || unbankedCount > 0) && (
+          <div className="flex flex-wrap items-center gap-4 rounded-lg border border-surface-200 bg-surface-50 px-4 py-3 text-body text-surface-600">
+            {unallocatedCount > 0 && (
+              <button type="button" onClick={() => onNavigate?.('transactions')} className="hover:text-brand-700 hover:underline">
+                {unallocatedCount} unallocated transaction{unallocatedCount !== 1 ? 's' : ''}
+              </button>
+            )}
+            {unallocatedCount > 0 && unbankedCount > 0 && <span className="text-surface-300">·</span>}
+            {unbankedCount > 0 && (
+              <button type="button" onClick={() => onNavigate?.('cash-deposits')} className="hover:text-brand-700 hover:underline">
+                {unbankedCount} unbanked cash sale{unbankedCount !== 1 ? 's' : ''}
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Close history (compact) */}
+        {recentCloses.length > 0 && (
+          <details className="rounded-lg border border-surface-200 bg-surface-0">
+            <summary className="cursor-pointer px-4 py-3 text-body-medium font-medium text-surface-700 hover:text-surface-900">
+              Close history ({recentCloses.length})
+            </summary>
+            <div className="border-t border-surface-100 overflow-x-auto">
+              <table className="w-full min-w-[500px]">
                 <thead>
-                  <tr className="border-b border-surface-100">
-                    <th className="px-4 py-3 text-left text-overline text-surface-500">Account</th>
-                    <th className="px-4 py-3 text-right text-overline text-surface-500">System balance</th>
-                    <th className="px-4 py-3 text-right text-overline text-surface-500">Transactions</th>
-                    <th className="px-4 py-3 text-left text-overline text-surface-500">Month-end balance</th>
-                    <th className="px-4 py-3 text-right text-overline text-surface-500">Variance</th>
-                    <th className="px-4 py-3 text-left text-overline text-surface-500">Latest statement</th>
-                    <th className="px-4 py-3 text-right text-overline text-surface-500">Action</th>
+                  <tr className="border-b border-surface-100 bg-surface-50">
+                    <th className="px-4 py-2 text-left text-xs font-medium uppercase text-surface-500">Month</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium uppercase text-surface-500">Closed by</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium uppercase text-surface-500">Date</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium uppercase text-surface-500">Note</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {accounts.map((account) => {
-                    const latest = account.latestReconciliation;
-                    const monthEnd = account.monthEndReconciliation;
-                    return (
-                      <tr key={account.id} className="border-b border-surface-50 align-top">
-                        <td className="px-4 py-3">
-                          <p className="text-body-medium font-semibold text-surface-900">{displayAccountName(account)}</p>
-                          <p className="mt-1 text-caption text-surface-500">{account.accountType.replaceAll('_', ' ')}</p>
-                        </td>
-                        <td className="px-4 py-3 text-right text-body-medium font-semibold text-surface-900">{fmtMoney(account.systemBalance)}</td>
-                        <td className="px-4 py-3 text-right text-body text-surface-700">{account.transactionCount}</td>
-                        <td className="px-4 py-3 text-body">
-                          {monthEnd ? (
-                            <div className="space-y-1">
-                              <span className={`rounded-full px-2 py-1 text-caption-medium font-medium ${RECONCILIATION_STYLES[monthEnd.status] || 'bg-surface-100 text-surface-700'}`}>
-                                {monthEnd.status.toLowerCase()}
-                              </span>
-                              <p className="text-caption text-surface-500">{fmtDate(monthEnd.statementDate)} • {fmtMoney(monthEnd.closingBalance)}</p>
-                            </div>
-                          ) : (
-                            <StatusChip label="Missing" tone="warning" />
-                          )}
-                        </td>
-                        <td className={`px-4 py-3 text-right text-body-medium font-semibold ${monthEnd && Math.abs(Number(monthEnd.variance || 0)) > 0.009 ? 'text-error-600' : 'text-surface-800'}`}>
-                          {monthEnd ? fmtMoney(monthEnd.variance) : '—'}
-                        </td>
-                        <td className="px-4 py-3 text-body text-surface-500">
-                          {latest ? `${fmtDate(latest.statementDate)} • ${fmtMoney(latest.closingBalance)}` : 'No reconciliation yet'}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <button
-                            type="button"
-                            onClick={() => setSelectedAccount(account)}
-                            className="rounded-md border border-brand-200 bg-brand-50 px-3 py-2 text-body-medium text-brand-700 transition-colors duration-fast hover:bg-brand-100"
-                          >
-                            {monthEnd ? 'Record revised balance' : 'Enter balance'}
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </SectionCard>
-
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          <SectionCard
-            title="Hanging customer deposits"
-            subtitle="Customer money that had reached Banking by month end but was still not fully matched to bookings."
-            action={<ActionLink label="Open bookings desk" onClick={() => goToView('customer-bookings')} tone="warning" />}
-          >
-            {(unresolved.hangingDeposits?.items || []).length === 0 ? (
-              <EmptyMini title="No hanging customer deposits for this month." />
-            ) : (
-              <div className="space-y-3">
-                {unresolved.hangingDeposits.items.slice(0, 8).map((item) => (
-                  <div key={item.id} className="rounded-lg border border-surface-100 p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-body-medium font-semibold text-surface-900">{item.customer?.name || 'Unknown customer'}</p>
-                        <p className="mt-1 text-caption text-surface-500">{fmtDate(item.transactionDate)} • {displayAccountName(item.bankAccount)}</p>
-                      </div>
-                      <p className="text-body-medium font-semibold text-warning-700">{fmtMoney(item.availableAmount)}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </SectionCard>
-
-          <SectionCard
-            title="Unallocated transactions"
-            subtitle={`Transactions still categorized as "Unallocated Income" or "Unallocated Expense" for ${data.label}. Re-categorize these before closing.`}
-            action={<ActionLink label="Open transactions" onClick={() => goToView('transactions')} tone={Number(unresolved.unallocatedTransactions?.count || 0) > 0 ? 'warning' : 'surface'} />}
-          >
-            {(unresolved.unallocatedTransactions?.items || []).length === 0 ? (
-              <EmptyMini title="All transactions are categorized for this month." />
-            ) : (
-              <div className="space-y-3">
-                {unresolved.unallocatedTransactions.items.slice(0, 8).map((item) => (
-                  <div key={item.id} className="rounded-lg border border-surface-100 p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-body-medium font-semibold text-surface-900">{item.customer?.name || item.description || 'No description'}</p>
-                        <p className="mt-1 text-caption text-surface-500">{fmtDate(item.transactionDate)} • {displayAccountName(item.bankAccount)} • {item.direction.toLowerCase()}</p>
-                      </div>
-                      <p className="text-body-medium font-semibold text-warning-700">{fmtMoney(item.amount)}</p>
-                    </div>
-                  </div>
-                ))}
-                {(unresolved.unallocatedTransactions?.items || []).length > 8 && (
-                  <p className="text-center text-caption text-surface-500">
-                    + {unresolved.unallocatedTransactions.items.length - 8} more — open Transactions to see all.
-                  </p>
-                )}
-              </div>
-            )}
-          </SectionCard>
-
-          <SectionCard
-            title="Cash not yet banked"
-            subtitle="Cash sales that have not been matched to a bank deposit via the Cash Sales tab."
-            action={<ActionLink label="Open cash sales" onClick={() => goToView('cash-deposits')} tone={Number(unresolved.undepositedCash?.count || 0) > 0 ? 'warning' : 'surface'} />}
-          >
-            {(unresolved.undepositedCash?.items || []).length === 0 ? (
-              <EmptyMini title="All cash sales have been matched to bank deposits." />
-            ) : (
-              <div className="space-y-3">
-                {unresolved.undepositedCash.items.slice(0, 8).map((item) => (
-                  <div key={item.id} className="rounded-lg border border-surface-100 p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-body-medium font-semibold text-surface-900">{item.customer?.name || item.sale?.receiptNumber || 'Cash sale'}</p>
-                        <p className="mt-1 text-caption text-surface-500">{fmtDate(item.transactionDate)} • {item.sale?.receiptNumber || item.description || 'Cash sale line'}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-body-medium font-semibold text-warning-700">{fmtMoney(item.availableAmount)}</p>
-                        <p className="mt-1 text-caption text-surface-500">{Math.max(0, Math.round(item.ageHours))}h old</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </SectionCard>
-        </div>
-
-        <SectionCard
-          title="Pending approval requests"
-          subtitle="Banking edits and deletes that still need a manager decision before the month can be treated as tidy."
-          action={<ActionLink label="Open approvals" onClick={() => goToView('approvals')} tone="warning" />}
-        >
-          {(unresolved.pendingApprovals?.items || []).length === 0 ? (
-            <EmptyMini title="No pending Banking approval requests for this month." />
-          ) : (
-            <div className="overflow-x-auto custom-scrollbar">
-              <table className="w-full min-w-[760px]">
-                <thead>
-                  <tr className="border-b border-surface-100">
-                    <th className="px-4 py-3 text-left text-overline text-surface-500">Requested</th>
-                    <th className="px-4 py-3 text-left text-overline text-surface-500">Type</th>
-                    <th className="px-4 py-3 text-left text-overline text-surface-500">By</th>
-                    <th className="px-4 py-3 text-left text-overline text-surface-500">Reason</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {unresolved.pendingApprovals.items.slice(0, 10).map((item) => (
-                    <tr key={item.id} className="border-b border-surface-50">
-                      <td className="px-4 py-3 text-body text-surface-600">{fmtDate(item.createdAt, true)}</td>
-                      <td className="px-4 py-3 text-body-medium font-medium text-surface-800">{item.type.replaceAll('_', ' ').toLowerCase()}</td>
-                      <td className="px-4 py-3 text-body text-surface-700">{item.requestedBy?.firstName || '—'} {item.requestedBy?.lastName || ''}</td>
-                      <td className="px-4 py-3 text-body text-surface-500">{item.reason || 'No reason supplied'}</td>
+                  {recentCloses.map((c) => (
+                    <tr key={c.id} className="border-b border-surface-50">
+                      <td className="px-4 py-2.5 text-body font-medium text-surface-900">{c.monthKey}</td>
+                      <td className="px-4 py-2.5 text-body text-surface-700">{staffLabel(c.closedBy)}</td>
+                      <td className="px-4 py-2.5 text-body text-surface-500">{fmtDate(c.closedAt, true)}</td>
+                      <td className="px-4 py-2.5 text-body text-surface-500">{c.notes || '—'}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          )}
-        </SectionCard>
+          </details>
+        )}
 
-        <SectionCard title="Recent close history" subtitle="Each close stores the month-end note and unresolved snapshot that management reviewed at that time.">
-          {recentMonthCloses.length === 0 ? (
-            <EmptyMini title="No months have been formally closed yet." />
-          ) : (
-            <div className="overflow-x-auto custom-scrollbar">
-              <table className="w-full min-w-[900px]">
-                <thead>
-                  <tr className="border-b border-surface-100">
-                    <th className="px-4 py-3 text-left text-overline text-surface-500">Month</th>
-                    <th className="px-4 py-3 text-left text-overline text-surface-500">Closed by</th>
-                    <th className="px-4 py-3 text-left text-overline text-surface-500">Closed on</th>
-                    <th className="px-4 py-3 text-right text-overline text-surface-500">Hanging deposits</th>
-                    <th className="px-4 py-3 text-right text-overline text-surface-500">Cash not banked</th>
-                    <th className="px-4 py-3 text-left text-overline text-surface-500">Note</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recentMonthCloses.map((close) => (
-                    <tr key={close.id} className="border-b border-surface-50">
-                      <td className="px-4 py-3 text-body-medium font-medium text-surface-900">{close.monthKey}</td>
-                      <td className="px-4 py-3 text-body text-surface-700">{close.closedBy?.firstName || '—'} {close.closedBy?.lastName || ''}</td>
-                      <td className="px-4 py-3 text-body text-surface-500">{fmtDate(close.closedAt, true)}</td>
-                      <td className="px-4 py-3 text-right text-body text-warning-700">{fmtMoney(close.unresolvedSnapshot?.hangingDeposits?.total || 0)}</td>
-                      <td className="px-4 py-3 text-right text-body text-warning-700">{fmtMoney(close.unresolvedSnapshot?.undepositedCash?.total || 0)}</td>
-                      <td className="px-4 py-3 text-body text-surface-500">{close.notes || 'No note supplied'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </SectionCard>
+        {/* Report links */}
+        <div className="flex flex-wrap gap-2">
+          <span className="py-1.5 text-caption text-surface-400">Reports:</span>
+          {[
+            { label: 'Expenses', key: 'expenses' },
+            { label: 'Unbooked Deposits', key: 'unbooked' },
+            { label: 'Customer Liability', key: 'liability' },
+            { label: 'Account Balances', key: 'balances' },
+          ].map((r) => (
+            <button
+              key={r.key}
+              type="button"
+              onClick={() => onNavigate?.('reports', { reportKey: r.key })}
+              className="rounded-full border border-surface-200 px-3 py-1.5 text-caption font-medium text-surface-600 transition-colors hover:bg-surface-100 hover:text-surface-800"
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {selectedAccount ? (
-        <MonthEndBalanceModal
-          account={selectedAccount}
-          month={month}
-          onClose={() => setSelectedAccount(null)}
-          onSaved={() => {
-            const accountName = displayAccountName(selectedAccount);
-            setSelectedAccount(null);
-            setNotice(`Month-end balance saved for ${accountName}.`);
-            loadReview();
-          }}
-        />
-      ) : null}
-
-      {showCloseModal ? (
+      {showCloseModal && (
         <CloseMonthModal
           month={month}
-          review={data}
+          label={data.label}
           onClose={() => setShowCloseModal(false)}
           onClosed={() => {
             setShowCloseModal(false);
-            setNotice(`${data.label} has been formally closed.`);
-            loadReview();
+            setNotice(`${data.label} has been closed.`);
+            load();
           }}
         />
-      ) : null}
+      )}
     </>
   );
 }
