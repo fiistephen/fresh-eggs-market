@@ -27,6 +27,25 @@ function formatDate(value) {
   });
 }
 
+/**
+ * Returns a waiting time label and urgency level for portal transfers.
+ * Per Meeting 3: pending transfers must be confirmed within 1 hour during business hours.
+ */
+function waitingTimeInfo(createdAt) {
+  if (!createdAt) return { label: '', isOverdue: false, minutes: 0 };
+  const minutes = Math.floor((Date.now() - new Date(createdAt).getTime()) / 60000);
+  const isOverdue = minutes >= 60;
+  let label;
+  if (minutes < 1) label = 'Just now';
+  else if (minutes < 60) label = `Waiting ${minutes}m`;
+  else {
+    const hours = Math.floor(minutes / 60);
+    const rem = minutes % 60;
+    label = `Waiting ${hours}h${rem > 0 ? ` ${rem}m` : ''}`;
+  }
+  return { label, isOverdue, minutes };
+}
+
 function bookingSourceMeta(booking) {
   if (booking.portalCheckout?.checkoutType === 'BUY_NOW') {
     return { label: 'Portal · Buy now', tone: 'info' };
@@ -884,7 +903,7 @@ function PortalBookingReviewSection({
           {transferQueue.map((checkout) => {
             const isAdminConfirmed = checkout.status === 'ADMIN_CONFIRMED';
             return (
-              <div key={checkout.id} className="rounded-lg border border-surface-200 p-4">
+              <div key={checkout.id} className={`rounded-lg border p-4 ${!isAdminConfirmed && waitingTimeInfo(checkout.createdAt).isOverdue ? 'border-error-200 bg-error-50' : 'border-surface-200'}`}>
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
@@ -892,6 +911,14 @@ function PortalBookingReviewSection({
                       <Badge color={isAdminConfirmed ? 'warning' : 'neutral'}>
                         {isAdminConfirmed ? 'Admin confirmed, waiting for statement' : 'Waiting for admin confirmation'}
                       </Badge>
+                      {(() => {
+                        const wt = waitingTimeInfo(isAdminConfirmed ? checkout.adminConfirmedAt : checkout.createdAt);
+                        return (
+                          <Badge color={wt.isOverdue ? 'error' : 'warning'}>
+                            {wt.label}{wt.isOverdue && !isAdminConfirmed ? ' — OVERDUE' : ''}
+                          </Badge>
+                        );
+                      })()}
                     </div>
                     <p className="text-body text-surface-500">
                       {checkout.batch?.name} · {checkout.batch?.eggTypeLabel || 'Regular Size Eggs'} · {checkout.quantity} crates
@@ -900,6 +927,11 @@ function PortalBookingReviewSection({
                       Ref {checkout.reference} · Created {formatDate(checkout.createdAt)}
                       {checkout.adminConfirmedAt ? ` · Admin confirmed ${formatDate(checkout.adminConfirmedAt)}` : ''}
                     </p>
+                    {!isAdminConfirmed && waitingTimeInfo(checkout.createdAt).isOverdue && (
+                      <p className="text-caption font-semibold text-error-700">
+                        SOP: transfers should be confirmed within 1 hour during business hours
+                      </p>
+                    )}
                   </div>
                   <div className="text-right space-y-1">
                     <p className="text-body-medium font-semibold text-surface-900">{formatCurrency(checkout.amountToPay)}</p>

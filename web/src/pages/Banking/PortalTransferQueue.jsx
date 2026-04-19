@@ -3,6 +3,21 @@ import { api } from '../../lib/api';
 import { fmtMoney, fmtDate } from './shared/constants';
 import { PanelLoading, EmptyPanel, SummaryBanner, StatPill, StatusChip } from './shared/ui';
 
+function waitingTimeInfo(createdAt) {
+  if (!createdAt) return { label: '', isOverdue: false };
+  const minutes = Math.floor((Date.now() - new Date(createdAt).getTime()) / 60000);
+  const isOverdue = minutes >= 60;
+  let label;
+  if (minutes < 1) label = 'Just now';
+  else if (minutes < 60) label = `Waiting ${minutes}m`;
+  else {
+    const hours = Math.floor(minutes / 60);
+    const rem = minutes % 60;
+    label = `Waiting ${hours}h${rem > 0 ? ` ${rem}m` : ''}`;
+  }
+  return { label, isOverdue };
+}
+
 function decisionLabel(type) {
   if (type === 'APPROVED') return 'Approved';
   if (type === 'REJECTED') return 'Declined';
@@ -47,14 +62,16 @@ export default function PortalTransferQueue({ loading, queue, history = [], onRe
 
       {queue.length > 0 && (
         <div className="space-y-3">
-          {queue.map((checkout) => (
-            <div key={checkout.id} className="rounded-xl border border-surface-200 bg-surface-0 p-5">
+          {queue.map((checkout) => {
+            const wt = waitingTimeInfo(checkout.createdAt);
+            return (
+            <div key={checkout.id} className={`rounded-xl border bg-surface-0 p-5 ${wt.isOverdue ? 'border-error-200' : 'border-surface-200'}`}>
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="text-title text-surface-900">{checkout.customer?.name || 'Customer'}</p>
                     <StatusChip label={checkout.checkoutType === 'BOOK_UPCOMING' ? 'Book upcoming' : 'Buy now'} tone="warning" />
-                    <StatusChip label="Transfer waiting" tone="default" />
+                    <StatusChip label={wt.label + (wt.isOverdue ? ' — OVERDUE' : '')} tone={wt.isOverdue ? 'error' : 'default'} />
                   </div>
                   <p className="mt-1 text-body text-surface-500">
                     {checkout.customer?.phone || 'No phone'} · {checkout.batch?.name} · {checkout.batch?.eggTypeLabel}
@@ -63,6 +80,11 @@ export default function PortalTransferQueue({ loading, queue, history = [], onRe
                     Held on {fmtDate(checkout.createdAt, true)}
                     {checkout.paymentWindowEndsAt ? ` · window ends ${fmtDate(checkout.paymentWindowEndsAt, true)}` : ''}
                   </p>
+                  {wt.isOverdue && (
+                    <p className="mt-1 text-caption font-semibold text-error-700">
+                      SOP: transfers should be confirmed within 1 hour during business hours
+                    </p>
+                  )}
                   <p className="mt-2 text-body text-surface-600">
                     {checkout.checkoutType === 'BOOK_UPCOMING'
                       ? 'Mark this as money seen to keep the booking hold. Final confirmation still happens when the bank statement line is linked. Reject it to return crates to available stock.'
@@ -86,7 +108,8 @@ export default function PortalTransferQueue({ loading, queue, history = [], onRe
                 </button>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

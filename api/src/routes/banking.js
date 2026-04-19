@@ -982,7 +982,12 @@ export default async function bankingRoutes(fastify) {
         enriched.push({ ...account, ...summary });
       }
 
-      return reply.send({ accounts: enriched });
+      // Accurate unallocated transaction count for Overview alerts.
+      const unallocatedCount = await prisma.bankTransaction.count({
+        where: { category: { in: ['UNALLOCATED_INCOME', 'UNALLOCATED_EXPENSE'] } },
+      });
+
+      return reply.send({ accounts: enriched, unallocatedCount });
     },
   });
 

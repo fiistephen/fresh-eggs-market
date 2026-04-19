@@ -1,6 +1,6 @@
 import { ACCOUNT_STYLES, DIRECTION_COLORS, SOURCE_LABELS, fmtMoney, fmtDate, displayAccountName, accountLabel, categoryLabel } from './shared/constants';
 
-export default function TodayView({ loading, accounts, imports, transactions, categoryMap, customerBookingQueue, portalTransferQueue, cashDeposits, approvalRequests, canViewReports, onNavigate, onOpenBookings, onOpenReport }) {
+export default function TodayView({ loading, accounts, imports, transactions, categoryMap, customerBookingQueue, portalTransferQueue, cashDeposits, approvalRequests, unallocatedCount = 0, canViewReports, onNavigate, onOpenBookings, onOpenReport }) {
   if (loading) {
     return <div className="rounded-lg border border-surface-200 bg-surface-0 px-6 py-20 text-center text-sm text-surface-500">Loading…</div>;
   }
@@ -16,12 +16,8 @@ export default function TodayView({ loading, accounts, imports, transactions, ca
   // Ordering: most recent / most urgent first.
   const attentionItems = [];
 
-  // Unallocated transactions — counted from the loaded recent activity.
-  // Note: this is an approximation from the recent-transactions sample; a dedicated count
-  // endpoint can replace this in a later polish pass.
-  const unallocatedCount = (transactions || []).filter(
-    (transaction) => transaction.category === 'UNALLOCATED_INCOME',
-  ).length;
+  // Unallocated transactions — accurate count from dedicated backend query
+  // (covers both UNALLOCATED_INCOME and UNALLOCATED_EXPENSE across all transactions).
   if (unallocatedCount > 0) {
     attentionItems.push({
       key: 'unallocated',
@@ -29,7 +25,7 @@ export default function TodayView({ loading, accounts, imports, transactions, ca
       count: unallocatedCount,
       title: `${unallocatedCount} unallocated transaction${unallocatedCount === 1 ? '' : 's'}`,
       subtitle: 'Waiting to be categorized or matched to a booking',
-      action: () => onNavigate('transactions'),
+      action: () => onNavigate('transactions', { filterCategory: 'UNALLOCATED_INCOME,UNALLOCATED_EXPENSE' }),
     });
   }
 
@@ -43,6 +39,22 @@ export default function TodayView({ loading, accounts, imports, transactions, ca
       title: `${undepositedCashCount} cash sale${undepositedCashCount === 1 ? '' : 's'} not yet deposited`,
       subtitle: `${fmtMoney(undepositedCashTotal)} still in Cash Account`,
       action: () => onNavigate('cash-deposits'),
+    });
+  }
+
+  // Portal transfers waiting > 1 hour (SOP: confirm within 1 hour during business hours)
+  const overdueTransfers = (portalTransferQueue || []).filter((checkout) => {
+    const minutes = Math.floor((Date.now() - new Date(checkout.createdAt).getTime()) / 60000);
+    return minutes >= 60 && checkout.status !== 'ADMIN_CONFIRMED';
+  });
+  if (overdueTransfers.length > 0) {
+    attentionItems.push({
+      key: 'overdue-transfers',
+      color: 'warning',
+      count: overdueTransfers.length,
+      title: `${overdueTransfers.length} portal transfer${overdueTransfers.length === 1 ? '' : 's'} overdue`,
+      subtitle: 'SOP: confirm transfers within 1 hour during business hours',
+      action: () => onNavigate('portal-transfers'),
     });
   }
 
@@ -60,12 +72,14 @@ export default function TodayView({ loading, accounts, imports, transactions, ca
 
   const colorMap = {
     warning: 'border-warning-200 bg-warning-50 hover:bg-warning-100',
+    error: 'border-error-200 bg-error-50 hover:bg-error-100',
     info: 'border-info-200 bg-info-50 hover:bg-info-100',
     brand: 'border-brand-200 bg-brand-50 hover:bg-brand-100',
     surface: 'border-surface-200 bg-surface-50 hover:bg-surface-100',
   };
   const dotMap = {
     warning: 'bg-warning-500',
+    error: 'bg-error-500',
     info: 'bg-info-500',
     brand: 'bg-brand-500',
     surface: 'bg-surface-400',

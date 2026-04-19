@@ -86,6 +86,7 @@ export default function Banking() {
     deposited: { count: 0, total: 0, batches: [] },
   });
   const [approvalRequests, setApprovalRequests] = useState([]);
+  const [unallocatedCount, setUnallocatedCount] = useState(0);
   const [bankingPolicy, setBankingPolicy] = useState({ bookingMinimumPaymentPercent: 80 });
   const [activeReport, setActiveReport] = useState('month-end');
 
@@ -207,6 +208,7 @@ export default function Banking() {
   async function loadAccounts() {
     const data = await api.get('/banking/accounts');
     setAccounts(data.accounts || []);
+    if (data.unallocatedCount != null) setUnallocatedCount(data.unallocatedCount);
   }
 
   async function loadMeta() {
@@ -478,8 +480,15 @@ export default function Banking() {
           portalTransferQueue={portalTransferQueue}
           cashDeposits={cashDeposits}
           approvalRequests={approvalRequests}
+          unallocatedCount={unallocatedCount}
           canViewReports={canViewReports}
-          onNavigate={setActiveView}
+          onNavigate={(view, options = {}) => {
+            if (view === 'portal-transfers') { navigate('/bookings'); return; }
+            if (options.filterCategory) {
+              setFilters((prev) => ({ ...prev, category: options.filterCategory }));
+            }
+            setActiveView(view);
+          }}
           onOpenBookings={() => navigate('/bookings')}
           onOpenReport={openReport}
         />

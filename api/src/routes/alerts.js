@@ -238,7 +238,46 @@ export default async function alertRoutes(fastify) {
         });
       }
 
-      // ── 8. Batches arriving today (info alert) ──
+      // ── 8. Portal transfers overdue (>1 hour waiting for confirmation) ──
+      const overdueTransfers = await prisma.portalCheckout.findMany({
+        where: {
+          paymentMethod: 'TRANSFER',
+          status: 'AWAITING_TRANSFER',
+          createdAt: { lt: new Date(Date.now() - 60 * 60 * 1000) }, // older than 1 hour
+        },
+        include: {
+          customer: { select: { name: true, phone: true } },
+          batch: { select: { name: true } },
+        },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      if (overdueTransfers.length > 0) {
+        for (const checkout of overdueTransfers) {
+          const minutesWaiting = Math.floor((Date.now() - new Date(checkout.createdAt).getTime()) / 60000);
+          const hours = Math.floor(minutesWaiting / 60);
+          const mins = minutesWaiting % 60;
+          const waitLabel = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+          alerts.push({
+            id: `portal-transfer-overdue-${checkout.id}`,
+            type: 'PORTAL_TRANSFER_OVERDUE',
+            severity: minutesWaiting > 180 ? 'high' : 'medium',
+            title: 'Portal transfer overdue',
+            message: `${checkout.customer?.name || 'Customer'} has been waiting ${waitLabel} for transfer confirmation (${checkout.quantity} crates, ₦${Number(checkout.amountToPay).toLocaleString()}). SOP: confirm within 1 hour.`,
+            date: checkout.createdAt,
+            data: {
+              checkoutId: checkout.id,
+              customerName: checkout.customer?.name,
+              batchName: checkout.batch?.name,
+              quantity: checkout.quantity,
+              amount: Number(checkout.amountToPay),
+              minutesWaiting,
+            },
+          });
+        }
+      }
+
+      // ── 9. Batches arriving today (info alert) ──
       const arrivingToday = await prisma.batch.findMany({
         where: {
           status: 'OPEN',
