@@ -129,8 +129,12 @@ export default function Banking() {
   /* ── Derived ─────────────────────────────────────────── */
   const canRecord = ['ADMIN', 'MANAGER', 'RECORD_KEEPER'].includes(user?.role);
   const canViewReports = ['ADMIN', 'MANAGER'].includes(user?.role);
-  // V3: ADMIN acts directly (edit/delete without approval); others go through approval queue.
+  // V3 Meeting 3 three-tier edit/delete access:
+  //   ADMIN  → direct edit/delete (no approval needed)
+  //   MANAGER → request edit/delete (ADMIN approves)
+  //   RECORD_KEEPER / SHOP_FLOOR → no edit/delete at all (escalate verbally)
   const isAdmin = user?.role === 'ADMIN';
+  const canEditDelete = ['ADMIN', 'MANAGER'].includes(user?.role);
   const categoryMap = buildCategoryMap(transactionCategories);
 
   /* ── (Outside-click handler for "More" menu removed) ── */
@@ -499,9 +503,9 @@ export default function Banking() {
             setTransactionsPage(1);
           }}
           onFilterChange={handleFilterChange}
-          canRequestEdit={canRecord}
+          canRequestEdit={canEditDelete}
           onRequestEdit={setRequestEditTransaction}
-          canRequestDelete={canRecord}
+          canRequestDelete={canEditDelete}
           onRequestDelete={setRequestDeleteTransaction}
           isAdmin={isAdmin}
         />

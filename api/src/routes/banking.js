@@ -1154,8 +1154,10 @@ export default async function bankingRoutes(fastify) {
     },
   });
 
+  // V3 Meeting 3: Only ADMIN (direct delete) and MANAGER (request approval) can
+  // initiate deletes. RECORD_KEEPER / SHOP_FLOOR must escalate verbally.
   fastify.post('/banking/transactions/:id/request-delete', {
-    preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER')],
     handler: async (request, reply) => {
       const transaction = await prisma.bankTransaction.findUnique({
         where: { id: request.params.id },
@@ -1211,8 +1213,10 @@ export default async function bankingRoutes(fastify) {
     },
   });
 
+  // V3 Meeting 3: Only ADMIN (direct edit) and MANAGER (request approval) can
+  // initiate edits. RECORD_KEEPER / SHOP_FLOOR must escalate verbally.
   fastify.post('/banking/transactions/:id/request-edit', {
-    preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'RECORD_KEEPER')],
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER')],
     handler: async (request, reply) => {
       const transaction = await prisma.bankTransaction.findUnique({
         where: { id: request.params.id },

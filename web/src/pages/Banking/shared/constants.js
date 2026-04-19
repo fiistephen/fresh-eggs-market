@@ -62,10 +62,11 @@ export const CATEGORY_LABELS = {
   INTERNAL_TRANSFER_OUT: 'Internal transfer out',
 };
 
-// Valid inflow categories
+// Valid inflow categories for manual entry.
+// CUSTOMER_BOOKING excluded — per Meeting 3, all customer money enters as
+// CUSTOMER_DEPOSIT; booking allocation happens in the Bookings module.
 export const INFLOW_CATEGORIES = [
   'CUSTOMER_DEPOSIT',
-  'CUSTOMER_BOOKING',
   'DIRECT_SALE_TRANSFER',
   'SALES_TRANSFER_IN',
   'PROFIT_TRANSFER_IN',
@@ -124,25 +125,41 @@ export function categoryDescription(category, categoryMap = {}) {
   return categoryMap[category]?.description || '';
 }
 
+// Categories that exist in the system but should NOT appear in manual entry
+// dropdowns. CUSTOMER_BOOKING is set by the Bookings module, not by staff
+// entering bank transactions (Meeting 3: all customer money → CUSTOMER_DEPOSIT).
+const SYSTEM_ONLY_CATEGORIES = new Set([
+  'CUSTOMER_BOOKING',
+  'CASH_SALE',
+  'CASH_DEPOSIT_CONFIRMATION',
+  'INTERNAL_TRANSFER_IN',
+  'INTERNAL_TRANSFER_OUT',
+]);
+
 /**
  * Get valid category options for a given direction (INFLOW or OUTFLOW).
  * Filters by direction and active status, with fallback to default lists.
+ * Excludes system-only categories that should not appear in manual entry.
  * @param {string} direction - 'INFLOW' or 'OUTFLOW'
  * @param {Object} categoryMap - Category configuration map
- * @param {string} currentCategory - Current category to always include
+ * @param {string} currentCategory - Current category to always include (even if system-only)
  * @returns {Array} Array of valid category keys
  */
 export function categoryOptionsForDirection(direction, categoryMap = {}, currentCategory = '') {
   const configured = Object.values(categoryMap)
     .filter((entry) => entry.direction === direction)
     .filter((entry) => entry.isActive !== false || entry.category === currentCategory)
+    .filter((entry) => !SYSTEM_ONLY_CATEGORIES.has(entry.category) || entry.category === currentCategory)
     .sort((a, b) => (a.label || a.category).localeCompare(b.label || b.category))
     .map((entry) => entry.category);
 
   if (configured.length > 0) return configured;
 
   const source = direction === 'OUTFLOW' ? OUTFLOW_CATEGORIES : INFLOW_CATEGORIES;
-  return source.filter((category) => categoryMap[category]?.isActive !== false || category === currentCategory);
+  return source.filter((category) =>
+    (categoryMap[category]?.isActive !== false || category === currentCategory) &&
+    (!SYSTEM_ONLY_CATEGORIES.has(category) || category === currentCategory)
+  );
 }
 
 /**

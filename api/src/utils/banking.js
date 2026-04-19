@@ -25,9 +25,12 @@ export const VALID_CATEGORIES = [
   'INTERNAL_TRANSFER_OUT',
 ];
 
+// Categories available for staff to select when manually recording inflows.
+// Note: CUSTOMER_BOOKING is intentionally excluded — per Meeting 3, all customer
+// money enters as CUSTOMER_DEPOSIT; routing to a booking happens in the Bookings module.
+// CUSTOMER_BOOKING remains in VALID_CATEGORIES for existing data and system use.
 export const INFLOW_CATEGORIES = [
   'CUSTOMER_DEPOSIT',
-  'CUSTOMER_BOOKING',
   'DIRECT_SALE_TRANSFER',
   'SALES_TRANSFER_IN',
   'PROFIT_TRANSFER_IN',
