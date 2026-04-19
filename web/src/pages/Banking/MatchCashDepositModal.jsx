@@ -157,10 +157,7 @@ export default function MatchCashDepositModal({ onClose, onMatched }) {
     <ModalShell title="Match a bank deposit" onClose={onClose} maxWidth="max-w-4xl">
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="rounded-lg border border-info-200 bg-info-50 px-4 py-3 text-sm text-info-800">
-          Tick the bank inflow(s) you already recorded for a cash deposit, then tick the cash
-          sales that made it up. The totals must match exactly. You can select multiple inflows
-          if cash was deposited more than once. The form stays open after each match so you can
-          process several deposits in one session.
+          Select the bank deposit(s), then select the cash sales that were included. Totals must match.
         </div>
 
         {matchedCount > 0 && (

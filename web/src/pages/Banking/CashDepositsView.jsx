@@ -1,16 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { fmtDate, fmtMoney } from './shared/constants';
 import { EmptyState } from './shared/ui';
 
 function staffName(user) {
   if (!user) return '—';
   return [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || '—';
-}
-
-function severityTone(isOverdue) {
-  return isOverdue
-    ? 'border-error-200 bg-error-50 text-error-700'
-    : 'border-warning-200 bg-warning-50 text-warning-700';
 }
 
 function ageLabel(hours) {
@@ -20,203 +14,107 @@ function ageLabel(hours) {
   return `${days} day${days === 1 ? '' : 's'} old`;
 }
 
-function CashLineList({ entries, title }) {
+/* ── Deposit batch card (expandable) ─────────────────── */
+
+function DepositCard({ batch, defaultOpen = false }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const lineCount = batch.transactions?.length || 0;
+
   return (
     <div className="rounded-lg border border-surface-200 bg-surface-0">
-      <div className="border-b border-surface-100 px-4 py-3">
-        <p className="text-caption font-semibold uppercase tracking-wide text-surface-500">{title}</p>
-      </div>
-      <div className="overflow-x-auto custom-scrollbar">
-        <table className="w-full min-w-[760px]">
-          <thead>
-            <tr className="border-b border-surface-100 bg-surface-50">
-              <th className="px-4 py-2.5 text-left text-xs font-medium uppercase text-surface-500">Sale date</th>
-              <th className="px-4 py-2.5 text-left text-xs font-medium uppercase text-surface-500">Receipt</th>
-              <th className="px-4 py-2.5 text-left text-xs font-medium uppercase text-surface-500">Customer</th>
-              <th className="px-4 py-2.5 text-left text-xs font-medium uppercase text-surface-500">Description</th>
-              <th className="px-4 py-2.5 text-right text-xs font-medium uppercase text-surface-500">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {entries.map((entry) => {
-              const transaction = entry.bankTransaction || entry;
-              const amount = entry.amountIncluded ?? transaction.availableAmount ?? transaction.amount;
-              return (
-                <tr key={entry.id} className="border-b border-surface-50">
-                  <td className="px-4 py-3 text-body text-surface-600">{fmtDate(transaction.transactionDate, true)}</td>
-                  <td className="px-4 py-3 text-body text-surface-700">{transaction.sale?.receiptNumber || '—'}</td>
-                  <td className="px-4 py-3 text-body text-surface-700">{transaction.customer?.name || 'Walk-in customer'}</td>
-                  <td className="px-4 py-3 text-body text-surface-500">{transaction.description || transaction.reference || 'Cash sale'}</td>
-                  <td className="px-4 py-3 text-right text-body-medium font-semibold text-surface-900">{fmtMoney(amount)}</td>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors duration-fast hover:bg-surface-50"
+      >
+        <div className="min-w-0">
+          <p className="text-body-medium font-semibold text-surface-900">{fmtMoney(batch.amount)}</p>
+          <p className="mt-0.5 text-caption text-surface-500">
+            {fmtDate(batch.depositDate, true)} · {staffName(batch.createdBy)} · {lineCount} sale{lineCount === 1 ? '' : 's'}
+          </p>
+        </div>
+        <svg className={`h-4 w-4 shrink-0 text-surface-400 transition-transform duration-fast ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {open && lineCount > 0 && (
+        <div className="border-t border-surface-100">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[600px]">
+              <thead>
+                <tr className="border-b border-surface-100 bg-surface-50">
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase text-surface-500">Date</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase text-surface-500">Receipt</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase text-surface-500">Customer</th>
+                  <th className="px-4 py-2 text-right text-xs font-medium uppercase text-surface-500">Amount</th>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+              </thead>
+              <tbody>
+                {batch.transactions.map((entry) => {
+                  const t = entry.bankTransaction || entry;
+                  const amt = entry.amountIncluded ?? t.availableAmount ?? t.amount;
+                  return (
+                    <tr key={entry.id} className="border-b border-surface-50">
+                      <td className="px-4 py-2.5 text-body text-surface-600">{fmtDate(t.transactionDate, true)}</td>
+                      <td className="px-4 py-2.5 text-body text-surface-700">{t.sale?.receiptNumber || '—'}</td>
+                      <td className="px-4 py-2.5 text-body text-surface-700">{t.customer?.name || 'Walk-in'}</td>
+                      <td className="px-4 py-2.5 text-right text-body-medium font-semibold text-surface-900">{fmtMoney(amt)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function BatchCard({ batch, title, subtitle, statusLabel, statusTone, entriesTitle, defaultOpen = false }) {
-  const [open, setOpen] = useState(defaultOpen);
-  return (
-    <div className="rounded-lg border border-surface-200 bg-surface-0 shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3 px-4 py-4">
-        <div className="space-y-1">
-          <p className="text-body-medium font-semibold text-surface-900">{title}</p>
-          <p className="text-body text-surface-600">{subtitle}</p>
-          {batch.notes ? <p className="text-body text-surface-500">{batch.notes}</p> : null}
-        </div>
-        <div className="flex flex-col items-end gap-2">
-          <span className={`rounded-full border px-3 py-1 text-caption-medium font-medium ${statusTone}`}>
-            {statusLabel}
-          </span>
-          <button
-            type="button"
-            onClick={() => setOpen((value) => !value)}
-            className="text-sm font-medium text-brand-700 transition-colors duration-fast hover:text-brand-900"
-          >
-            {open ? 'Hide included cash sales' : 'View included cash sales'}
-          </button>
-        </div>
-      </div>
+/* ── Main view ───────────────────────────────────────── */
 
-      <div className="grid gap-3 border-t border-surface-100 bg-surface-50 px-4 py-3 md:grid-cols-4">
-        <div>
-          <p className="text-overline text-surface-500">Amount</p>
-          <p className="mt-1 text-body-medium font-semibold text-surface-900">{fmtMoney(batch.amount)}</p>
-        </div>
-        <div>
-          <p className="text-overline text-surface-500">{batch.confirmedAt ? 'Confirmed' : 'Deposit date'}</p>
-          <p className="mt-1 text-body text-surface-700">{fmtDate(batch.confirmedAt || batch.depositDate, true)}</p>
-        </div>
-        <div>
-          <p className="text-overline text-surface-500">{batch.confirmedAt ? 'Confirmed by' : 'Recorded by'}</p>
-          <p className="mt-1 text-body text-surface-700">{staffName(batch.confirmedBy || batch.createdBy)}</p>
-        </div>
-        <div>
-          <p className="text-overline text-surface-500">Cash sales included</p>
-          <p className="mt-1 text-body text-surface-700">{batch.transactions.length} line{batch.transactions.length === 1 ? '' : 's'}</p>
-        </div>
-      </div>
+export default function CashDepositsView({ loading, data, onRefresh, onMatchFromBank }) {
+  const undepositedCash = data?.undepositedCash || { count: 0, total: 0, transactions: [] };
+  const deposited = data?.deposited || { count: 0, total: 0, batches: [] };
 
-      {batch.confirmationStatementLine ? (
-        <div className="border-t border-surface-100 px-4 py-3 text-sm text-surface-600">
-          Statement confirmation: {batch.confirmationStatementLine.notes || batch.confirmationStatementLine.description || 'Bank statement line'}
-        </div>
-      ) : null}
-
-      {open ? (
-        <div className="border-t border-surface-100 p-4">
-          <CashLineList entries={batch.transactions} title={entriesTitle} />
-        </div>
-      ) : null}
-    </div>
+  const [activeTab, setActiveTab] = useState(
+    undepositedCash.transactions.length > 0 ? 'undeposited' : 'deposited',
   );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Tab definitions                                                    */
-/* ------------------------------------------------------------------ */
-const TABS = [
-  {
-    key: 'undeposited',
-    label: 'Undeposited',
-    icon: '💵',
-    borderActive: 'border-warning-500',
-    bgActive: 'bg-warning-50',
-    textActive: 'text-warning-700',
-    bgIdle: 'bg-surface-0',
-    borderIdle: 'border-surface-200',
-  },
-  {
-    key: 'pending',
-    label: 'Pending',
-    icon: '⏳',
-    borderActive: 'border-brand-500',
-    bgActive: 'bg-brand-50',
-    textActive: 'text-brand-700',
-    bgIdle: 'bg-surface-0',
-    borderIdle: 'border-surface-200',
-  },
-  {
-    key: 'confirmed',
-    label: 'Confirmed',
-    icon: '✅',
-    borderActive: 'border-success-500',
-    bgActive: 'bg-success-50',
-    textActive: 'text-success-700',
-    bgIdle: 'bg-surface-0',
-    borderIdle: 'border-surface-200',
-  },
-];
-
-function tabBadge(count) {
-  if (!count) return null;
-  return (
-    <span className="ml-1.5 inline-flex min-w-[20px] items-center justify-center rounded-full bg-surface-200 px-1.5 py-0.5 text-xs font-semibold leading-none text-surface-700">
-      {count}
-    </span>
-  );
-}
-
-export default function CashDepositsView({ loading, data, onMoveMoney, onOpenStatements, onRefresh, onMatchFromBank }) {
-  const undepositedCash = data?.undepositedCash || { count: 0, total: 0, thresholdHours: 24, transactions: [] };
-  const pendingDeposits = data?.pendingDeposits || { count: 0, total: 0, thresholdHours: 24, batches: [] };
-  const confirmedRecently = data?.confirmedRecently || [];
-
-  // Smart default: show undeposited if any exist, else pending, else confirmed
-  const smartDefault = undepositedCash.transactions.length > 0
-    ? 'undeposited'
-    : pendingDeposits.batches.length > 0
-      ? 'pending'
-      : 'confirmed';
-
-  const [activeTab, setActiveTab] = useState(smartDefault);
-
-  // Update default when data changes (e.g. after a match clears undeposited)
-  useEffect(() => {
-    if (activeTab === 'undeposited' && undepositedCash.transactions.length === 0 && pendingDeposits.batches.length > 0) {
-      setActiveTab('pending');
-    }
-  }, [undepositedCash.transactions.length, pendingDeposits.batches.length]);
 
   if (loading) {
-    return <div className="rounded-lg border border-surface-200 bg-surface-0 px-6 py-20 text-center text-sm text-surface-500">Loading cash deposits…</div>;
+    return <div className="rounded-lg border border-surface-200 bg-surface-0 px-6 py-20 text-center text-sm text-surface-500">Loading…</div>;
   }
 
-  // Counts for each tab badge
-  const counts = {
-    undeposited: undepositedCash.transactions.length,
-    pending: pendingDeposits.batches.length,
-    confirmed: confirmedRecently.length,
-  };
-
-  // Totals for the stat line under each tab card
-  const totals = {
-    undeposited: undepositedCash.total,
-    pending: pendingDeposits.total,
-    confirmed: confirmedRecently.reduce((sum, b) => sum + Number(b.amount || 0), 0),
-  };
+  const tabs = [
+    {
+      key: 'undeposited',
+      label: 'Undeposited',
+      amount: undepositedCash.total,
+      count: undepositedCash.transactions.length,
+      accent: 'warning',
+    },
+    {
+      key: 'deposited',
+      label: 'Deposited',
+      amount: deposited.total,
+      count: deposited.batches.length,
+      accent: 'success',
+    },
+  ];
 
   return (
     <div className="space-y-4">
-      {/* Header row */}
+      {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-heading text-surface-900">Cash Sales</h2>
-          <p className="mt-0.5 text-body text-surface-500">
-            Track cash from sale to bank deposit.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
+        <h2 className="text-heading text-surface-900">Cash Sales</h2>
+        <div className="flex gap-2">
           <button
             type="button"
             onClick={onMatchFromBank}
             className="rounded-lg bg-brand-500 px-4 py-2 text-body font-medium text-surface-900 transition-colors duration-fast hover:bg-brand-400"
           >
-            Match a bank deposit
+            Match deposit
           </button>
           <button
             type="button"
@@ -228,67 +126,54 @@ export default function CashDepositsView({ loading, data, onMoveMoney, onOpenSta
         </div>
       </div>
 
-      {/* Stat-card tabs */}
-      <div className="grid gap-3 sm:grid-cols-3">
-        {TABS.map((tab) => {
-          const isActive = activeTab === tab.key;
+      {/* Two stat-card tabs */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        {tabs.map((tab) => {
+          const active = activeTab === tab.key;
+          const accentBorder = active ? `border-${tab.accent}-500` : 'border-surface-200';
+          const accentBg = active ? `bg-${tab.accent}-50` : 'bg-surface-0';
+          const accentText = active ? `text-${tab.accent}-700` : 'text-surface-500';
           return (
             <button
               key={tab.key}
               type="button"
               onClick={() => setActiveTab(tab.key)}
-              className={`relative rounded-lg border-2 p-4 text-left transition-all duration-fast ${
-                isActive
-                  ? `${tab.borderActive} ${tab.bgActive} shadow-sm`
-                  : `${tab.borderIdle} ${tab.bgIdle} hover:border-surface-300 hover:shadow-sm`
-              }`}
+              className={`rounded-lg border-2 p-4 text-left transition-all duration-fast ${accentBorder} ${accentBg} ${active ? 'shadow-sm' : 'hover:border-surface-300'}`}
             >
-              {/* Active indicator dot */}
-              {isActive && (
-                <span className={`absolute right-3 top-3 h-2.5 w-2.5 rounded-full ${tab.borderActive.replace('border-', 'bg-')}`} />
-              )}
-              <p className={`text-caption font-semibold uppercase tracking-wide ${isActive ? tab.textActive : 'text-surface-500'}`}>
-                {tab.icon} {tab.label}{tabBadge(counts[tab.key])}
+              <p className={`text-caption font-semibold uppercase tracking-wide ${accentText}`}>
+                {tab.label}
+                {tab.count > 0 && (
+                  <span className="ml-1.5 inline-flex min-w-[20px] items-center justify-center rounded-full bg-surface-200 px-1.5 py-0.5 text-xs font-semibold leading-none text-surface-700">
+                    {tab.count}
+                  </span>
+                )}
               </p>
-              <p className="mt-2 text-2xl font-bold text-surface-900">{fmtMoney(totals[tab.key])}</p>
-              <p className="mt-1 text-body text-surface-600">
-                {tab.key === 'undeposited' && `${counts.undeposited} cash sale${counts.undeposited === 1 ? '' : 's'} not yet banked`}
-                {tab.key === 'pending' && `${counts.pending} deposit${counts.pending === 1 ? '' : 's'} awaiting bank confirmation`}
-                {tab.key === 'confirmed' && `${counts.confirmed} deposit${counts.confirmed === 1 ? '' : 's'} confirmed by bank`}
-              </p>
+              <p className="mt-2 text-2xl font-bold text-surface-900">{fmtMoney(tab.amount)}</p>
             </button>
           );
         })}
       </div>
 
-      {/* Tab content */}
+      {/* Undeposited tab */}
       {activeTab === 'undeposited' && (
-        <section className="rounded-lg border border-surface-200 bg-surface-0">
-          <div className="border-b border-surface-100 px-5 py-4">
-            <h3 className="text-body-medium font-semibold text-surface-900">Undeposited cash</h3>
-            <p className="mt-1 text-body text-surface-500">
-              Cash sale amounts sitting in the Cash Account, not yet grouped into a bank deposit.
-            </p>
-          </div>
+        <section>
           {undepositedCash.transactions.length === 0 ? (
-            <div className="px-6 py-12">
-              <EmptyState title="All clear" body="Every cash sale has been included in a pending or confirmed deposit." />
+            <div className="rounded-lg border border-surface-200 bg-surface-0 px-6 py-12">
+              <EmptyState title="All clear" body="Every cash sale has been matched to a bank deposit." />
             </div>
           ) : (
-            <div className="space-y-3 px-5 py-4">
+            <div className="space-y-2">
               {undepositedCash.transactions.map((entry) => (
-                <div key={entry.id} className="rounded-lg border border-warning-200 bg-warning-50 px-4 py-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="text-body-medium font-semibold text-surface-900">{entry.sale?.receiptNumber || 'Cash sale awaiting deposit'}</p>
-                      <p className="mt-1 text-body text-surface-600">{entry.customer?.name || 'Walk-in customer'} · {fmtDate(entry.transactionDate, true)}</p>
-                      <p className="mt-1 text-body text-surface-500">{entry.description || entry.reference || 'Cash sale'}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-body-medium font-semibold text-warning-700">{fmtMoney(entry.availableAmount)}</p>
-                      <p className="mt-1 text-caption text-surface-500">{ageLabel(entry.ageHours || ((Date.now() - new Date(entry.transactionDate).getTime()) / 36e5))}</p>
-                    </div>
+                <div key={entry.id} className="flex items-center justify-between gap-3 rounded-lg border border-warning-200 bg-warning-50 px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="text-body-medium font-semibold text-surface-900 truncate">
+                      {entry.sale?.receiptNumber || 'Cash sale'}{entry.customer?.name ? ` — ${entry.customer.name}` : ''}
+                    </p>
+                    <p className="mt-0.5 text-caption text-surface-500">
+                      {fmtDate(entry.transactionDate, true)} · {ageLabel(entry.ageHours || ((Date.now() - new Date(entry.transactionDate).getTime()) / 36e5))}
+                    </p>
                   </div>
+                  <p className="text-body-medium font-semibold text-warning-700 whitespace-nowrap">{fmtMoney(entry.availableAmount)}</p>
                 </div>
               ))}
             </div>
@@ -296,61 +181,17 @@ export default function CashDepositsView({ loading, data, onMoveMoney, onOpenSta
         </section>
       )}
 
-      {activeTab === 'pending' && (
-        <section className="rounded-lg border border-surface-200 bg-surface-0">
-          <div className="border-b border-surface-100 px-5 py-4">
-            <h3 className="text-body-medium font-semibold text-surface-900">Pending confirmation</h3>
-            <p className="mt-1 text-body text-surface-500">
-              Deposits matched to cash sales but not yet confirmed on the bank statement.
-            </p>
-          </div>
-          {pendingDeposits.batches.length === 0 ? (
-            <div className="px-6 py-12">
-              <EmptyState title="No pending deposits" body="All matched deposits have been confirmed, or there are none yet." />
+      {/* Deposited tab */}
+      {activeTab === 'deposited' && (
+        <section>
+          {deposited.batches.length === 0 ? (
+            <div className="rounded-lg border border-surface-200 bg-surface-0 px-6 py-12">
+              <EmptyState title="No deposits yet" body="Match cash sales to bank deposits and they will appear here." />
             </div>
           ) : (
-            <div className="space-y-4 px-5 py-4">
-              {pendingDeposits.batches.map((batch) => (
-                <BatchCard
-                  key={batch.id}
-                  batch={batch}
-                  title={`${fmtMoney(batch.amount)} pending bank confirmation`}
-                  subtitle={`Deposited on ${fmtDate(batch.depositDate, true)} by ${staffName(batch.createdBy)} · ${ageLabel(batch.ageHours)}`}
-                  statusLabel={batch.isOverdue ? 'Overdue' : 'Waiting for confirmation'}
-                  statusTone={severityTone(batch.isOverdue)}
-                  entriesTitle="Cash sales included in this pending deposit"
-                />
-              ))}
-            </div>
-          )}
-        </section>
-      )}
-
-      {activeTab === 'confirmed' && (
-        <section className="rounded-lg border border-surface-200 bg-surface-0">
-          <div className="border-b border-surface-100 px-5 py-4">
-            <h3 className="text-body-medium font-semibold text-surface-900">Confirmed deposits</h3>
-            <p className="mt-1 text-body text-surface-500">
-              Bank-confirmed deposits showing exactly which cash sales were included.
-            </p>
-          </div>
-          {confirmedRecently.length === 0 ? (
-            <div className="px-6 py-12">
-              <EmptyState title="No confirmed deposits yet" body="Once a bank statement confirms a matched deposit, it will appear here." />
-            </div>
-          ) : (
-            <div className="space-y-4 px-5 py-4">
-              {confirmedRecently.map((batch, index) => (
-                <BatchCard
-                  key={batch.id}
-                  batch={batch}
-                  title={`${fmtMoney(batch.amount)} confirmed in bank`}
-                  subtitle={`Deposited on ${fmtDate(batch.depositDate, true)} · confirmed ${fmtDate(batch.confirmedAt, true)}`}
-                  statusLabel="Confirmed"
-                  statusTone="border-success-200 bg-success-50 text-success-700"
-                  entriesTitle="Cash sales included in this confirmed deposit"
-                  defaultOpen={index === 0}
-                />
+            <div className="space-y-2">
+              {deposited.batches.map((batch, i) => (
+                <DepositCard key={batch.id} batch={batch} defaultOpen={i === 0} />
               ))}
             </div>
           )}

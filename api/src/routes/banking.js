@@ -577,21 +577,19 @@ function hoursBetween(fromDate, toDate = new Date()) {
 async function getCashDepositWorkspace(policyInput) {
   const policy = policyInput || await getOperationsPolicy();
   const undepositedThresholdHours = Number(policy.undepositedCashAlertHours || 24);
-  const pendingThresholdHours = Number(policy.pendingCashDepositConfirmationHours || 24);
 
-  const [availableCashTransactions, pendingBatches, confirmedRecently] = await Promise.all([
+  // Two lists only: undeposited cash sales, and deposited batches (all statuses
+  // merged — per Meeting 3, no per-deposit bank statement confirmation needed;
+  // reconciliation happens monthly via the manager's month-end close).
+  const [availableCashTransactions, depositedBatches] = await Promise.all([
     getAvailableCashSaleTransactions(),
     prisma.cashDepositBatch.findMany({
-      where: { status: { in: ['PENDING_CONFIRMATION', 'OVERDUE'] } },
+      where: { status: { in: ['CONFIRMED', 'PENDING_CONFIRMATION', 'OVERDUE'] } },
       include: {
         createdBy: { select: { firstName: true, lastName: true } },
+        confirmedBy: { select: { firstName: true, lastName: true } },
         fromBankAccount: { select: { id: true, name: true, accountType: true, lastFour: true, isVirtual: true, supportsStatementImport: true } },
         toBankAccount: { select: { id: true, name: true, accountType: true, lastFour: true, isVirtual: true, supportsStatementImport: true } },
-        outflowTransaction: {
-          include: {
-            enteredBy: { select: { firstName: true, lastName: true } },
-          },
-        },
         transactions: {
           include: {
             bankTransaction: {
@@ -605,61 +603,22 @@ async function getCashDepositWorkspace(policyInput) {
         },
       },
       orderBy: [{ depositDate: 'desc' }, { createdAt: 'desc' }],
-    }),
-    prisma.cashDepositBatch.findMany({
-      where: { status: 'CONFIRMED' },
-      include: {
-        createdBy: { select: { firstName: true, lastName: true } },
-        confirmedBy: { select: { firstName: true, lastName: true } },
-        fromBankAccount: { select: { id: true, name: true, accountType: true, lastFour: true, isVirtual: true, supportsStatementImport: true } },
-        toBankAccount: { select: { id: true, name: true, accountType: true, lastFour: true, isVirtual: true, supportsStatementImport: true } },
-        confirmationStatementLine: {
-          select: {
-            id: true,
-            lineNumber: true,
-            description: true,
-            transactionDate: true,
-            actualTransactionDate: true,
-            valueDate: true,
-            notes: true,
-          },
-        },
-        transactions: {
-          include: {
-            bankTransaction: {
-              include: {
-                customer: { select: { id: true, name: true, phone: true } },
-                sale: { select: { id: true, receiptNumber: true, saleDate: true } },
-              },
-            },
-          },
-          orderBy: { createdAt: 'asc' },
-        },
-      },
-      orderBy: [{ confirmedAt: 'desc' }, { createdAt: 'desc' }],
-      take: 10,
+      take: 20,
     }),
   ]);
 
   const undepositedTransactions = availableCashTransactions.filter((transaction) => hoursBetween(transaction.transactionDate) >= undepositedThresholdHours);
   const undepositedTotal = undepositedTransactions.reduce((sum, transaction) => sum + Number(transaction.availableAmount), 0);
-  const pendingNormalized = pendingBatches.map((batch) => {
-    const ageHours = hoursBetween(batch.depositDate);
-    return {
-      ...batch,
-      amount: Number(batch.amount),
-      ageHours,
-      isOverdue: ageHours >= pendingThresholdHours,
-      status: batch.status === 'PENDING_CONFIRMATION' && ageHours >= pendingThresholdHours ? 'OVERDUE' : batch.status,
-      transactions: batch.transactions.map((entry) => ({
-        ...entry,
-        amountIncluded: Number(entry.amountIncluded),
-        bankTransaction: entry.bankTransaction ? {
-          ...enrichTransaction(entry.bankTransaction),
-        } : null,
-      })),
-    };
-  });
+
+  const depositedNormalized = depositedBatches.map((batch) => ({
+    ...batch,
+    amount: Number(batch.amount),
+    transactions: batch.transactions.map((entry) => ({
+      ...entry,
+      amountIncluded: Number(entry.amountIncluded),
+      bankTransaction: entry.bankTransaction ? enrichTransaction(entry.bankTransaction) : null,
+    })),
+  }));
 
   return {
     undepositedCash: {
@@ -668,21 +627,16 @@ async function getCashDepositWorkspace(policyInput) {
       thresholdHours: undepositedThresholdHours,
       transactions: undepositedTransactions,
     },
-    pendingDeposits: {
-      count: pendingNormalized.length,
-      total: pendingNormalized.reduce((sum, batch) => sum + Number(batch.amount || 0), 0),
-      thresholdHours: pendingThresholdHours,
-      batches: pendingNormalized,
+    // Backward compat: keep pendingDeposits and confirmedRecently keys
+    // pointing to empty arrays so the frontend doesn't break on rollout.
+    pendingDeposits: { count: 0, total: 0, thresholdHours: 24, batches: [] },
+    confirmedRecently: [],
+    // New simplified shape
+    deposited: {
+      count: depositedNormalized.length,
+      total: depositedNormalized.reduce((sum, batch) => sum + Number(batch.amount || 0), 0),
+      batches: depositedNormalized,
     },
-    confirmedRecently: confirmedRecently.map((batch) => ({
-      ...batch,
-      amount: Number(batch.amount),
-      transactions: batch.transactions.map((entry) => ({
-        ...entry,
-        amountIncluded: Number(entry.amountIncluded),
-        bankTransaction: entry.bankTransaction ? enrichTransaction(entry.bankTransaction) : null,
-      })),
-    })),
   };
 }
 

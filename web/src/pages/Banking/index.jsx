@@ -86,8 +86,7 @@ export default function Banking() {
   const [portalTransferHistory, setPortalTransferHistory] = useState([]);
   const [cashDeposits, setCashDeposits] = useState({
     undepositedCash: { count: 0, total: 0, thresholdHours: 24, transactions: [] },
-    pendingDeposits: { count: 0, total: 0, thresholdHours: 24, batches: [] },
-    confirmedRecently: [],
+    deposited: { count: 0, total: 0, batches: [] },
   });
   const [approvalRequests, setApprovalRequests] = useState([]);
   const [bankingPolicy, setBankingPolicy] = useState({ bookingMinimumPaymentPercent: 80 });
@@ -322,8 +321,7 @@ export default function Banking() {
       const data = await api.get('/banking/cash-deposits');
       setCashDeposits({
         undepositedCash: data.undepositedCash || { count: 0, total: 0, thresholdHours: 24, transactions: [] },
-        pendingDeposits: data.pendingDeposits || { count: 0, total: 0, thresholdHours: 24, batches: [] },
-        confirmedRecently: data.confirmedRecently || [],
+        deposited: data.deposited || { count: 0, total: 0, batches: [] },
       });
       setBankingPolicy((prev) => ({ ...prev, ...(data.policy || {}) }));
     } catch {
@@ -408,7 +406,7 @@ export default function Banking() {
   const totalPages = Math.max(1, Math.ceil(transactionsTotal / transactionsPageSize));
   const importTotalPages = Math.max(1, Math.ceil(importsTotal / IMPORTS_PAGE_SIZE));
   const isReportView = activeView === 'reports';
-  const cashDepositBadgeCount = Number(cashDeposits.undepositedCash?.count || 0) + Number(cashDeposits.pendingDeposits?.count || 0);
+  const cashDepositBadgeCount = Number(cashDeposits.undepositedCash?.count || 0);
   const approvalBadgeCount = approvalRequests.filter((request) => request.status === 'PENDING').length;
 
   /* ── Render ──────────────────────────────────────────── */

@@ -70,33 +70,8 @@ export default async function alertRoutes(fastify) {
         });
       }
 
-      const pendingDepositBatches = await prisma.cashDepositBatch.findMany({
-        where: { status: { in: ['PENDING_CONFIRMATION', 'OVERDUE'] } },
-        include: {
-          createdBy: { select: { firstName: true, lastName: true } },
-        },
-      });
-
-      for (const batch of pendingDepositBatches) {
-        const ageHours = (Date.now() - new Date(batch.depositDate).getTime()) / (1000 * 60 * 60);
-        if (ageHours < pendingThresholdHours) continue;
-
-        alerts.push({
-          id: `pending-cash-deposit-${batch.id}`,
-          type: 'PENDING_CASH_DEPOSIT_NOT_CONFIRMED',
-          severity: 'high',
-          title: 'Pending cash deposit not confirmed',
-          message: `₦${Number(batch.amount).toLocaleString()} was moved from Cash Account on ${new Date(batch.depositDate).toISOString().slice(0, 10)} but the bank statement has not confirmed it yet.`,
-          date: batch.depositDate,
-          data: {
-            cashDepositBatchId: batch.id,
-            amount: Number(batch.amount),
-            depositDate: batch.depositDate,
-            ageHours,
-            createdBy: batch.createdBy ? `${batch.createdBy.firstName} ${batch.createdBy.lastName}`.trim() : null,
-          },
-        });
-      }
+      // Per Meeting 3: no per-deposit bank statement confirmation needed.
+      // Reconciliation happens monthly via manager's month-end close.
 
       // ── 2. Large POS/card payments (should have been transfers) ──
       const recentPOSSales = await prisma.sale.findMany({
