@@ -29,8 +29,8 @@ import RequestEditApprovalModal from './RequestEditApprovalModal';
 /* ── Tab config ────────────────────────────────────────── */
 
 // V3: Simplified 4-tab layout (Meeting 3 decisions).
-// - "Statements" tab hidden (V2 CSV import still works via "More → Import statement" and activeView='imports',
-//   but no top-level tab. Code preserved for future use.)
+// - "Statements" workspace kept in code but hidden from the Banking UI for now, per Meeting 3.
+//   No visible entry point is shown to staff at the moment. Code preserved for future use.
 // - "Approvals" tab hidden. The activeView='approvals' view still works and is reached via the
 //   pending-approvals alert in Overview. Admin can still manage approvals.
 // - "Cash deposits" renamed to "Cash Sales" per Meeting 3.
@@ -437,7 +437,6 @@ export default function Banking() {
               {showMoreMenu && (
                 <div className="absolute right-0 top-full z-20 mt-1 w-48 rounded-lg border border-surface-200 bg-surface-0 py-1 shadow-md">
                   <button onClick={() => { setShowTransferModal(true); setShowMoreMenu(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 duration-fast">Move money</button>
-                  <button onClick={() => { setShowImportModal(true); setShowMoreMenu(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 duration-fast">Import statement</button>
                   {canViewReports && <button onClick={() => { setShowReconcileModal(true); setShowMoreMenu(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 duration-fast">Reconcile balance</button>}
                 </div>
               )}
