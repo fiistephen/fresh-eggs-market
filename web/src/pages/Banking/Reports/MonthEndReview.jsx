@@ -62,11 +62,12 @@ function CloseMonthModal({ month, label, onClose, onClosed }) {
 
 /* ── Inline balance entry card per account ────────── */
 
-function AccountCard({ account, month, onSaved }) {
+function AccountCard({ account, month, onSaved, onGoToTransactions }) {
   const monthEnd = account.monthEndReconciliation;
   const hasBal = monthEnd != null;
-  const variance = hasBal ? Math.abs(Number(monthEnd.variance || 0)) : 0;
-  const isBalanced = hasBal && variance <= 0.009;
+  const variance = hasBal ? Number(monthEnd.variance || 0) : 0;
+  const absVariance = Math.abs(variance);
+  const isBalanced = hasBal && absVariance <= 0.009;
 
   const [editing, setEditing] = useState(false);
   const [balance, setBalance] = useState(hasBal ? String(monthEnd.closingBalance) : '');
@@ -105,13 +106,19 @@ function AccountCard({ account, month, onSaved }) {
   if (hasBal && isBalanced) {
     statusBadge = <span className="rounded-full bg-success-100 px-2.5 py-1 text-xs font-semibold text-success-700">Balanced</span>;
   } else if (hasBal && !isBalanced) {
-    statusBadge = <span className="rounded-full bg-error-100 px-2.5 py-1 text-xs font-semibold text-error-700">Variance {fmtMoney(variance)}</span>;
+    statusBadge = <span className="rounded-full bg-error-100 px-2.5 py-1 text-xs font-semibold text-error-700">Variance</span>;
   } else {
     statusBadge = <span className="rounded-full bg-warning-100 px-2.5 py-1 text-xs font-semibold text-warning-700">Missing</span>;
   }
 
+  // Variance direction: positive = bank has more (we're missing an inflow),
+  // negative = bank has less (we're missing an outflow or entered extra)
+  const varianceDirection = variance > 0
+    ? 'Bank has more — a transaction may be missing from the system'
+    : 'System has more — an entry may be incorrect or duplicated';
+
   return (
-    <div className={`rounded-lg border-2 p-4 transition-colors ${hasBal && isBalanced ? 'border-success-200 bg-success-50/30' : hasBal ? 'border-error-200 bg-error-50/30' : 'border-surface-200 bg-surface-0'}`}>
+    <div className={`rounded-lg border-2 p-4 transition-colors ${hasBal && isBalanced ? 'border-success-200 bg-success-50/30' : hasBal && !isBalanced ? 'border-error-200 bg-error-50/30' : 'border-surface-200 bg-surface-0'}`}>
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-body-medium font-semibold text-surface-900">{displayAccountName(account)}</p>
@@ -132,6 +139,32 @@ function AccountCard({ account, month, onSaved }) {
           </div>
         )}
       </div>
+
+      {/* Variance explanation + action */}
+      {hasBal && !isBalanced && !editing && (
+        <div className="mt-3 rounded-md border border-error-200 bg-error-50 px-3 py-2.5">
+          <p className="text-body font-semibold text-error-700">
+            Off by {fmtMoney(absVariance)}
+          </p>
+          <p className="mt-0.5 text-caption text-error-600">{varianceDirection}.</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => onGoToTransactions?.()}
+              className="rounded-md border border-error-300 px-3 py-1.5 text-caption font-medium text-error-700 transition-colors hover:bg-error-100"
+            >
+              Check transactions
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="rounded-md px-3 py-1.5 text-caption font-medium text-error-600 transition-colors hover:bg-error-100"
+            >
+              Re-enter balance
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Inline edit */}
       {editing ? (
@@ -165,7 +198,7 @@ function AccountCard({ account, month, onSaved }) {
             </button>
           </div>
         </div>
-      ) : (
+      ) : !hasBal || (isBalanced && !editing) ? (
         <button
           type="button"
           onClick={() => setEditing(true)}
@@ -205,7 +238,11 @@ export default function MonthEndReview({ onNavigate }) {
   const monthClose = data.monthClose;
   const unresolved = data.unresolved || {};
   const missingCount = Number(data.accountsMissingMonthEndBalance || 0);
-  const canClose = !monthClose && missingCount === 0;
+  const varianceCount = accounts.filter((a) => {
+    const me = a.monthEndReconciliation;
+    return me != null && Math.abs(Number(me.variance || 0)) > 0.009;
+  }).length;
+  const canClose = !monthClose && missingCount === 0 && varianceCount === 0;
   const unallocatedCount = Number(unresolved.unallocatedTransactions?.count || 0);
   const unbankedCount = Number(unresolved.undepositedCash?.count || 0);
   const recentCloses = data.recentMonthCloses || [];
@@ -252,10 +289,12 @@ export default function MonthEndReview({ onNavigate }) {
           </div>
         )}
 
-        {/* Missing balances warning */}
-        {!monthClose && missingCount > 0 && (
+        {/* Blockers warning */}
+        {!monthClose && (missingCount > 0 || varianceCount > 0) && (
           <div className="rounded-lg border border-warning-200 bg-warning-50 px-4 py-3 text-body text-warning-700">
-            Enter bank balances for {missingCount} account{missingCount !== 1 ? 's' : ''} to enable closing.
+            {missingCount > 0 && `Enter bank balances for ${missingCount} account${missingCount !== 1 ? 's' : ''}.`}
+            {missingCount > 0 && varianceCount > 0 && ' '}
+            {varianceCount > 0 && `${varianceCount} account${varianceCount !== 1 ? 's have' : ' has'} a variance — resolve before closing.`}
           </div>
         )}
 
@@ -270,6 +309,7 @@ export default function MonthEndReview({ onNavigate }) {
                 setNotice('Balance saved.');
                 load();
               }}
+              onGoToTransactions={() => onNavigate?.('transactions')}
             />
           ))}
         </div>

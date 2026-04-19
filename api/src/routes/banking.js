@@ -3458,9 +3458,19 @@ export default async function bankingRoutes(fastify) {
         if (review.accountsMissingMonthEndBalance > 0) {
           return reply.code(400).send({ error: 'Enter a month-end balance for every active account before closing the month.' });
         }
-        // V3 Phase 3: unallocated transactions and unbanked cash are captured in the
-        // snapshot for visibility but do NOT block the close.  Only missing account
-        // balances are a hard gate (checked above).
+
+        // All accounts must be balanced (bank statement = system balance)
+        const accountsWithVariance = review.accounts.filter((a) => {
+          const me = a.monthEndReconciliation;
+          return me && Math.abs(Number(me.variance || 0)) > 0.009;
+        });
+        if (accountsWithVariance.length > 0) {
+          const names = accountsWithVariance.map((a) => a.name || a.accountType).join(', ');
+          return reply.code(400).send({ error: `Resolve variances on: ${names}. Bank balances must match system balances before closing.` });
+        }
+
+        // Unallocated transactions and unbanked cash are captured in the
+        // snapshot for visibility but do NOT block the close.
 
         const unresolvedSnapshot = {
           hangingDeposits: { count: review.unresolved.hangingDeposits.count, total: review.unresolved.hangingDeposits.total },
