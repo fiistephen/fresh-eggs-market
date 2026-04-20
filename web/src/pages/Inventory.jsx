@@ -388,7 +388,7 @@ function BatchDetailModal({ batchId, onClose }) {
       <div className="space-y-5">
         <div className="text-caption text-surface-500">Received {fmtDate(batch.receivedDate)}</div>
 
-        {/* Stock summary */}
+        {/* Stock summary — 3 key numbers */}
         <div className="grid grid-cols-3 gap-3">
           <Card variant="outlined">
             <div className="text-center">
@@ -396,19 +396,13 @@ function BatchDetailModal({ batchId, onClose }) {
               <div className="text-caption text-surface-500 mt-1">On Hand</div>
             </div>
           </Card>
-          <Card variant="outlined" tint="bg-warning-50 border border-warning-200">
+          <Card variant="outlined" className="border-warning-200 bg-warning-50">
             <div className="text-center">
               <div className="text-metric font-bold text-warning-700">{fmt(stock.booked)}</div>
               <div className="text-caption text-warning-600 mt-1">Booked</div>
             </div>
           </Card>
-          <Card variant="outlined" tint="bg-brand-50 border border-brand-200">
-            <div className="text-center">
-              <div className="text-metric font-bold text-brand-700">{fmt(stock.heldForCheckout)}</div>
-              <div className="text-caption text-brand-600 mt-1">Held in portal</div>
-            </div>
-          </Card>
-          <Card variant="outlined" tint="bg-info-50 border border-info-200">
+          <Card variant="outlined" className="border-info-200 bg-info-50">
             <div className="text-center">
               <div className="text-metric font-bold text-info-700">{fmt(stock.available)}</div>
               <div className="text-caption text-info-600 mt-1">Available</div>
@@ -416,7 +410,7 @@ function BatchDetailModal({ batchId, onClose }) {
           </Card>
         </div>
 
-        <StockBar sold={stock.totalSold} writeOff={stock.totalWrittenOff} booked={stock.booked} heldForCheckout={stock.heldForCheckout} available={stock.available} total={stock.totalReceived} />
+        <StockBar sold={stock.totalSold} writeOff={stock.totalWrittenOff} booked={stock.booked} available={stock.available} total={stock.totalReceived} />
 
         {/* Egg code breakdown */}
         <div>
@@ -506,38 +500,21 @@ function OverviewTab({ inventory, totals, policy, loading, onRefresh }) {
 
   return (
     <div className="space-y-6">
-      <Card variant="outlined" className="border-info-200 bg-info-50">
-        <div className="flex gap-3">
-          <AlertIcon className="text-info-600 flex-shrink-0" />
-          <div>
-            <p className="text-body-medium font-medium text-info-900">Inventory control focus</p>
-            <p className="text-body text-info-800 mt-1">
-              Any batch above the current {policy?.crackAllowancePercent || 0}% crack allowance should be investigated.
-            </p>
-          </div>
-        </div>
-      </Card>
-
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-        <StatCard label="Total Received" value={fmt(totals.totalReceived)} sub="crates" icon={<PackageIcon />} color="neutral" />
-        <StatCard label="Total Sold" value={fmt(totals.totalSold)} sub="crates" icon={<CheckCircleIcon />} color="success" />
-        <StatCard label="Written Off" value={fmt(totals.totalWrittenOff)} sub="crates" icon={<TrashIcon />} color="error" />
+      {/* Summary cards — 4 key metrics only */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatCard label="On Hand" value={fmt(totals.onHand)} sub="at depot" icon={<StoreIcon />} color="info" />
-        <StatCard label="Booked" value={fmt(totals.booked)} sub="awaiting pickup" icon={<ClipboardIcon />} color="warning" />
-        <StatCard label="Held" value={fmt(totals.heldForCheckout)} sub="portal checkouts" icon={<PackageIcon />} color="brand" />
         <StatCard label="Available" value={fmt(totals.available)} sub="for walk-ins" icon={<ShoppingCartIcon />} color="brand" />
-        {(totals.crackedSoldQuantity || 0) > 0 && (
-          <StatCard label="Cracked Sold" value={fmt(totals.crackedSoldQuantity)} sub="discounted" icon={<AlertIcon />} color="warning" />
-        )}
+        <StatCard label="Booked" value={fmt(totals.booked)} sub="awaiting pickup" icon={<ClipboardIcon />} color="warning" />
+        <StatCard label="Written Off" value={fmt(totals.totalWrittenOff)} sub="crates" icon={<TrashIcon />} color="error" />
       </div>
 
+      {/* Alert banner — only when there's a problem */}
       {(totals.alertCount || 0) > 0 && (
         <Card variant="outlined" className="border-error-200 bg-error-50">
           <div className="flex gap-3">
             <AlertIcon className="text-error-600 flex-shrink-0" />
             <p className="text-body text-error-700">
-              <span className="font-medium">{totals.alertCount} batch{totals.alertCount === 1 ? '' : 'es'}</span> {totals.alertCount === 1 ? 'is' : 'are'} above the current crack allowance. Open those batches and review counts or handling quickly.
+              <span className="font-medium">{totals.alertCount} batch{totals.alertCount === 1 ? '' : 'es'}</span> above the {policy?.crackAllowancePercent || 0}% crack allowance — review counts or handling.
             </p>
           </div>
         </Card>
@@ -551,7 +528,7 @@ function OverviewTab({ inventory, totals, policy, loading, onRefresh }) {
         </Button>
       </div>
 
-      {/* Batch inventory cards */}
+      {/* Batch inventory cards — simplified */}
       {inventory.length === 0 ? (
         <EmptyState
           icon={<PackageIcon className="text-surface-300 w-12 h-12" />}
@@ -568,107 +545,67 @@ function OverviewTab({ inventory, totals, policy, loading, onRefresh }) {
               onClick={() => setDetailBatchId(item.batch.id)}
             >
               <div className="space-y-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                {/* Header: batch name + crack badge + on-hand metric */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
                       <h3 className="text-heading text-surface-800">{item.batch.name}</h3>
-                      <Badge status={crackStatusMap[item.crackAlert?.level]?.color || 'neutral'}>
-                        {crackStatusMap[item.crackAlert?.level]?.label || 'Within allowance'}
-                      </Badge>
+                      {item.crackAlert?.level && item.crackAlert.level !== 'OK' && (
+                        <Badge status={crackStatusMap[item.crackAlert.level]?.color || 'neutral'}>
+                          {crackStatusMap[item.crackAlert.level]?.label}
+                        </Badge>
+                      )}
                     </div>
-                    <p className="text-caption text-surface-500">
-                      Received {fmtDate(item.batch.receivedDate)} · {item.batch.eggCodes.map(ec => ec.code).join(', ')}
+                    <p className="text-caption text-surface-500 mt-0.5">
+                      {item.batch.eggCodes.map(ec => ec.code).join(', ')} · Received {fmtDate(item.batch.receivedDate)}
                     </p>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right flex-shrink-0">
                     <div className="text-metric font-bold text-info-700">{fmt(item.onHand)}</div>
                     <div className="text-caption text-surface-500">on hand</div>
                   </div>
                 </div>
 
-                <StockBar sold={item.totalSold} writeOff={item.totalWrittenOff} booked={item.booked} heldForCheckout={item.heldForCheckout} available={item.available} total={item.totalReceived} />
-
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-caption">
-                  <div>
-                    <div className="text-surface-500">Received</div>
-                    <div className="font-medium text-surface-800">{fmt(item.totalReceived)}</div>
+                {/* Stock bar — simplified 3-segment legend */}
+                <div className="space-y-1.5">
+                  <div className="w-full h-2 rounded-full overflow-hidden flex bg-surface-100">
+                    {item.totalSold > 0 && <div className="bg-success-500 h-full" style={{ width: `${(item.totalSold / item.totalReceived) * 100}%` }} />}
+                    {item.totalWrittenOff > 0 && <div className="bg-error-400 h-full" style={{ width: `${(item.totalWrittenOff / item.totalReceived) * 100}%` }} />}
+                    {item.booked > 0 && <div className="bg-warning-400 h-full" style={{ width: `${(item.booked / item.totalReceived) * 100}%` }} />}
+                    {item.available > 0 && <div className="bg-info-400 h-full" style={{ width: `${(item.available / item.totalReceived) * 100}%` }} />}
                   </div>
-                  <div>
-                    <div className="text-surface-500">Sold</div>
-                    <div className="font-medium text-success-700">{fmt(item.totalSold)}</div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-caption text-surface-600">
+                    <span>Sold <span className="font-medium text-success-700">{fmt(item.totalSold)}</span></span>
+                    <span>Booked <span className="font-medium text-warning-700">{fmt(item.booked)}</span></span>
+                    <span>Available <span className="font-medium text-info-700">{fmt(item.available)}</span></span>
+                    {item.totalWrittenOff > 0 && <span>Write-off <span className="font-medium text-error-600">{fmt(item.totalWrittenOff)}</span></span>}
                   </div>
-                  <div>
-                    <div className="text-surface-500">Booked</div>
-                    <div className="font-medium text-warning-700">{fmt(item.booked)}</div>
-                  </div>
-                  <div>
-                    <div className="text-surface-500">Available</div>
-                    <div className="font-medium text-info-700">{fmt(item.available)}</div>
-                  </div>
-                  <div>
-                    <div className="text-surface-500">Held in portal</div>
-                    <div className="font-medium text-brand-700">{fmt(item.heldForCheckout)}</div>
-                  </div>
-                  <div>
-                    <div className="text-surface-500">Crack Rate</div>
-                    <div className={`font-medium ${item.crackAlert?.level === 'ALERT' ? 'text-error-600' : item.crackAlert?.level === 'WATCH' ? 'text-warning-600' : 'text-success-600'}`}>
-                      {Number(item.crackRatePercent || 0).toFixed(2)}%
-                    </div>
-                  </div>
-                  {item.totalWrittenOff > 0 && (
-                    <div>
-                      <div className="text-surface-500">Write-off</div>
-                      <div className="font-medium text-error-600">{fmt(item.totalWrittenOff)}</div>
-                    </div>
-                  )}
                 </div>
 
+                {/* Last count — single line */}
                 {item.latestCount && (
-                  <Card variant="tinted" tint={item.latestCount.discrepancy !== 0 ? 'bg-error-50 border border-error-200' : 'bg-success-50 border border-success-200'} className="text-caption">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="text-surface-700 font-medium">
-                          Last count: {fmtDate(item.latestCount.countDate)}
-                        </p>
-                        <p className="text-surface-600 mt-1">
-                          Physical: <span className="font-medium">{fmt(item.latestCount.physicalCount)}</span> · System: <span className="font-medium">{fmt(item.latestCount.systemCount)}</span>
-                          {item.latestCount.discrepancy !== 0 && (
-                            <span className={`ml-2 font-bold ${item.latestCount.discrepancy > 0 ? 'text-error-600' : 'text-error-600'}`}>
-                              (Disc: {item.latestCount.discrepancy > 0 ? '+' : ''}{item.latestCount.discrepancy})
-                            </span>
-                          )}
-                        </p>
-                      </div>
-                      <span className="text-surface-500">by {item.latestCount.enteredBy}</span>
-                    </div>
-                  </Card>
+                  <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 text-caption px-3 py-2 rounded-md ${item.latestCount.discrepancy !== 0 ? 'bg-error-50 text-error-700' : 'bg-success-50 text-success-700'}`}>
+                    <span className="font-medium">Last count: {fmtDate(item.latestCount.countDate)}</span>
+                    <span>Physical {fmt(item.latestCount.physicalCount)} · System {fmt(item.latestCount.systemCount)}</span>
+                    {item.latestCount.discrepancy !== 0 && (
+                      <span className="font-bold">Disc: {item.latestCount.discrepancy > 0 ? '+' : ''}{item.latestCount.discrepancy}</span>
+                    )}
+                  </div>
                 )}
 
-                <div className="flex gap-2 pt-2">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    icon={<PencilIcon />}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setCountBatchId(item.batch.id);
-                    }}
-                    className="flex-1"
-                  >
-                    Record Count
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    icon={<ChevronRightIcon />}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setDetailBatchId(item.batch.id);
-                    }}
-                  >
-                    Details
-                  </Button>
-                </div>
+                {/* Action */}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={<PencilIcon />}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setCountBatchId(item.batch.id);
+                  }}
+                  className="w-full sm:w-auto"
+                >
+                  Record Count
+                </Button>
               </div>
             </Card>
           ))}
@@ -723,22 +660,24 @@ function CountHistoryTab() {
 
   return (
     <div className="space-y-4">
-      {/* Filters */}
-      <div className="flex flex-wrap items-end gap-3">
-        <Input
-          label="From"
-          type="date"
-          value={dateFrom}
-          onChange={e => setDateFrom(e.target.value)}
-          containerClassName="w-fit"
-        />
-        <Input
-          label="To"
-          type="date"
-          value={dateTo}
-          onChange={e => setDateTo(e.target.value)}
-          containerClassName="w-fit"
-        />
+      {/* Filters — stack on mobile */}
+      <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-end gap-3">
+        <div className="grid grid-cols-2 gap-3 sm:flex sm:gap-3">
+          <Input
+            label="From"
+            type="date"
+            value={dateFrom}
+            onChange={e => setDateFrom(e.target.value)}
+            containerClassName="w-full sm:w-auto"
+          />
+          <Input
+            label="To"
+            type="date"
+            value={dateTo}
+            onChange={e => setDateTo(e.target.value)}
+            containerClassName="w-full sm:w-auto"
+          />
+        </div>
         <label className="flex items-center gap-2 cursor-pointer py-1">
           <input
             type="checkbox"
@@ -845,20 +784,20 @@ function WriteOffsTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-3">
+      <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-end sm:gap-3">
         <Input
           label="From"
           type="date"
           value={dateFrom}
           onChange={e => setDateFrom(e.target.value)}
-          containerClassName="w-fit"
+          containerClassName="w-full sm:w-auto"
         />
         <Input
           label="To"
           type="date"
           value={dateTo}
           onChange={e => setDateTo(e.target.value)}
-          containerClassName="w-fit"
+          containerClassName="w-full sm:w-auto"
         />
       </div>
 
@@ -949,22 +888,24 @@ export default function Inventory() {
         <p className="text-body text-surface-500 mt-1">Depot stock levels, physical counts, and write-offs</p>
       </div>
 
-      {/* Tab nav */}
-      <div className="flex gap-1 bg-surface-100 rounded-lg p-1 mb-6 w-fit">
-        {tabs.map(t => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-md text-body-medium font-medium transition-all duration-fast whitespace-nowrap ${
-              tab === t.id
-                ? 'bg-surface-0 text-surface-900 shadow-xs'
-                : 'text-surface-600 hover:text-surface-800 hover:bg-surface-50'
-            }`}
-          >
-            {t.icon}
-            {t.label}
-          </button>
-        ))}
+      {/* Tab nav — scrollable on mobile */}
+      <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 mb-6">
+        <div className="flex gap-1 bg-surface-100 rounded-lg p-1 w-fit">
+          {tabs.map(t => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-md text-body-medium font-medium transition-all duration-fast whitespace-nowrap ${
+                tab === t.id
+                  ? 'bg-surface-0 text-surface-900 shadow-xs'
+                  : 'text-surface-600 hover:text-surface-800 hover:bg-surface-50'
+              }`}
+            >
+              {t.icon}
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {tab === 'overview' && <OverviewTab inventory={inventory} totals={totals} policy={policy} loading={loading} onRefresh={loadInventory} />}
