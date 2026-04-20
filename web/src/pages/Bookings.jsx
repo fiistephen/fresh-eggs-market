@@ -641,81 +641,82 @@ export default function Bookings() {
         <SummaryCard label="Paid toward bookings" value={formatCurrency(summary.amountApplied)} />
       </div>
 
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="overflow-x-auto custom-scrollbar">
-          <div className="flex gap-1 rounded-md bg-surface-100 p-1 w-fit">
-            {[
-              { value: '', label: 'All' },
-              { value: 'CONFIRMED', label: 'Confirmed' },
-              { value: 'READY_FOR_PICKUP', label: 'Ready (pickup)' },
-              { value: 'READY_FOR_DELIVERY', label: 'Ready (delivery)' },
-              { value: 'OUT_FOR_DELIVERY', label: 'Out for delivery' },
-              { value: 'PICKED_UP', label: 'Picked up' },
-              { value: 'DELIVERED', label: 'Delivered' },
-              { value: 'CANCELLED', label: 'Cancelled' },
-            ].map((tab) => (
-              <button
-                key={tab.value}
-                onClick={() => {
-                  setFilter(tab.value);
-                  setPage(1);
-                }}
-                className={`whitespace-nowrap rounded-sm px-4 py-1.5 text-body font-medium transition-all duration-normal ${
-                  filter === tab.value
-                    ? 'bg-white text-surface-900 shadow-sm'
-                    : 'text-surface-500 hover:text-surface-700'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-3 items-center">
-          <div className="min-w-[240px]">
-            <Input
-              type="text"
-              value={searchInput}
-              onChange={(event) => setSearchInput(event.target.value)}
-              placeholder="Search customer, phone, batch, or ref"
-            />
-          </div>
-          <div className="flex items-center gap-1.5">
-            <Input
-              type="date"
-              value={dateFrom}
-              onChange={(event) => { setDateFrom(event.target.value); setPage(1); }}
-              className="w-[140px]"
-            />
-            <span className="text-caption text-surface-400">to</span>
-            <Input
-              type="date"
-              value={dateTo}
-              onChange={(event) => { setDateTo(event.target.value); setPage(1); }}
-              className="w-[140px]"
-            />
-            {(dateFrom || dateTo) && (
-              <button
-                type="button"
-                onClick={() => { setDateFrom(''); setDateTo(''); setPage(1); }}
-                className="rounded-md p-1 text-surface-400 hover:text-surface-600 hover:bg-surface-100 transition-colors duration-fast"
-                title="Clear dates"
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
-            )}
-          </div>
-          <div className="w-[160px]">
-            <Select
-              value={batchFilter}
-              onChange={(event) => { setBatchFilter(event.target.value); setPage(1); }}
+      {/* Row 1: Status tabs */}
+      <div className="overflow-x-auto custom-scrollbar -mx-1 px-1">
+        <div className="flex gap-1 rounded-md bg-surface-100 p-1 w-fit">
+          {[
+            { value: '', label: 'All' },
+            { value: 'CONFIRMED', label: 'Confirmed' },
+            { value: 'READY_FOR_PICKUP', label: 'Ready (pickup)' },
+            { value: 'READY_FOR_DELIVERY', label: 'Ready (delivery)' },
+            { value: 'OUT_FOR_DELIVERY', label: 'Out for delivery' },
+            { value: 'PICKED_UP', label: 'Picked up' },
+            { value: 'DELIVERED', label: 'Delivered' },
+            { value: 'CANCELLED', label: 'Cancelled' },
+          ].map((tab) => (
+            <button
+              key={tab.value}
+              onClick={() => {
+                setFilter(tab.value);
+                setPage(1);
+              }}
+              className={`whitespace-nowrap rounded-sm px-3 py-1.5 text-body font-medium transition-all duration-normal ${
+                filter === tab.value
+                  ? 'bg-white text-surface-900 shadow-sm'
+                  : 'text-surface-500 hover:text-surface-700'
+              }`}
             >
-              <option value="">All batches</option>
-              {batchOptions.map((b) => (
-                <option key={b.id} value={b.id}>{b.name}</option>
-              ))}
-            </Select>
-          </div>
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Row 2: Search + date range + batch filter */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+        <div className="flex-1 min-w-0 sm:min-w-[200px] sm:max-w-[320px]">
+          <Input
+            type="text"
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
+            placeholder="Search customer, phone, batch, or ref"
+          />
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Input
+            type="date"
+            value={dateFrom}
+            onChange={(event) => { setDateFrom(event.target.value); setPage(1); }}
+            className="w-[130px]"
+          />
+          <span className="text-caption text-surface-400">to</span>
+          <Input
+            type="date"
+            value={dateTo}
+            onChange={(event) => { setDateTo(event.target.value); setPage(1); }}
+            className="w-[130px]"
+          />
+          {(dateFrom || dateTo) && (
+            <button
+              type="button"
+              onClick={() => { setDateFrom(''); setDateTo(''); setPage(1); }}
+              className="rounded-md p-1 text-surface-400 hover:text-surface-600 hover:bg-surface-100 transition-colors duration-fast"
+              title="Clear dates"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          )}
+        </div>
+        <div className="w-full sm:w-[160px]">
+          <Select
+            value={batchFilter}
+            onChange={(event) => { setBatchFilter(event.target.value); setPage(1); }}
+          >
+            <option value="">All batches</option>
+            {batchOptions.map((b) => (
+              <option key={b.id} value={b.id}>{b.name}</option>
+            ))}
+          </Select>
         </div>
       </div>
 
