@@ -54,9 +54,9 @@ function bookingPaymentTruthMeta(booking) {
     return { label: 'Card verified', tone: 'success' };
   }
   if ((booking.allocations?.length || 0) > 0) {
-    return { label: 'Deposits applied', tone: 'info' };
+    return { label: 'Deposit linked', tone: 'info' };
   }
-  return { label: 'No payment linked', tone: 'default' };
+  return { label: 'No deposit linked', tone: 'default' };
 }
 
 function bookingLifecycleEvents(booking) {
@@ -511,7 +511,7 @@ export default function Bookings() {
         <SummaryCard label="Total bookings" value={summary.totalBookings} />
         <SummaryCard label="Confirmed" value={summary.confirmedCount} />
         <SummaryCard label="Booked crates" value={summary.bookedCrates} />
-        <SummaryCard label="Money applied" value={formatCurrency(summary.amountApplied)} />
+        <SummaryCard label="Paid toward bookings" value={formatCurrency(summary.amountApplied)} />
       </div>
 
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -585,19 +585,6 @@ export default function Bookings() {
               ))}
             </Select>
           </div>
-          <div className="w-[140px]">
-            <Select
-              value={String(pageSize)}
-              onChange={(event) => {
-                setPageSize(Number(event.target.value));
-                setPage(1);
-              }}
-            >
-              {[25, 50, 100, 200, 250].map((option) => (
-                <option key={option} value={option}>{option} / page</option>
-              ))}
-            </Select>
-          </div>
         </div>
       </div>
 
@@ -630,7 +617,7 @@ export default function Bookings() {
                 <th className="px-4 py-3 text-left text-overline text-surface-600">Batch</th>
                 <th className="px-4 py-3 text-right text-overline text-surface-600">Qty</th>
                 <th className="px-4 py-3 text-right text-overline text-surface-600">Value</th>
-                <th className="px-4 py-3 text-right text-overline text-surface-600">Applied</th>
+                <th className="px-4 py-3 text-right text-overline text-surface-600">Paid</th>
                 <th className="px-4 py-3 text-right text-overline text-surface-600">Balance</th>
                 <th className="px-4 py-3 text-center text-overline text-surface-600">Status</th>
                 <th className="px-4 py-3 text-left text-overline text-surface-600">Date</th>
@@ -692,32 +679,46 @@ export default function Bookings() {
         </Card>
       )}
 
-      {bookingsPagination.totalPages > 1 && (
+      {bookings.length > 0 && (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-body text-surface-500">
-            Showing {bookings.length.toLocaleString()} of {bookingsPagination.total.toLocaleString()} bookings
-          </p>
           <div className="flex items-center gap-3">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-              disabled={page <= 1}
-            >
-              Previous
-            </Button>
-            <p className="text-body text-surface-600">
-              Page {bookingsPagination.page} of {bookingsPagination.totalPages}
+            <p className="text-body text-surface-500">
+              Showing {bookings.length.toLocaleString()} of {bookingsPagination.total.toLocaleString()}
             </p>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setPage((current) => Math.min(bookingsPagination.totalPages, current + 1))}
-              disabled={page >= bookingsPagination.totalPages}
-            >
-              Next
-            </Button>
+            <div className="w-[120px]">
+              <Select
+                value={String(pageSize)}
+                onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1); }}
+              >
+                {[25, 50, 100, 200, 250].map((option) => (
+                  <option key={option} value={option}>{option} / page</option>
+                ))}
+              </Select>
+            </div>
           </div>
+          {bookingsPagination.totalPages > 1 && (
+            <div className="flex items-center gap-3">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                disabled={page <= 1}
+              >
+                Previous
+              </Button>
+              <p className="text-body text-surface-600">
+                Page {bookingsPagination.page} of {bookingsPagination.totalPages}
+              </p>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setPage((current) => Math.min(bookingsPagination.totalPages, current + 1))}
+                disabled={page >= bookingsPagination.totalPages}
+              >
+                Next
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
@@ -1200,11 +1201,13 @@ function CreateBookingModal({ initialCustomer = null, initialDepositId = '', onC
   }, [customerSearch]);
 
   useEffect(() => {
-    if (step === 2) {
+    if (step === 2 && openBatches.length === 0) {
       loadOpenBatches();
     }
   }, [step]);
 
+  // Preload customer funds as soon as a customer is selected (step 1→2),
+  // so data is ready by the time the user reaches step 3.
   useEffect(() => {
     if (selectedCustomer) {
       loadCustomerFunds(selectedCustomer.id);
@@ -1610,12 +1613,20 @@ function CreateBookingModal({ initialCustomer = null, initialDepositId = '', onC
                 </div>
               )}
 
+              <p className="text-caption text-surface-500">
+                Showing customer deposits and unallocated income entered in Banking that haven&apos;t been fully used by other bookings.
+              </p>
+
               {loadingFunds ? (
-                <p className="text-body text-surface-500">Loading customer payments…</p>
+                <div className="space-y-2">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="h-12 bg-surface-100 rounded-lg animate-pulse" />
+                  ))}
+                </div>
               ) : funds.length === 0 ? (
                 <Card variant="warning" className="p-4">
                   <p className="text-body text-warning-900">
-                    No available customer payments found. First record the customer&apos;s payment in Banking, then come back here to create the booking.
+                    No available money found for this customer. Go to <strong>Banking</strong> and record the customer&apos;s transfer or deposit first, categorized as &quot;Customer deposit&quot;. Then come back here to create the booking.
                   </p>
                 </Card>
               ) : (
@@ -1751,7 +1762,7 @@ function BookingDetailModal({ booking, onClose, onManagePayments }) {
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <MetricCard label="Quantity" value={`${booking.quantity} crates`} />
           <MetricCard label="Booking value" value={formatCurrency(booking.orderValue)} />
-          <MetricCard label="Applied" value={formatCurrency(booking.amountPaid)} />
+          <MetricCard label="Paid" value={formatCurrency(booking.amountPaid)} />
           <MetricCard label="Balance" value={formatCurrency(booking.balance)} tone={booking.balance > 0 ? 'warning' : 'success'} />
         </div>
 
@@ -2239,7 +2250,7 @@ function CancelBookingModal({ booking, onClose, onCancelled }) {
             <span className="font-medium text-surface-900">{booking.quantity} crates</span>
           </p>
           <p>
-            <span className="text-surface-500">Applied:</span>
+            <span className="text-surface-500">Paid:</span>
             {' '}
             <span className="font-medium text-surface-900">{formatCurrency(booking.amountPaid)}</span>
           </p>
