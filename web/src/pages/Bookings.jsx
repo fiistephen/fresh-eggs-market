@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Button, Input, Select, Modal, Card, Badge, EmptyState, useToast } from '../components/ui';
@@ -405,13 +405,23 @@ export default function Bookings() {
     };
   }, [bookings]);
 
+  const hangingCount = hangingDeposits.length;
+  const hangingTotal = hangingDeposits.reduce((sum, d) => sum + Number(d.availableAmount || 0), 0);
+  const transferCount = portalTransferBookings.length;
+  const overdueTransferCount = portalTransferBookings.filter((c) => {
+    const mins = Math.floor((Date.now() - new Date(c.createdAt).getTime()) / 60000);
+    return mins >= 60 && c.status !== 'ADMIN_CONFIRMED';
+  }).length;
+
+  const [expandedSection, setExpandedSection] = useState('');
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h1 className="text-display">Bookings</h1>
           <p className="mt-2 max-w-3xl text-body text-surface-600">
-            Book from money already received. Choose the customer, choose the batch, then apply the customer&apos;s available payments.
+            Record customer money in Banking first, then match it to a booking here.
           </p>
         </div>
         {canCreate && (
@@ -425,40 +435,87 @@ export default function Bookings() {
         )}
       </div>
 
-      <Card variant="info" className="p-4">
-        <h2 className="text-overline uppercase text-info-900">Booking rule</h2>
-        <p className="mt-2 text-body text-info-900">
-          Do not decide bookings during Banking entry. First record customer money in Banking as a customer deposit. Then come here to match that hanging deposit to a portal booking or create a manual booking.
-        </p>
-      </Card>
+      {/* Compact attention banners — expand on click */}
+      {(hangingCount > 0 || transferCount > 0) && (
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {hangingCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setExpandedSection(expandedSection === 'hanging' ? '' : 'hanging')}
+              className="flex items-center gap-3 rounded-lg border border-warning-200 bg-warning-50 p-3 text-left transition-colors duration-fast hover:bg-warning-100"
+            >
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-warning-500 text-sm font-bold text-white">
+                {hangingCount}
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-surface-900 truncate">
+                  {hangingCount} deposit{hangingCount === 1 ? '' : 's'} hanging
+                </p>
+                <p className="text-xs text-surface-500">{formatCurrency(hangingTotal)} waiting to be matched</p>
+              </div>
+              <svg className={`ml-auto h-4 w-4 shrink-0 text-surface-400 transition-transform duration-fast ${expandedSection === 'hanging' ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+            </button>
+          )}
+          {transferCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setExpandedSection(expandedSection === 'transfers' ? '' : 'transfers')}
+              className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-colors duration-fast ${
+                overdueTransferCount > 0
+                  ? 'border-error-200 bg-error-50 hover:bg-error-100'
+                  : 'border-warning-200 bg-warning-50 hover:bg-warning-100'
+              }`}
+            >
+              <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white ${
+                overdueTransferCount > 0 ? 'bg-error-500' : 'bg-warning-500'
+              }`}>
+                {transferCount}
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-surface-900 truncate">
+                  {transferCount} portal transfer{transferCount === 1 ? '' : 's'} waiting
+                </p>
+                <p className="text-xs text-surface-500">
+                  {overdueTransferCount > 0 ? `${overdueTransferCount} overdue — SOP: confirm within 1 hr` : 'Tap to review and confirm'}
+                </p>
+              </div>
+              <svg className={`ml-auto h-4 w-4 shrink-0 text-surface-400 transition-transform duration-fast ${expandedSection === 'transfers' ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+            </button>
+          )}
+        </div>
+      )}
 
-      <HangingDepositsSection
-        loading={hangingDepositsLoading}
-        error={hangingDepositsError}
-        deposits={hangingDeposits}
-        canCreate={canCreate}
-        onRefresh={loadHangingDeposits}
-        onUseDeposit={(deposit) => setShowCreate({
-          customer: deposit.customer || null,
-          depositId: deposit.id,
-        })}
-      />
+      {expandedSection === 'hanging' && (
+        <HangingDepositsSection
+          loading={hangingDepositsLoading}
+          error={hangingDepositsError}
+          deposits={hangingDeposits}
+          canCreate={canCreate}
+          onRefresh={loadHangingDeposits}
+          onUseDeposit={(deposit) => setShowCreate({
+            customer: deposit.customer || null,
+            depositId: deposit.id,
+          })}
+        />
+      )}
 
-      <PortalBookingReviewSection
-        loading={portalQueueLoading}
-        error={portalQueueError}
-        transferQueue={portalTransferBookings}
-        recentCardBookings={portalCardBookings}
-        workingId={workingPortalCheckoutId}
-        onConfirm={confirmPortalTransfer}
-        onReject={rejectPortalTransfer}
-        onRefresh={loadPortalBookingQueue}
-        recentTransferDecisions={recentTransferDecisions}
-      />
+      {expandedSection === 'transfers' && (
+        <PortalBookingReviewSection
+          loading={portalQueueLoading}
+          error={portalQueueError}
+          transferQueue={portalTransferBookings}
+          recentCardBookings={portalCardBookings}
+          workingId={workingPortalCheckoutId}
+          onConfirm={confirmPortalTransfer}
+          onReject={rejectPortalTransfer}
+          onRefresh={loadPortalBookingQueue}
+          recentTransferDecisions={recentTransferDecisions}
+        />
+      )}
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard label="Bookings in view" value={summary.count} />
-        <SummaryCard label="Confirmed bookings" value={summary.confirmedCount} />
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <SummaryCard label="Bookings (this page)" value={summary.count} />
+        <SummaryCard label="Confirmed" value={summary.confirmedCount} />
         <SummaryCard label="Booked crates" value={summary.bookedCrates} />
         <SummaryCard label="Money applied" value={formatCurrency(summary.amountApplied)} />
       </div>
@@ -535,21 +592,19 @@ export default function Bookings() {
         </Card>
       ) : (
         <Card className="overflow-x-auto custom-scrollbar">
-          <table className="w-full min-w-[1040px]">
+          <table className="w-full min-w-[780px]">
             <thead>
               <tr className="border-b border-surface-200">
                 <th className="px-4 py-3 text-left text-overline text-surface-600">Customer</th>
-                <th className="px-4 py-3 text-left text-overline text-surface-600">Source</th>
-                <th className="px-4 py-3 text-left text-overline text-surface-600">Payment truth</th>
+                <th className="px-4 py-3 text-left text-overline text-surface-600">Source / Payment</th>
                 <th className="px-4 py-3 text-left text-overline text-surface-600">Batch</th>
                 <th className="px-4 py-3 text-right text-overline text-surface-600">Qty</th>
-                <th className="px-4 py-3 text-right text-overline text-surface-600">Booking value</th>
+                <th className="px-4 py-3 text-right text-overline text-surface-600">Value</th>
                 <th className="px-4 py-3 text-right text-overline text-surface-600">Applied</th>
                 <th className="px-4 py-3 text-right text-overline text-surface-600">Balance</th>
-                <th className="px-4 py-3 text-center text-overline text-surface-600">Payments used</th>
                 <th className="px-4 py-3 text-center text-overline text-surface-600">Status</th>
                 <th className="px-4 py-3 text-left text-overline text-surface-600">Date</th>
-                {(canCreate || canCancel) && <th className="px-4 py-3 text-center text-overline text-surface-600">Action</th>}
+                {(canCreate || canCancel) && <th className="px-4 py-3 text-right text-overline text-surface-600" />}
               </tr>
             </thead>
             <tbody>
@@ -560,14 +615,12 @@ export default function Bookings() {
                     {booking.customer?.phone && <div className="text-caption text-surface-500">{booking.customer.phone}</div>}
                   </td>
                   <td className="px-4 py-3">
-                    <Badge color={bookingSourceMeta(booking).tone}>
-                      {bookingSourceMeta(booking).label}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge color={bookingPaymentTruthMeta(booking).tone}>
-                      {bookingPaymentTruthMeta(booking).label}
-                    </Badge>
+                    <div className="flex flex-col gap-1">
+                      <Badge color={bookingSourceMeta(booking).tone} size="sm">
+                        {bookingSourceMeta(booking).label}
+                      </Badge>
+                      <span className="text-caption text-surface-500">{bookingPaymentTruthMeta(booking).label}</span>
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     <div className="text-body font-medium text-surface-700">{booking.batch?.name || '—'}</div>
@@ -579,7 +632,6 @@ export default function Bookings() {
                   <td className={`px-4 py-3 text-right text-body font-medium ${booking.balance > 0 ? 'text-warning-600' : 'text-success-600'}`}>
                     {formatCurrency(booking.balance)}
                   </td>
-                  <td className="px-4 py-3 text-center text-body text-surface-500">{booking.allocations?.length || 0}</td>
                   <td className="px-4 py-3 text-center">
                     <Badge color={BOOKING_STATUS_BADGES[booking.status] || 'neutral'}>
                       {booking.status.replace('_', ' ')}
@@ -587,31 +639,20 @@ export default function Bookings() {
                   </td>
                   <td className="px-4 py-3 text-body text-surface-500">{formatDate(booking.createdAt)}</td>
                   {(canCreate || canCancel) && (
-                    <td className="px-4 py-3 text-center">
-                      <div className="flex flex-col items-center gap-2">
-                        <button
-                          onClick={() => setDetailBooking(booking)}
-                          className="text-caption font-medium text-surface-600 hover:text-surface-800 transition-colors duration-fast"
-                        >
-                          View details
-                        </button>
-                        {canCreate && booking.status === 'CONFIRMED' && booking.portalCheckout?.paymentMethod !== 'CARD' && (
-                          <button
-                            onClick={() => setManagePaymentsBooking(booking)}
-                            className="text-caption font-medium text-brand-700 hover:text-brand-800 transition-colors duration-fast"
-                          >
-                            Manage payments
-                          </button>
-                        )}
-                        {canCancel && booking.status === 'CONFIRMED' && (
-                          <button
-                            onClick={() => setShowCancel(booking)}
-                            className="text-caption font-medium text-error-500 hover:text-error-700 transition-colors duration-fast"
-                          >
-                            Cancel
-                          </button>
-                        )}
-                      </div>
+                    <td className="px-4 py-3 text-right">
+                      <RowActionMenu
+                        onView={() => setDetailBooking(booking)}
+                        onManagePayments={
+                          canCreate && booking.status === 'CONFIRMED' && booking.portalCheckout?.paymentMethod !== 'CARD'
+                            ? () => setManagePaymentsBooking(booking)
+                            : null
+                        }
+                        onCancel={
+                          canCancel && booking.status === 'CONFIRMED'
+                            ? () => setShowCancel(booking)
+                            : null
+                        }
+                      />
                     </td>
                   )}
                 </tr>
@@ -704,6 +745,60 @@ export default function Bookings() {
   );
 }
 
+function RowActionMenu({ onView, onManagePayments, onCancel }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function close(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+
+  return (
+    <div className="relative inline-block" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="rounded-md p-1.5 text-surface-400 hover:bg-surface-100 hover:text-surface-600 transition-colors duration-fast"
+        aria-label="Actions"
+      >
+        <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20"><circle cx="10" cy="4" r="1.5" /><circle cx="10" cy="10" r="1.5" /><circle cx="10" cy="16" r="1.5" /></svg>
+      </button>
+      {open && (
+        <div className="absolute right-0 z-20 mt-1 w-44 rounded-lg border border-surface-200 bg-white py-1 shadow-lg">
+          <button
+            type="button"
+            onClick={() => { setOpen(false); onView(); }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-body text-surface-700 hover:bg-surface-50 transition-colors duration-fast"
+          >
+            View details
+          </button>
+          {onManagePayments && (
+            <button
+              type="button"
+              onClick={() => { setOpen(false); onManagePayments(); }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-body text-brand-700 hover:bg-surface-50 transition-colors duration-fast"
+            >
+              Manage payments
+            </button>
+          )}
+          {onCancel && (
+            <button
+              type="button"
+              onClick={() => { setOpen(false); onCancel(); }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-body text-error-600 hover:bg-error-50 transition-colors duration-fast"
+            >
+              Cancel booking
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SummaryCard({ label, value }) {
   return (
     <Card>
@@ -731,26 +826,7 @@ function HangingDepositsSection({ loading, error, deposits, canCreate, onRefresh
   }
 
   if (!deposits?.length) {
-    return (
-      <Card className="p-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h2 className="text-heading font-semibold text-surface-900">Customer deposits hanging</h2>
-            <p className="mt-2 text-body text-surface-500">Any customer money recorded in Banking but not yet matched to a booking will show up here.</p>
-          </div>
-          <Button variant="secondary" size="sm" onClick={onRefresh}>
-            Refresh
-          </Button>
-        </div>
-        <div className="mt-6">
-          <EmptyState
-            title="No customer deposits hanging"
-            body="Customer deposits that still need booking action will show here."
-            compact
-          />
-        </div>
-      </Card>
-    );
+    return null;
   }
 
   const totalAvailable = deposits.reduce((sum, deposit) => sum + Number(deposit.availableAmount || 0), 0);
