@@ -855,4 +855,139 @@ export default async function bookingRoutes(fastify) {
       return reply.send({ batches: result.filter((batch) => batch.remainingAvailable > 0), policy });
     },
   });
+
+  // ────────────────────────────────────────────────────────────────
+  //  FULFILMENT ENDPOINTS
+  // ────────────────────────────────────────────────────────────────
+
+  /**
+   * GET /bookings/fulfilment-queue — list bookings that need fulfilment action
+   * Returns bookings in READY_FOR_PICKUP, READY_FOR_DELIVERY, OUT_FOR_DELIVERY status
+   */
+  fastify.get('/bookings/fulfilment-queue', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'SHOP_FLOOR')],
+    handler: async (request, reply) => {
+      const { status: statusFilter } = request.query;
+
+      const fulfilmentStatuses = ['READY_FOR_PICKUP', 'READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY'];
+      const where = {
+        status: statusFilter && fulfilmentStatuses.includes(statusFilter)
+          ? statusFilter
+          : { in: fulfilmentStatuses },
+      };
+
+      const [eggTypes, policy] = await Promise.all([
+        getCustomerEggTypeConfig(),
+        getOperationsPolicy(),
+      ]);
+
+      const bookings = await prisma.booking.findMany({
+        where,
+        include: buildBookingInclude(),
+        orderBy: [{ readyAt: 'asc' }, { createdAt: 'asc' }],
+      });
+
+      const pickup = bookings.filter(b => b.status === 'READY_FOR_PICKUP');
+      const delivery = bookings.filter(b => ['READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY'].includes(b.status));
+
+      return reply.send({
+        queue: bookings.map(b => enrichBooking(b, eggTypes, policy)),
+        summary: {
+          total: bookings.length,
+          readyForPickup: pickup.length,
+          readyForDelivery: bookings.filter(b => b.status === 'READY_FOR_DELIVERY').length,
+          outForDelivery: bookings.filter(b => b.status === 'OUT_FOR_DELIVERY').length,
+        },
+      });
+    },
+  });
+
+  /**
+   * POST /bookings/:id/complete-pickup — mark a READY_FOR_PICKUP booking as PICKED_UP
+   */
+  fastify.post('/bookings/:id/complete-pickup', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER', 'SHOP_FLOOR')],
+    handler: async (request, reply) => {
+      const booking = await prisma.booking.findUnique({
+        where: { id: request.params.id },
+        include: { customer: true, batch: true },
+      });
+      if (!booking) return reply.code(404).send({ error: 'Booking not found' });
+      if (booking.status !== 'READY_FOR_PICKUP') {
+        return reply.code(400).send({ error: `Booking must be READY_FOR_PICKUP to mark as picked up (current: ${booking.status})` });
+      }
+
+      const updated = await prisma.booking.update({
+        where: { id: booking.id },
+        data: {
+          status: 'PICKED_UP',
+          completedAt: new Date(),
+        },
+        include: buildBookingInclude(),
+      });
+
+      const [eggTypes, policy] = await Promise.all([getCustomerEggTypeConfig(), getOperationsPolicy()]);
+      return reply.send({ booking: enrichBooking(updated, eggTypes, policy) });
+    },
+  });
+
+  /**
+   * POST /bookings/:id/dispatch — mark a READY_FOR_DELIVERY booking as OUT_FOR_DELIVERY
+   */
+  fastify.post('/bookings/:id/dispatch', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER')],
+    handler: async (request, reply) => {
+      const { driverName } = request.body || {};
+      const booking = await prisma.booking.findUnique({
+        where: { id: request.params.id },
+        include: { customer: true, batch: true },
+      });
+      if (!booking) return reply.code(404).send({ error: 'Booking not found' });
+      if (booking.status !== 'READY_FOR_DELIVERY') {
+        return reply.code(400).send({ error: `Booking must be READY_FOR_DELIVERY to dispatch (current: ${booking.status})` });
+      }
+
+      const updated = await prisma.booking.update({
+        where: { id: booking.id },
+        data: {
+          status: 'OUT_FOR_DELIVERY',
+          dispatchedAt: new Date(),
+          driverName: driverName || null,
+        },
+        include: buildBookingInclude(),
+      });
+
+      const [eggTypes, policy] = await Promise.all([getCustomerEggTypeConfig(), getOperationsPolicy()]);
+      return reply.send({ booking: enrichBooking(updated, eggTypes, policy) });
+    },
+  });
+
+  /**
+   * POST /bookings/:id/confirm-delivery — mark an OUT_FOR_DELIVERY booking as DELIVERED
+   */
+  fastify.post('/bookings/:id/confirm-delivery', {
+    preHandler: [authenticate, authorize('ADMIN', 'MANAGER')],
+    handler: async (request, reply) => {
+      const booking = await prisma.booking.findUnique({
+        where: { id: request.params.id },
+        include: { customer: true, batch: true },
+      });
+      if (!booking) return reply.code(404).send({ error: 'Booking not found' });
+      if (booking.status !== 'OUT_FOR_DELIVERY') {
+        return reply.code(400).send({ error: `Booking must be OUT_FOR_DELIVERY to confirm delivery (current: ${booking.status})` });
+      }
+
+      const updated = await prisma.booking.update({
+        where: { id: booking.id },
+        data: {
+          status: 'DELIVERED',
+          completedAt: new Date(),
+        },
+        include: buildBookingInclude(),
+      });
+
+      const [eggTypes, policy] = await Promise.all([getCustomerEggTypeConfig(), getOperationsPolicy()]);
+      return reply.send({ booking: enrichBooking(updated, eggTypes, policy) });
+    },
+  });
 }

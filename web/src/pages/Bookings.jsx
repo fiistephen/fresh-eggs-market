@@ -6,8 +6,22 @@ import { Button, Input, Select, Modal, Card, Badge, EmptyState, useToast } from 
 
 const BOOKING_STATUS_BADGES = {
   CONFIRMED: 'success',
-  PICKED_UP: 'info',
+  READY_FOR_PICKUP: 'warning',
+  READY_FOR_DELIVERY: 'warning',
+  OUT_FOR_DELIVERY: 'info',
+  PICKED_UP: 'neutral',
+  DELIVERED: 'neutral',
   CANCELLED: 'error',
+};
+
+const BOOKING_STATUS_LABELS = {
+  CONFIRMED: 'Confirmed',
+  READY_FOR_PICKUP: 'Ready for pickup',
+  READY_FOR_DELIVERY: 'Ready for delivery',
+  OUT_FOR_DELIVERY: 'Out for delivery',
+  PICKED_UP: 'Picked up',
+  DELIVERED: 'Delivered',
+  CANCELLED: 'Cancelled',
 };
 
 function formatCurrency(value) {
@@ -96,7 +110,28 @@ function bookingLifecycleEvents(booking) {
       tone: 'success',
     });
   }
-  if (booking.sale?.saleDate) {
+  if (booking.readyAt) {
+    events.push({
+      label: booking.fulfilmentType === 'DELIVERY' ? 'Ready for delivery' : 'Ready for pickup',
+      value: formatDate(booking.readyAt),
+      tone: 'warning',
+    });
+  }
+  if (booking.dispatchedAt) {
+    events.push({
+      label: `Dispatched${booking.driverName ? ` (${booking.driverName})` : ''}`,
+      value: formatDate(booking.dispatchedAt),
+      tone: 'info',
+    });
+  }
+  if (booking.completedAt) {
+    events.push({
+      label: booking.fulfilmentType === 'DELIVERY' ? 'Delivered' : 'Picked up',
+      value: formatDate(booking.completedAt),
+      tone: 'success',
+    });
+  }
+  if (booking.sale?.saleDate && !booking.completedAt) {
     events.push({
       label: 'Pickup completed',
       value: formatDate(booking.sale.saleDate),
@@ -264,6 +299,10 @@ export default function Bookings() {
   const [serverSummary, setServerSummary] = useState(null);
   const [batchFilter, setBatchFilter] = useState('');
   const [batchOptions, setBatchOptions] = useState([]);
+  const [fulfilmentQueue, setFulfilmentQueue] = useState([]);
+  const [fulfilmentSummary, setFulfilmentSummary] = useState({ total: 0, readyForPickup: 0, readyForDelivery: 0, outForDelivery: 0 });
+  const [fulfilmentLoading, setFulfilmentLoading] = useState(true);
+  const [fulfilmentWorkingId, setFulfilmentWorkingId] = useState('');
   const [showCreate, setShowCreate] = useState(null);
   const [managePaymentsBooking, setManagePaymentsBooking] = useState(null);
   const [showCancel, setShowCancel] = useState(null);
@@ -297,6 +336,10 @@ export default function Bookings() {
 
   useEffect(() => {
     loadHangingDeposits();
+  }, []);
+
+  useEffect(() => {
+    loadFulfilmentQueue();
   }, []);
 
   useEffect(() => {
@@ -366,6 +409,55 @@ export default function Bookings() {
     }
   }
 
+  async function loadFulfilmentQueue() {
+    setFulfilmentLoading(true);
+    try {
+      const data = await api.get('/bookings/fulfilment-queue');
+      setFulfilmentQueue(data.queue || []);
+      setFulfilmentSummary(data.summary || { total: 0, readyForPickup: 0, readyForDelivery: 0, outForDelivery: 0 });
+    } catch {
+      // silently fail — non-critical
+    } finally {
+      setFulfilmentLoading(false);
+    }
+  }
+
+  async function completePickup(bookingId) {
+    setFulfilmentWorkingId(bookingId);
+    try {
+      await api.post(`/bookings/${bookingId}/complete-pickup`, {});
+      await Promise.all([loadFulfilmentQueue(), loadBookings()]);
+    } catch (err) {
+      setError(err.error || 'Failed to mark pickup');
+    } finally {
+      setFulfilmentWorkingId('');
+    }
+  }
+
+  async function dispatchDelivery(bookingId, driverName) {
+    setFulfilmentWorkingId(bookingId);
+    try {
+      await api.post(`/bookings/${bookingId}/dispatch`, { driverName });
+      await Promise.all([loadFulfilmentQueue(), loadBookings()]);
+    } catch (err) {
+      setError(err.error || 'Failed to dispatch delivery');
+    } finally {
+      setFulfilmentWorkingId('');
+    }
+  }
+
+  async function confirmDelivery(bookingId) {
+    setFulfilmentWorkingId(bookingId);
+    try {
+      await api.post(`/bookings/${bookingId}/confirm-delivery`, {});
+      await Promise.all([loadFulfilmentQueue(), loadBookings()]);
+    } catch (err) {
+      setError(err.error || 'Failed to confirm delivery');
+    } finally {
+      setFulfilmentWorkingId('');
+    }
+  }
+
   async function confirmPortalTransfer(checkoutId) {
     setWorkingPortalCheckoutId(checkoutId);
     setPortalQueueError('');
@@ -406,6 +498,7 @@ export default function Bookings() {
     const mins = Math.floor((Date.now() - new Date(c.createdAt).getTime()) / 60000);
     return mins >= 60 && c.status !== 'ADMIN_CONFIRMED';
   }).length;
+  const fulfilmentCount = fulfilmentSummary.total;
 
   const [expandedSection, setExpandedSection] = useState('');
 
@@ -430,8 +523,8 @@ export default function Bookings() {
       </div>
 
       {/* Compact attention banners — expand on click */}
-      {(hangingCount > 0 || transferCount > 0) && (
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      {(hangingCount > 0 || transferCount > 0 || fulfilmentCount > 0) && (
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {hangingCount > 0 && (
             <button
               type="button"
@@ -476,6 +569,28 @@ export default function Bookings() {
               <svg className={`ml-auto h-4 w-4 shrink-0 text-surface-400 transition-transform duration-fast ${expandedSection === 'transfers' ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
             </button>
           )}
+          {fulfilmentCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setExpandedSection(expandedSection === 'fulfilment' ? '' : 'fulfilment')}
+              className="flex items-center gap-3 rounded-lg border border-brand-200 bg-brand-50 p-3 text-left transition-colors duration-fast hover:bg-brand-100"
+            >
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-600 text-sm font-bold text-white">
+                {fulfilmentCount}
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-surface-900 truncate">
+                  {fulfilmentCount} booking{fulfilmentCount === 1 ? '' : 's'} ready for fulfilment
+                </p>
+                <p className="text-xs text-surface-500">
+                  {fulfilmentSummary.readyForPickup > 0 ? `${fulfilmentSummary.readyForPickup} pickup` : ''}
+                  {fulfilmentSummary.readyForPickup > 0 && (fulfilmentSummary.readyForDelivery + fulfilmentSummary.outForDelivery) > 0 ? ' · ' : ''}
+                  {(fulfilmentSummary.readyForDelivery + fulfilmentSummary.outForDelivery) > 0 ? `${fulfilmentSummary.readyForDelivery + fulfilmentSummary.outForDelivery} delivery` : ''}
+                </p>
+              </div>
+              <svg className={`ml-auto h-4 w-4 shrink-0 text-surface-400 transition-transform duration-fast ${expandedSection === 'fulfilment' ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+            </button>
+          )}
         </div>
       )}
 
@@ -507,6 +622,18 @@ export default function Bookings() {
         />
       )}
 
+      {expandedSection === 'fulfilment' && (
+        <FulfilmentQueuePanel
+          loading={fulfilmentLoading}
+          queue={fulfilmentQueue}
+          summary={fulfilmentSummary}
+          workingId={fulfilmentWorkingId}
+          onPickup={completePickup}
+          onDispatch={dispatchDelivery}
+          onConfirmDelivery={confirmDelivery}
+        />
+      )}
+
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <SummaryCard label="Total bookings" value={summary.totalBookings} />
         <SummaryCard label="Confirmed" value={summary.confirmedCount} />
@@ -520,7 +647,11 @@ export default function Bookings() {
             {[
               { value: '', label: 'All' },
               { value: 'CONFIRMED', label: 'Confirmed' },
+              { value: 'READY_FOR_PICKUP', label: 'Ready (pickup)' },
+              { value: 'READY_FOR_DELIVERY', label: 'Ready (delivery)' },
+              { value: 'OUT_FOR_DELIVERY', label: 'Out for delivery' },
               { value: 'PICKED_UP', label: 'Picked up' },
+              { value: 'DELIVERED', label: 'Delivered' },
               { value: 'CANCELLED', label: 'Cancelled' },
             ].map((tab) => (
               <button
@@ -651,7 +782,7 @@ export default function Bookings() {
                   </td>
                   <td className="px-4 py-3 text-center">
                     <Badge color={BOOKING_STATUS_BADGES[booking.status] || 'neutral'}>
-                      {booking.status.replace('_', ' ')}
+                      {BOOKING_STATUS_LABELS[booking.status] || booking.status}
                     </Badge>
                   </td>
                   <td className="px-4 py-3 text-body text-surface-500">{formatDate(booking.createdAt)}</td>
@@ -827,6 +958,135 @@ function RowActionMenu({ onView, onManagePayments, onCancel }) {
         </div>
       )}
     </div>
+  );
+}
+
+function FulfilmentQueuePanel({ loading, queue, summary, workingId, onPickup, onDispatch, onConfirmDelivery }) {
+  const [driverInputs, setDriverInputs] = useState({});
+
+  if (loading) {
+    return (
+      <Card className="p-6">
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => <div key={i} className="h-16 rounded-lg bg-surface-100 animate-pulse" />)}
+        </div>
+      </Card>
+    );
+  }
+
+  if (queue.length === 0) {
+    return (
+      <Card className="px-6 py-12">
+        <EmptyState
+          title="No bookings awaiting fulfilment"
+          body="When a batch is received, its confirmed bookings will automatically appear here."
+        />
+      </Card>
+    );
+  }
+
+  const pickups = queue.filter((b) => b.status === 'READY_FOR_PICKUP');
+  const deliveries = queue.filter((b) => ['READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY'].includes(b.status));
+
+  return (
+    <Card className="divide-y divide-surface-100">
+      <div className="px-5 py-4">
+        <h3 className="text-title text-surface-900">Fulfilment queue</h3>
+        <p className="mt-1 text-body text-surface-500">
+          {summary.readyForPickup > 0 && `${summary.readyForPickup} ready for pickup`}
+          {summary.readyForPickup > 0 && (summary.readyForDelivery + summary.outForDelivery) > 0 && ' · '}
+          {summary.readyForDelivery > 0 && `${summary.readyForDelivery} ready for delivery`}
+          {summary.readyForDelivery > 0 && summary.outForDelivery > 0 && ' · '}
+          {summary.outForDelivery > 0 && `${summary.outForDelivery} out for delivery`}
+        </p>
+      </div>
+
+      {pickups.length > 0 && (
+        <div className="px-5 py-4">
+          <h4 className="mb-3 text-overline text-surface-600">Pickups</h4>
+          <div className="space-y-2">
+            {pickups.map((b) => (
+              <div key={b.id} className="flex flex-col gap-3 rounded-lg border border-surface-200 bg-surface-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-body font-medium text-surface-900">{b.customer?.name || 'Customer'}</p>
+                  <p className="text-caption text-surface-500">
+                    {b.customer?.phone || ''} · {b.batch?.name || 'Batch'} · {b.quantity} crate{b.quantity !== 1 ? 's' : ''} · {formatCurrency(b.orderValue)}
+                  </p>
+                  {b.readyAt && <p className="text-caption text-surface-400">Ready since {formatDate(b.readyAt)}</p>}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onPickup(b.id)}
+                  disabled={workingId === b.id}
+                  className="shrink-0 rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-50"
+                >
+                  {workingId === b.id ? 'Working...' : 'Mark picked up'}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {deliveries.length > 0 && (
+        <div className="px-5 py-4">
+          <h4 className="mb-3 text-overline text-surface-600">Deliveries</h4>
+          <div className="space-y-2">
+            {deliveries.map((b) => (
+              <div key={b.id} className="rounded-lg border border-surface-200 bg-surface-50 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-body font-medium text-surface-900">{b.customer?.name || 'Customer'}</p>
+                      <Badge color={b.status === 'OUT_FOR_DELIVERY' ? 'info' : 'warning'}>
+                        {BOOKING_STATUS_LABELS[b.status]}
+                      </Badge>
+                    </div>
+                    <p className="text-caption text-surface-500">
+                      {b.customer?.phone || ''} · {b.batch?.name || 'Batch'} · {b.quantity} crate{b.quantity !== 1 ? 's' : ''} · {formatCurrency(b.orderValue)}
+                    </p>
+                    {b.deliveryAddress && <p className="mt-1 text-caption text-surface-600">Deliver to: {b.deliveryAddress}</p>}
+                    {b.driverName && <p className="text-caption text-surface-500">Driver: {b.driverName}</p>}
+                    {b.readyAt && <p className="text-caption text-surface-400">Ready since {formatDate(b.readyAt)}</p>}
+                  </div>
+                  <div className="flex shrink-0 flex-col gap-2 sm:items-end">
+                    {b.status === 'READY_FOR_DELIVERY' && (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          placeholder="Driver name"
+                          value={driverInputs[b.id] || ''}
+                          onChange={(e) => setDriverInputs({ ...driverInputs, [b.id]: e.target.value })}
+                          className="w-[140px] rounded-md border border-surface-200 bg-white px-3 py-1.5 text-sm text-surface-900 placeholder:text-surface-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => onDispatch(b.id, driverInputs[b.id] || '')}
+                          disabled={workingId === b.id}
+                          className="shrink-0 rounded-md bg-brand-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-50"
+                        >
+                          {workingId === b.id ? 'Working...' : 'Dispatch'}
+                        </button>
+                      </div>
+                    )}
+                    {b.status === 'OUT_FOR_DELIVERY' && (
+                      <button
+                        type="button"
+                        onClick={() => onConfirmDelivery(b.id)}
+                        disabled={workingId === b.id}
+                        className="shrink-0 rounded-md bg-success-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-success-700 disabled:opacity-50"
+                      >
+                        {workingId === b.id ? 'Working...' : 'Confirm delivered'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -1755,7 +2015,7 @@ function BookingDetailModal({ booking, onClose, onManagePayments }) {
           <div className="flex flex-wrap gap-2 justify-end">
             <Badge color={sourceMeta.tone}>{sourceMeta.label}</Badge>
             <Badge color={paymentMeta.tone}>{paymentMeta.label}</Badge>
-            <Badge color={BOOKING_STATUS_BADGES[booking.status] || 'neutral'}>{booking.status.replace('_', ' ')}</Badge>
+            <Badge color={BOOKING_STATUS_BADGES[booking.status] || 'neutral'}>{BOOKING_STATUS_LABELS[booking.status] || booking.status}</Badge>
           </div>
         </div>
 
@@ -1765,6 +2025,43 @@ function BookingDetailModal({ booking, onClose, onManagePayments }) {
           <MetricCard label="Paid" value={formatCurrency(booking.amountPaid)} />
           <MetricCard label="Balance" value={formatCurrency(booking.balance)} tone={booking.balance > 0 ? 'warning' : 'success'} />
         </div>
+
+        {/* Fulfilment info */}
+        {booking.fulfilmentType && (
+          <Card className="p-4 bg-surface-50">
+            <p className="text-overline text-surface-600 mb-2">Fulfilment</p>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div>
+                <p className="text-caption text-surface-500">Type</p>
+                <p className="text-body font-medium text-surface-900">{booking.fulfilmentType === 'DELIVERY' ? 'Delivery' : 'Pickup'}</p>
+              </div>
+              {booking.readyAt && (
+                <div>
+                  <p className="text-caption text-surface-500">Ready at</p>
+                  <p className="text-body text-surface-900">{formatDate(booking.readyAt)}</p>
+                </div>
+              )}
+              {booking.driverName && (
+                <div>
+                  <p className="text-caption text-surface-500">Driver</p>
+                  <p className="text-body text-surface-900">{booking.driverName}</p>
+                </div>
+              )}
+              {booking.completedAt && (
+                <div>
+                  <p className="text-caption text-surface-500">{booking.fulfilmentType === 'DELIVERY' ? 'Delivered' : 'Picked up'}</p>
+                  <p className="text-body text-surface-900">{formatDate(booking.completedAt)}</p>
+                </div>
+              )}
+              {booking.deliveryAddress && (
+                <div className="col-span-2">
+                  <p className="text-caption text-surface-500">Delivery address</p>
+                  <p className="text-body text-surface-900">{booking.deliveryAddress}</p>
+                </div>
+              )}
+            </div>
+          </Card>
+        )}
 
         <Card className="p-4 bg-surface-50">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

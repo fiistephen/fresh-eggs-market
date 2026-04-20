@@ -766,6 +766,45 @@ export default async function batchRoutes(fastify) {
           },
         });
 
+        // ── Fulfilment: auto-transition CONFIRMED bookings ──
+        // Pickup bookings → READY_FOR_PICKUP
+        // Delivery bookings → READY_FOR_DELIVERY
+        const confirmedBookings = await tx.booking.findMany({
+          where: { batchId: receivedBatch.id, status: 'CONFIRMED' },
+          select: { id: true, deliveryRequested: true, fulfilmentType: true },
+        });
+
+        if (confirmedBookings.length > 0) {
+          const now = new Date();
+          const pickupIds = [];
+          const deliveryIds = [];
+
+          for (const b of confirmedBookings) {
+            if (b.deliveryRequested || b.fulfilmentType === 'DELIVERY') {
+              deliveryIds.push(b.id);
+            } else {
+              pickupIds.push(b.id);
+            }
+          }
+
+          if (pickupIds.length > 0) {
+            await tx.booking.updateMany({
+              where: { id: { in: pickupIds } },
+              data: { status: 'READY_FOR_PICKUP', fulfilmentType: 'PICKUP', readyAt: now },
+            });
+          }
+          if (deliveryIds.length > 0) {
+            await tx.booking.updateMany({
+              where: { id: { in: deliveryIds } },
+              data: { status: 'READY_FOR_DELIVERY', fulfilmentType: 'DELIVERY', readyAt: now },
+            });
+          }
+
+          fastify.log.info(
+            `Batch ${receivedBatch.name} received: ${pickupIds.length} bookings → READY_FOR_PICKUP, ${deliveryIds.length} → READY_FOR_DELIVERY`,
+          );
+        }
+
         return receivedBatch;
       });
 
