@@ -275,8 +275,11 @@ export default function Bookings() {
   const [filter, setFilter] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const [serverSummary, setServerSummary] = useState(null);
   const [showCreate, setShowCreate] = useState(null);
   const [managePaymentsBooking, setManagePaymentsBooking] = useState(null);
   const [showCancel, setShowCancel] = useState(null);
@@ -296,7 +299,7 @@ export default function Bookings() {
 
   useEffect(() => {
     loadBookings();
-  }, [filter, search, page, pageSize]);
+  }, [filter, search, dateFrom, dateTo, page, pageSize]);
 
   useEffect(() => {
     loadPortalBookingQueue();
@@ -328,12 +331,15 @@ export default function Bookings() {
       const query = new URLSearchParams();
       if (filter) query.set('status', filter);
       if (search) query.set('search', search);
+      if (dateFrom) query.set('dateFrom', dateFrom);
+      if (dateTo) query.set('dateTo', dateTo);
       query.set('page', String(page));
       query.set('pageSize', String(pageSize));
       const params = query.toString() ? `?${query.toString()}` : '';
       const data = await api.get(`/bookings${params}`);
       setBookings(data.bookings || []);
       setBookingsPagination(data.pagination || { page: 1, pageSize, total: data.bookings?.length || 0, totalPages: 1 });
+      setServerSummary(data.summary || null);
     } catch {
       setError('Failed to load bookings');
     } finally {
@@ -395,15 +401,12 @@ export default function Bookings() {
     }
   }
 
-  const summary = useMemo(() => {
-    const confirmed = bookings.filter((booking) => booking.status === 'CONFIRMED');
-    return {
-      count: bookings.length,
-      confirmedCount: confirmed.length,
-      bookedCrates: confirmed.reduce((sum, booking) => sum + booking.quantity, 0),
-      amountApplied: confirmed.reduce((sum, booking) => sum + Number(booking.amountPaid || 0), 0),
-    };
-  }, [bookings]);
+  const summary = serverSummary || {
+    totalBookings: bookings.length,
+    confirmedCount: bookings.filter((b) => b.status === 'CONFIRMED').length,
+    bookedCrates: bookings.filter((b) => b.status === 'CONFIRMED').reduce((s, b) => s + b.quantity, 0),
+    amountApplied: bookings.filter((b) => b.status === 'CONFIRMED').reduce((s, b) => s + Number(b.amountPaid || 0), 0),
+  };
 
   const hangingCount = hangingDeposits.length;
   const hangingTotal = hangingDeposits.reduce((sum, d) => sum + Number(d.availableAmount || 0), 0);
@@ -514,7 +517,7 @@ export default function Bookings() {
       )}
 
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <SummaryCard label="Bookings (this page)" value={summary.count} />
+        <SummaryCard label="Total bookings" value={summary.totalBookings} />
         <SummaryCard label="Confirmed" value={summary.confirmedCount} />
         <SummaryCard label="Booked crates" value={summary.bookedCrates} />
         <SummaryCard label="Money applied" value={formatCurrency(summary.amountApplied)} />
@@ -546,7 +549,7 @@ export default function Bookings() {
             ))}
           </div>
         </div>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex flex-wrap gap-3 items-center">
           <div className="min-w-[240px]">
             <Input
               type="text"
@@ -554,6 +557,31 @@ export default function Bookings() {
               onChange={(event) => setSearchInput(event.target.value)}
               placeholder="Search customer, phone, batch, or ref"
             />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Input
+              type="date"
+              value={dateFrom}
+              onChange={(event) => { setDateFrom(event.target.value); setPage(1); }}
+              className="w-[140px]"
+            />
+            <span className="text-caption text-surface-400">to</span>
+            <Input
+              type="date"
+              value={dateTo}
+              onChange={(event) => { setDateTo(event.target.value); setPage(1); }}
+              className="w-[140px]"
+            />
+            {(dateFrom || dateTo) && (
+              <button
+                type="button"
+                onClick={() => { setDateFrom(''); setDateTo(''); setPage(1); }}
+                className="rounded-md p-1 text-surface-400 hover:text-surface-600 hover:bg-surface-100 transition-colors duration-fast"
+                title="Clear dates"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            )}
           </div>
           <div className="w-[140px]">
             <Select
@@ -2181,64 +2209,59 @@ function CancelBookingModal({ booking, onClose, onCancelled }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <Card className="w-full max-w-md rounded-xl shadow-xl" onClick={(event) => event.stopPropagation()}>
-        <div className="border-b border-surface-200 px-6 py-4">
-          <h2 className="text-title font-semibold text-error-600">Cancel booking</h2>
-        </div>
-        <div className="space-y-4 p-6">
-          {error && (
-            <Card variant="error" className="p-4">
-              <p className="text-body text-error-900">{error}</p>
-            </Card>
-          )}
-
-          <Card className="bg-surface-50 p-4 space-y-2">
-            <p>
-              <span className="text-surface-500">Customer:</span>
-              {' '}
-              <span className="font-medium text-surface-900">{booking.customer?.name}</span>
-            </p>
-            <p>
-              <span className="text-surface-500">Batch:</span>
-              {' '}
-              <span className="font-medium text-surface-900">{booking.batch?.name}</span>
-            </p>
-            <p>
-              <span className="text-surface-500">Quantity:</span>
-              {' '}
-              <span className="font-medium text-surface-900">{booking.quantity} crates</span>
-            </p>
-            <p>
-              <span className="text-surface-500">Applied:</span>
-              {' '}
-              <span className="font-medium text-surface-900">{formatCurrency(booking.amountPaid)}</span>
-            </p>
+    <Modal open={true} onClose={onClose} title="Cancel booking" size="sm" footer={false}>
+      <div className="space-y-4">
+        {error && (
+          <Card variant="error" className="p-4">
+            <p className="text-body text-error-900">{error}</p>
           </Card>
+        )}
 
-          <p className="text-body text-surface-600">
-            This will cancel the booking only. Any refund still needs to be recorded from Banking.
+        <Card className="bg-surface-50 p-4 space-y-2">
+          <p>
+            <span className="text-surface-500">Customer:</span>
+            {' '}
+            <span className="font-medium text-surface-900">{booking.customer?.name}</span>
           </p>
+          <p>
+            <span className="text-surface-500">Batch:</span>
+            {' '}
+            <span className="font-medium text-surface-900">{booking.batch?.name}</span>
+          </p>
+          <p>
+            <span className="text-surface-500">Quantity:</span>
+            {' '}
+            <span className="font-medium text-surface-900">{booking.quantity} crates</span>
+          </p>
+          <p>
+            <span className="text-surface-500">Applied:</span>
+            {' '}
+            <span className="font-medium text-surface-900">{formatCurrency(booking.amountPaid)}</span>
+          </p>
+        </Card>
 
-          <div className="flex justify-end gap-3 pt-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={onClose}
-            >
-              Keep booking
-            </Button>
-            <Button
-              variant="danger"
-              size="sm"
-              onClick={handleCancel}
-              disabled={submitting}
-            >
-              {submitting ? 'Cancelling…' : 'Cancel booking'}
-            </Button>
-          </div>
+        <p className="text-body text-surface-600">
+          This will cancel the booking only. Any refund still needs to be recorded from Banking.
+        </p>
+
+        <div className="flex justify-end gap-3 pt-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={onClose}
+          >
+            Keep booking
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={handleCancel}
+            disabled={submitting}
+          >
+            {submitting ? 'Cancelling…' : 'Cancel booking'}
+          </Button>
         </div>
-      </Card>
-    </div>
+      </div>
+    </Modal>
   );
 }

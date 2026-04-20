@@ -414,6 +414,8 @@ export default async function bookingRoutes(fastify) {
         customerId,
         status,
         search = '',
+        dateFrom,
+        dateTo,
         page = 1,
         pageSize = 25,
       } = request.query;
@@ -425,6 +427,12 @@ export default async function bookingRoutes(fastify) {
       if (batchId) filters.push({ batchId });
       if (customerId) filters.push({ customerId });
       if (status) filters.push({ status });
+      if (dateFrom) filters.push({ createdAt: { gte: new Date(dateFrom) } });
+      if (dateTo) {
+        const end = new Date(dateTo);
+        end.setHours(23, 59, 59, 999);
+        filters.push({ createdAt: { lte: end } });
+      }
       if (searchTerm) {
         filters.push({
           OR: [
@@ -438,7 +446,11 @@ export default async function bookingRoutes(fastify) {
 
       const where = filters.length > 0 ? { AND: filters } : {};
 
-      const [bookings, total, eggTypes, policy] = await Promise.all([
+      // Build a confirmed-only filter (same filters minus any status, plus status=CONFIRMED)
+      const confirmedFilters = filters.filter((f) => !f.status).concat({ status: 'CONFIRMED' });
+      const confirmedWhere = { AND: confirmedFilters };
+
+      const [bookings, total, confirmedAgg, eggTypes, policy] = await Promise.all([
         prisma.booking.findMany({
           where,
           include: buildBookingInclude(),
@@ -447,9 +459,15 @@ export default async function bookingRoutes(fastify) {
           take: parsedPageSize,
         }),
         prisma.booking.count({ where }),
+        prisma.booking.aggregate({
+          where: confirmedWhere,
+          _count: true,
+          _sum: { quantity: true, amountPaid: true },
+        }).catch(() => ({ _count: 0, _sum: { quantity: 0, amountPaid: 0 } })),
         getCustomerEggTypeConfig(),
         getOperationsPolicy(),
       ]);
+
       return reply.send({
         bookings: bookings.map((booking) => enrichBooking(booking, eggTypes, policy)),
         pagination: {
@@ -457,6 +475,12 @@ export default async function bookingRoutes(fastify) {
           pageSize: parsedPageSize,
           total,
           totalPages: Math.max(1, Math.ceil(total / parsedPageSize)),
+        },
+        summary: {
+          totalBookings: total,
+          confirmedCount: confirmedAgg._count || 0,
+          bookedCrates: Number(confirmedAgg._sum?.quantity || 0),
+          amountApplied: Number(confirmedAgg._sum?.amountPaid || 0),
         },
       });
     },
