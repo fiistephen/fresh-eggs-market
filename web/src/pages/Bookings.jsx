@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api';
+import { waitingTimeInfo } from '../lib/helpers';
 import { useAuth } from '../contexts/AuthContext';
 import { Button, Input, Select, Modal, Card, Badge, EmptyState, useToast } from '../components/ui';
 
@@ -25,25 +26,6 @@ function formatDate(value) {
     month: 'short',
     year: 'numeric',
   });
-}
-
-/**
- * Returns a waiting time label and urgency level for portal transfers.
- * Per Meeting 3: pending transfers must be confirmed within 1 hour during business hours.
- */
-function waitingTimeInfo(createdAt) {
-  if (!createdAt) return { label: '', isOverdue: false, minutes: 0 };
-  const minutes = Math.floor((Date.now() - new Date(createdAt).getTime()) / 60000);
-  const isOverdue = minutes >= 60;
-  let label;
-  if (minutes < 1) label = 'Just now';
-  else if (minutes < 60) label = `Waiting ${minutes}m`;
-  else {
-    const hours = Math.floor(minutes / 60);
-    const rem = minutes % 60;
-    label = `Waiting ${hours}h${rem > 0 ? ` ${rem}m` : ''}`;
-  }
-  return { label, isOverdue, minutes };
 }
 
 function bookingSourceMeta(booking) {
@@ -280,6 +262,8 @@ export default function Bookings() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [serverSummary, setServerSummary] = useState(null);
+  const [batchFilter, setBatchFilter] = useState('');
+  const [batchOptions, setBatchOptions] = useState([]);
   const [showCreate, setShowCreate] = useState(null);
   const [managePaymentsBooking, setManagePaymentsBooking] = useState(null);
   const [showCancel, setShowCancel] = useState(null);
@@ -288,6 +272,12 @@ export default function Bookings() {
 
   const canCreate = ['ADMIN', 'MANAGER'].includes(user?.role);
   const canCancel = ['ADMIN', 'MANAGER'].includes(user?.role);
+
+  useEffect(() => {
+    api.get('/batches?pageSize=100').then((data) => {
+      setBatchOptions((data.batches || []).map((b) => ({ id: b.id, name: b.name, status: b.status })));
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -299,7 +289,7 @@ export default function Bookings() {
 
   useEffect(() => {
     loadBookings();
-  }, [filter, search, dateFrom, dateTo, page, pageSize]);
+  }, [filter, search, dateFrom, dateTo, batchFilter, page, pageSize]);
 
   useEffect(() => {
     loadPortalBookingQueue();
@@ -333,6 +323,7 @@ export default function Bookings() {
       if (search) query.set('search', search);
       if (dateFrom) query.set('dateFrom', dateFrom);
       if (dateTo) query.set('dateTo', dateTo);
+      if (batchFilter) query.set('batchId', batchFilter);
       query.set('page', String(page));
       query.set('pageSize', String(pageSize));
       const params = query.toString() ? `?${query.toString()}` : '';
@@ -582,6 +573,17 @@ export default function Bookings() {
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             )}
+          </div>
+          <div className="w-[160px]">
+            <Select
+              value={batchFilter}
+              onChange={(event) => { setBatchFilter(event.target.value); setPage(1); }}
+            >
+              <option value="">All batches</option>
+              {batchOptions.map((b) => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </Select>
           </div>
           <div className="w-[140px]">
             <Select
@@ -1778,15 +1780,18 @@ function BookingDetailModal({ booking, onClose, onManagePayments }) {
           <Card className="p-4">
             <p className="text-overline text-surface-600 mb-3">Lifecycle</p>
             <div className="space-y-3">
-              {lifecycle.map((event) => (
-                <div key={`${event.label}-${event.value}`} className="flex items-start justify-between gap-3 border-b border-surface-100 pb-3 last:border-b-0 last:pb-0">
-                  <div>
-                    <p className="text-body-medium font-semibold text-surface-900">{event.label}</p>
-                    <p className="text-caption text-surface-500 mt-1">{event.value}</p>
+              {lifecycle.map((event) => {
+                const dotColor = event.tone === 'success' ? 'bg-success-500' : event.tone === 'warning' ? 'bg-warning-500' : 'bg-surface-300';
+                return (
+                  <div key={`${event.label}-${event.value}`} className="flex items-start gap-3 border-b border-surface-100 pb-3 last:border-b-0 last:pb-0">
+                    <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${dotColor}`} />
+                    <div>
+                      <p className="text-body-medium font-semibold text-surface-900">{event.label}</p>
+                      <p className="text-caption text-surface-500 mt-1">{event.value}</p>
+                    </div>
                   </div>
-                  <Badge color={event.tone}>{event.label}</Badge>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </Card>
         )}

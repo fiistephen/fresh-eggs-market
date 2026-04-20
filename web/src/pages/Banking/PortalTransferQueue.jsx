@@ -1,22 +1,8 @@
 import { useState } from 'react';
 import { api } from '../../lib/api';
+import { waitingTimeInfo } from '../../lib/helpers';
 import { fmtMoney, fmtDate } from './shared/constants';
 import { PanelLoading, EmptyPanel, SummaryBanner, StatPill, StatusChip } from './shared/ui';
-
-function waitingTimeInfo(createdAt) {
-  if (!createdAt) return { label: '', isOverdue: false };
-  const minutes = Math.floor((Date.now() - new Date(createdAt).getTime()) / 60000);
-  const isOverdue = minutes >= 60;
-  let label;
-  if (minutes < 1) label = 'Just now';
-  else if (minutes < 60) label = `Waiting ${minutes}m`;
-  else {
-    const hours = Math.floor(minutes / 60);
-    const rem = minutes % 60;
-    label = `Waiting ${hours}h${rem > 0 ? ` ${rem}m` : ''}`;
-  }
-  return { label, isOverdue };
-}
 
 function decisionLabel(type) {
   if (type === 'APPROVED') return 'Approved';
