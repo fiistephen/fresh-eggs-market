@@ -70,9 +70,9 @@ const fmtDate = (d) => new Date(d).toLocaleDateString('en-NG', { day: 'numeric',
 const today = () => new Date().toISOString().slice(0, 10);
 
 const crackStatusMap = {
-  OK: { label: 'Within allowance', color: 'success' },
-  WATCH: { label: 'Watch closely', color: 'warning' },
-  ALERT: { label: 'Above allowance', color: 'error' },
+  OK: { color: 'success' },
+  WATCH: { label: 'Crack rate', color: 'warning' },
+  ALERT: { label: 'Crack rate high', color: 'error' },
 };
 
 // ─── STAT CARD ───────────────────────────────────────────────────
@@ -514,7 +514,7 @@ function OverviewTab({ inventory, totals, policy, loading, onRefresh }) {
           <div className="flex gap-3">
             <AlertIcon className="text-error-600 flex-shrink-0" />
             <p className="text-body text-error-700">
-              <span className="font-medium">{totals.alertCount} batch{totals.alertCount === 1 ? '' : 'es'}</span> above the {policy?.crackAllowancePercent || 0}% crack allowance — review counts or handling.
+              <span className="font-medium">{totals.alertCount} batch{totals.alertCount === 1 ? ' has' : 'es have'}</span> a high crack rate (above {policy?.crackAllowancePercent || 0}%) — review counts or handling.
             </p>
           </div>
         </Card>
@@ -552,7 +552,7 @@ function OverviewTab({ inventory, totals, policy, loading, onRefresh }) {
                       <h3 className="text-heading text-surface-800">{item.batch.name}</h3>
                       {item.crackAlert?.level && item.crackAlert.level !== 'OK' && (
                         <Badge status={crackStatusMap[item.crackAlert.level]?.color || 'neutral'}>
-                          {crackStatusMap[item.crackAlert.level]?.label}
+                          {crackStatusMap[item.crackAlert.level]?.label} · {Number(item.crackRatePercent || 0).toFixed(1)}%
                         </Badge>
                       )}
                     </div>
