@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
+import { useTabParam } from '../lib/useTabParam';
 import { useAuth } from '../contexts/AuthContext';
 import { Button, Input, Select, Modal, Card, Badge, EmptyState, useToast } from '../components/ui';
 
@@ -86,7 +87,7 @@ export default function BatchDetail() {
   const [analysis, setAnalysis] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState('details');
+  const [activeTab, setActiveTab] = useTabParam('details', ['details', 'eggcodes', 'bookings', 'sales', 'analysis', 'auditlog']);
 
   // Modal states
   const [showReceive, setShowReceive] = useState(false);

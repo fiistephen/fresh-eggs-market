@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../lib/api';
+import { useTabParam } from '../lib/useTabParam';
 import { Button, Input, Select, Textarea, Modal, Card, Badge, EmptyState, useToast, Pagination } from '../components/ui';
 
 // ─── SVG ICONS ───────────────────────────────────────────────────
@@ -853,7 +854,7 @@ function WriteOffsTab() {
 
 // ─── MAIN INVENTORY PAGE ─────────────────────────────────────────
 export default function Inventory() {
-  const [tab, setTab] = useState('overview');
+  const [tab, setTab] = useTabParam('overview', ['overview', 'counts', 'writeoffs']);
   const [inventory, setInventory] = useState([]);
   const [totals, setTotals] = useState({ totalReceived: 0, totalSold: 0, totalWrittenOff: 0, crackedSoldQuantity: 0, onHand: 0, booked: 0, available: 0, alertCount: 0 });
   const [policy, setPolicy] = useState({ crackAllowancePercent: 0 });

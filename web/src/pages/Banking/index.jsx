@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTabParam } from '../../lib/useTabParam';
 import { useAuth } from '../../contexts/AuthContext';
 import { api } from '../../lib/api';
 import { buildCategoryMap } from './shared/constants';
@@ -58,8 +59,8 @@ export default function Banking() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  /* ── View state ──────────────────────────────────────── */
-  const [activeView, setActiveView] = useState('today');
+  /* ── View state (synced with ?tab= URL param) ────────── */
+  const [activeView, setActiveView] = useTabParam('today', ['today', 'transactions', 'cash-deposits', 'reports', 'approvals', 'imports']);
 
   /* ── Data state ──────────────────────────────────────── */
   const [accounts, setAccounts] = useState([]);
