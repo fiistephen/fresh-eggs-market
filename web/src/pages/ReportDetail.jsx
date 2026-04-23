@@ -767,6 +767,7 @@ function ReceiptDetailCard({ receipt }) {
       </html>
     `);
     printWindow.document.close();
+    printWindow.onafterprint = function () { printWindow.close(); };
     printWindow.focus();
     printWindow.print();
   }
@@ -926,6 +927,7 @@ function ReceiptDetailCard({ receipt }) {
             </div>
           </div>
           <script>
+            window.onafterprint = function () { window.close(); };
             window.onload = function () {
               window.focus();
               window.print();

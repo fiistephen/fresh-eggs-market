@@ -1129,6 +1129,7 @@ function RecordSaleModal({ onClose, onRecorded }) {
             </div>
           </div>
           <script>
+            window.onafterprint = function () { window.close(); };
             window.onload = function () {
               window.focus();
               window.print();
@@ -2046,6 +2047,7 @@ function SaleDetailModal({ sale, onClose }) {
             </div>
           </div>
           <script>
+            window.onafterprint = function () { window.close(); };
             window.onload = function () {
               window.focus();
               window.print();
