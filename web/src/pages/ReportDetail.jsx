@@ -305,9 +305,10 @@ function ExecutiveSummaryReport({ data }) {
         <Panel title="Top items" body="This highlights the strongest items for the selected period.">
           <BarComparisonChart
             data={data.byItem.slice(0, 6)}
-            labelKey="itemCode"
+            labelKey="itemLabel"
             valueKey="totalAmount"
             valueFormatter={formatCurrency}
+            labelFormatter={(label, row) => row?.saleType ? `${label} (${SALE_TYPE_LABELS[row.saleType] || row.saleType})` : label}
           />
         </Panel>
       </div>
@@ -1497,30 +1498,52 @@ function SummaryCard({ label, value, hint }) {
 }
 
 function DataTable({ columns, rows, footer, emptyText = 'No rows found.' }) {
-  if (!rows.length) {
+  if (!rows?.length) {
     return <EmptyPanel text={emptyText} />;
   }
+
+  // Support both formats:
+  // 1. Simple: columns = ['Name', 'Qty'], rows = [['Alice', 10], ['Bob', 5]]
+  // 2. Object: columns = [{key, label, align?, render?}], rows = [{name: 'Alice', qty: 10}]
+  const isObjectColumns = columns.length > 0 && typeof columns[0] === 'object';
 
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[720px]">
         <thead>
           <tr className="border-b border-surface-100">
-            {columns.map((column) => (
-              <th key={column} className="text-left py-3 px-4 text-caption font-medium text-surface-500 uppercase tracking-wider">
-                {column}
-              </th>
-            ))}
+            {columns.map((col, i) => {
+              const label = isObjectColumns ? col.label : col;
+              const align = isObjectColumns && col.align === 'right' ? 'text-right' : 'text-left';
+              return (
+                <th key={isObjectColumns ? col.key : i} className={`${align} py-3 px-4 text-caption font-medium text-surface-500 uppercase tracking-wider`}>
+                  {label}
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody>
           {rows.map((row, rowIndex) => (
-            <tr key={`${rowIndex}-${row[0]}`} className="border-b border-surface-100">
-              {row.map((cell, cellIndex) => (
-                <td key={`${rowIndex}-${cellIndex}`} className="py-3 px-4 text-body text-surface-700">
-                  {cell}
-                </td>
-              ))}
+            <tr key={rowIndex} className="border-b border-surface-100">
+              {isObjectColumns ? (
+                columns.map((col) => {
+                  const rawValue = row[col.key];
+                  const display = col.render ? col.render(rawValue, row) : (rawValue ?? '—');
+                  const align = col.align === 'right' ? 'text-right' : 'text-left';
+                  return (
+                    <td key={col.key} className={`${align} py-3 px-4 text-body text-surface-700`}>
+                      {display}
+                    </td>
+                  );
+                })
+              ) : (
+                row.map((cell, cellIndex) => (
+                  <td key={cellIndex} className="py-3 px-4 text-body text-surface-700">
+                    {cell}
+                  </td>
+                ))
+              )}
             </tr>
           ))}
           {footer ? (
@@ -1600,6 +1623,17 @@ function AreaTrendChart({ data, labelKey, valueKey, valueFormatter, labelFormatt
   );
 }
 
+const BAR_COLORS = [
+  'bg-brand-500',
+  'bg-info-500',
+  'bg-success-500',
+  'bg-warning-500',
+  'bg-error-400',
+  'bg-surface-400',
+  'bg-brand-400',
+  'bg-info-400',
+];
+
 function BarComparisonChart({ data, labelKey, valueKey, valueFormatter, labelFormatter = (value) => value }) {
   if (!data?.length) {
     return <EmptyPanel text="No chart data found for this period." />;
@@ -1609,20 +1643,21 @@ function BarComparisonChart({ data, labelKey, valueKey, valueFormatter, labelFor
 
   return (
     <div className="space-y-3">
-      {data.map((row) => {
+      {data.map((row, index) => {
         const value = Number(row[valueKey] || 0);
         const widthPercent = (value / maxValue) * 100;
-        const label = labelFormatter(row[labelKey]);
+        const label = labelFormatter(row[labelKey], row);
+        const barColor = BAR_COLORS[index % BAR_COLORS.length];
 
         return (
-          <div key={`${label}-${value}`} className="space-y-1">
+          <div key={`${label}-${value}-${index}`} className="space-y-1">
             <div className="flex items-center justify-between gap-4 text-body">
               <span className="text-surface-700 font-medium truncate">{label}</span>
               <span className="text-surface-500">{valueFormatter(value)}</span>
             </div>
-            <div className="h-3 rounded-full bg-surface-100 overflow-hidden">
+            <div className="h-2.5 rounded-full bg-surface-100 overflow-hidden">
               <div
-                className="h-full rounded-full bg-gradient-to-r from-brand-500 to-emerald-400"
+                className={`h-full rounded-full ${barColor}`}
                 style={{ width: `${Math.max(widthPercent, 4)}%` }}
               />
             </div>
