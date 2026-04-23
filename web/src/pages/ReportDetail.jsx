@@ -683,12 +683,15 @@ function ReceiptDetailModal({ receipt, onClose }) {
 function ReceiptDetailCard({ receipt }) {
   function customerLineItems(receipt) {
     return (receipt.lineItems || []).map((lineItem) => ({
-      label: lineItem.itemLabel,
+      label: `Crate of Eggs (${SALE_TYPE_LABELS[lineItem.saleType] || lineItem.saleType})`,
       quantity: lineItem.quantity,
       unitPrice: lineItem.unitPrice,
       lineTotal: lineItem.lineTotal,
     }));
   }
+
+  const employeeName = receipt.recordedBy?.name
+    || (receipt.recordedBy ? `${receipt.recordedBy.firstName || ''} ${receipt.recordedBy.lastName || ''}`.trim() : '');
 
   function handleInternalPrint() {
     if (typeof window === 'undefined') return;
@@ -756,7 +759,7 @@ function ReceiptDetailCard({ receipt }) {
             </div>
             <div class="card">
               <h2>Staff</h2>
-              <p>${receipt.recordedBy?.name || '—'}</p>
+              <p>${employeeName || '—'}</p>
               <p>${SOURCE_LABELS[receipt.sourceType] || receipt.sourceType}</p>
             </div>
           </div>
@@ -773,13 +776,22 @@ function ReceiptDetailCard({ receipt }) {
     const printWindow = window.open('', '_blank', 'width=420,height=900');
     if (!printWindow) return;
 
-    const rows = customerLineItems(receipt).map((lineItem) => `
+    const items = customerLineItems(receipt);
+    const rows = items.map((li) => `
       <tr>
         <td class="item">
-          <div class="name">${lineItem.label}</div>
-          <div class="meta">${lineItem.quantity} x ${formatCurrency(lineItem.unitPrice)}</div>
+          <div class="name">${li.label}</div>
+          <div class="meta">${li.quantity} x ${formatCurrency(li.unitPrice)}</div>
         </td>
-        <td class="amount">${formatCurrency(lineItem.lineTotal)}</td>
+        <td class="amount">${formatCurrency(li.lineTotal)}</td>
+      </tr>
+    `).join('');
+
+    const pRows = receiptPaymentRows(receipt);
+    const paymentHtml = pRows.map((row) => `
+      <tr class="summary-row">
+        <td class="summary-label">${receiptPaymentLabel(receipt, row)}</td>
+        <td class="summary-value">${formatCurrency(row.amount)}</td>
       </tr>
     `).join('');
 
@@ -791,91 +803,126 @@ function ReceiptDetailCard({ receipt }) {
             @page { size: 80mm auto; margin: 6mm; }
             body {
               margin: 0;
-              font-family: "Courier New", Courier, monospace;
-              color: #111;
-              background: #fff;
+              font-family: Arial, Helvetica, sans-serif;
+              color: #111827;
+              background: #ffffff;
             }
             .receipt {
               width: 72mm;
               margin: 0 auto;
               padding: 2mm 0;
-              font-size: 12px;
-              line-height: 1.45;
+              font-size: 13px;
+              line-height: 1.5;
             }
             .center { text-align: center; }
-            .title { font-size: 16px; font-weight: 700; }
-            .muted { color: #444; }
-            .rule {
-              border-top: 1px dashed #000;
-              margin: 8px 0;
-            }
-            table {
-              width: 100%;
-              border-collapse: collapse;
-            }
-            td {
-              vertical-align: top;
-              padding: 4px 0;
-            }
-            .item { width: 70%; }
-            .amount {
-              width: 30%;
-              text-align: right;
-              white-space: nowrap;
-            }
-            .name { font-weight: 700; }
-            .meta { color: #444; font-size: 11px; }
-            .summary-row td {
-              padding: 2px 0;
-            }
-            .summary-row .label { color: #444; }
-            .summary-row .value {
-              text-align: right;
-              white-space: nowrap;
-            }
-            .total {
-              font-size: 14px;
+            .hero-amount {
+              font-size: 18px;
               font-weight: 700;
+              margin-bottom: 2px;
             }
-            .thanks {
-              margin-top: 10px;
-              text-align: center;
+            .hero-label {
+              font-size: 11px;
+              color: #6b7280;
+            }
+            .rule {
+              border-top: 1px solid #d1d5db;
+              margin: 10px 0;
+            }
+            .meta-stack {
+              margin: 6px 0;
+            }
+            .meta-stack-label {
+              color: #374151;
+              font-weight: 400;
+              margin-bottom: 2px;
+            }
+            .meta-stack-value {
+              font-weight: 500;
+            }
+            .muted { color: #6b7280; }
+            table { width: 100%; border-collapse: collapse; }
+            td { vertical-align: top; padding: 5px 0; }
+            .item { width: 70%; }
+            .amount { width: 30%; text-align: right; white-space: nowrap; font-weight: 600; }
+            .name { font-weight: 500; font-size: 13px; }
+            .meta { color: #6b7280; font-size: 12px; }
+            .summary-row td { padding: 3px 0; }
+            .summary-label { color: #4b5563; }
+            .summary-value { text-align: right; font-weight: 600; }
+            .total-row td { padding-top: 6px; font-size: 14px; font-weight: 700; }
+            .footer-row {
+              display: flex;
+              justify-content: space-between;
+              gap: 12px;
+              margin-top: 8px;
+              color: #6b7280;
+              font-size: 12px;
             }
           </style>
         </head>
         <body>
           <div class="receipt">
-            <div class="center">
-              <div class="title">Fresh Eggs Market</div>
-              <div class="muted">Customer Receipt</div>
+            <div class="center" style="margin-bottom:8px;">
+              <img src="/logo.webp" alt="Fresh Eggs" style="width:80px;height:auto;margin:0 auto 6px;" onerror="this.style.display='none'" />
+              <div style="font-size:16px;font-weight:700;letter-spacing:0.5px;">Fresh Eggs Market</div>
+              <div style="font-size:12px;color:#6b7280;margin-top:2px;">SALES RECEIPT</div>
+              <div style="font-size:11px;color:#6b7280;margin-top:6px;line-height:1.5;">
+                Spring Valley Estate, Alasia Bus-stop,<br/>
+                Lekki-Epe Expressway, Lagos<br/>
+                0916-000-7184 &nbsp; info@fresheggsmarket.ng<br/>
+                www.fresheggsmarket.ng
+              </div>
             </div>
+
             <div class="rule"></div>
-            <div><strong>Receipt No:</strong> ${receipt.receiptNumber}</div>
-            <div><strong>Date:</strong> ${formatDateTime(receipt.saleDate)}</div>
-            <div><strong>Staff:</strong> ${receipt.recordedBy?.name || '—'}</div>
-            <div><strong>Customer:</strong> ${receipt.customer?.name || 'Walk-in customer'}</div>
-            ${receipt.customer?.phone ? `<div><strong>Phone:</strong> ${receipt.customer.phone}</div>` : ''}
-            <div><strong>Payment:</strong> ${PAYMENT_LABELS[receipt.paymentMethod] || receipt.paymentMethod}</div>
+
+            <div class="center">
+              <div class="hero-amount">${formatCurrency(receipt.totalAmount)}</div>
+              <div class="hero-label">Total</div>
+            </div>
+
             <div class="rule"></div>
-            <table>
-              <tbody>${rows}</tbody>
-            </table>
+
+            ${employeeName ? `<div class="meta-stack">
+              <div class="meta-stack-label">Employee: ${employeeName}</div>
+              <div class="meta-stack-value">POS: Shop Floor POS</div>
+            </div>
+            <div class="rule"></div>` : ''}
+
+            <div class="meta-stack">
+              <div class="meta-stack-label">Customer: ${receipt.customer?.name || 'Walk-in customer'}</div>
+              ${receipt.customer?.phone ? `<div class="meta-stack-value">${receipt.customer.phone}</div>` : ''}
+            </div>
+
             <div class="rule"></div>
+
+            <table><tbody>${rows}</tbody></table>
+
+            <div class="rule"></div>
+
             <table>
               <tbody>
                 <tr class="summary-row">
-                  <td class="label">Crates</td>
-                  <td class="value">${receipt.totalQuantity}</td>
+                  <td class="summary-label">Subtotal</td>
+                  <td class="summary-value">${formatCurrency(receipt.totalAmount)}</td>
                 </tr>
-                <tr class="summary-row total">
-                  <td class="label">Total Paid</td>
-                  <td class="value">${formatCurrency(receipt.totalAmount)}</td>
+                <tr class="summary-row total-row">
+                  <td class="summary-label">Total</td>
+                  <td class="summary-value">${formatCurrency(receipt.totalAmount)}</td>
                 </tr>
+                ${paymentHtml}
               </tbody>
             </table>
+
             <div class="rule"></div>
-            <div class="thanks">
-              Thank you for your purchase.
+
+            <div class="footer-row">
+              <span>${formatDateTime(receipt.saleDate)}</span>
+              <span>No ${receipt.receiptNumber}</span>
+            </div>
+
+            <div class="center" style="margin-top:12px;color:#6b7280;font-size:11px;">
+              Thank you for shopping with Fresh Eggs Market!
             </div>
           </div>
           <script>
@@ -909,92 +956,104 @@ function ReceiptDetailCard({ receipt }) {
         </button>
       </div>
 
-      <div className="rounded-lg border border-success-200 bg-success-50 p-5">
-        <div className="flex flex-col gap-3 border-b border-green-100 pb-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <p className="text-caption font-semibold uppercase tracking-[0.18em] text-success-700">Customer receipt</p>
-            <h4 className="mt-2 text-heading text-surface-900">Simple receipt for the buyer</h4>
-            <p className="mt-1 text-body text-surface-600">
-              This version keeps only the sale details a customer typically needs: receipt number, date, items, quantity, payment method, and total paid.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={handleCustomerPrint}
-            className="rounded-lg border border-green-300 bg-surface-0 px-4 py-2 text-body font-medium text-success-700 hover:bg-success-100"
-          >
-            Thermal print
-          </button>
+      {/* Customer receipt preview — matches the Sales page receipt design */}
+      <div className="border border-surface-200 rounded-lg bg-white overflow-hidden max-w-md mx-auto">
+        {/* Business header */}
+        <div className="text-center py-4 px-6 border-b border-surface-100">
+          <img src="/logo.webp" alt="Fresh Eggs" className="w-16 h-auto mx-auto mb-2" onError={(e) => { e.target.style.display = 'none'; }} />
+          <p className="text-heading text-surface-900 font-bold">Fresh Eggs Market</p>
+          <p className="text-caption text-surface-400 uppercase tracking-wider mt-0.5">Sales Receipt</p>
+          <p className="text-caption text-surface-500 mt-2 leading-relaxed">
+            Spring Valley Estate, Alasia Bus-stop,<br />
+            Lekki-Epe Expressway, Lagos<br />
+            0916-000-7184 &middot; info@fresheggsmarket.ng
+          </p>
         </div>
 
-        <div className="mx-auto mt-5 max-w-md rounded-lg border border-dashed border-success-200 bg-surface-0 p-5 shadow-sm">
-          <div className="text-center">
-            <p className="text-lg font-bold text-surface-900">Fresh Eggs Market</p>
-            <p className="text-caption uppercase tracking-[0.18em] text-surface-500">Customer Receipt</p>
-          </div>
+        {/* Hero total */}
+        <div className="text-center py-4 bg-surface-50">
+          <p className="text-[28px] font-bold text-surface-900">{formatCurrency(receipt.totalAmount)}</p>
+          <p className="text-caption text-surface-400 mt-0.5">{receipt.totalQuantity} crate{receipt.totalQuantity !== 1 ? 's' : ''}</p>
+        </div>
 
-          <div className="mt-4 space-y-1 text-body">
-            <div className="flex items-start justify-between gap-4">
-              <span className="text-surface-500">Receipt No</span>
-              <span className="font-medium text-surface-900">{receipt.receiptNumber}</span>
+        <div className="px-6 py-4 space-y-4">
+          {/* Customer & Employee info */}
+          <div className="flex justify-between items-start text-body">
+            <div>
+              <p className="text-surface-500 text-caption">Customer</p>
+              <p className="font-semibold text-surface-900">{receipt.customer?.name || 'Walk-in customer'}</p>
+              {receipt.customer?.phone && <p className="text-caption text-surface-500">{receipt.customer.phone}</p>}
             </div>
-            <div className="flex items-start justify-between gap-4">
-              <span className="text-surface-500">Date</span>
-              <span className="font-medium text-surface-900">{formatDateTime(receipt.saleDate)}</span>
-            </div>
-            <div className="flex items-start justify-between gap-4">
-              <span className="text-surface-500">Staff</span>
-              <span className="text-right font-medium text-surface-900">{receipt.recordedBy?.name || '—'}</span>
-            </div>
-            <div className="flex items-start justify-between gap-4">
-              <span className="text-surface-500">Customer</span>
-              <span className="text-right font-medium text-surface-900">{receipt.customer?.name || 'Walk-in customer'}</span>
-            </div>
-            {receipt.customer?.phone && (
-              <div className="flex items-start justify-between gap-4">
-                <span className="text-surface-500">Phone</span>
-                <span className="font-medium text-surface-900">{receipt.customer.phone}</span>
-              </div>
-            )}
-            <div className="flex items-start justify-between gap-4">
-              <span className="text-surface-500">Payment</span>
-              <span className="font-medium text-surface-900">{PAYMENT_LABELS[receipt.paymentMethod] || receipt.paymentMethod}</span>
+            <div className="text-right">
+              <p className="text-surface-500 text-caption">Employee</p>
+              <p className="font-semibold text-surface-900">{employeeName || '\u2014'}</p>
             </div>
           </div>
 
-          <div className="my-4 border-t border-dashed border-surface-300" />
+          <div className="border-t border-dashed border-surface-200" />
 
-          <div className="space-y-3">
-            {customerLineItems(receipt).map((lineItem, index) => (
-              <div key={`${lineItem.label}-${index}`} className="flex items-start justify-between gap-4 text-body">
+          {/* Line items */}
+          <div>
+            {customerLineItems(receipt).map((li, i) => (
+              <div key={i} className="flex justify-between items-start py-1.5">
                 <div>
-                  <p className="font-medium text-surface-900">{lineItem.label}</p>
-                  <p className="text-caption text-surface-500">{lineItem.quantity} x {formatCurrency(lineItem.unitPrice)}</p>
+                  <p className="text-body text-surface-800 font-medium">{li.label}</p>
+                  <p className="text-caption text-surface-400">{li.quantity} x {formatCurrency(li.unitPrice)}</p>
                 </div>
-                <p className="font-semibold text-surface-900">{formatCurrency(lineItem.lineTotal)}</p>
+                <p className="text-body font-semibold text-surface-900 whitespace-nowrap">{formatCurrency(li.lineTotal)}</p>
               </div>
             ))}
           </div>
 
-          <div className="my-4 border-t border-dashed border-surface-300" />
+          <div className="border-t border-dashed border-surface-200" />
 
-          <div className="space-y-1 text-body">
-            <div className="flex items-start justify-between gap-4">
-              <span className="text-surface-500">Crates</span>
-              <span className="font-medium text-surface-900">{receipt.totalQuantity}</span>
+          {/* Subtotal / Total / Payment breakdown */}
+          <div className="space-y-1.5">
+            <div className="flex justify-between text-body text-surface-600">
+              <span>Subtotal</span>
+              <span className="font-semibold">{formatCurrency(receipt.totalAmount)}</span>
             </div>
-            <div className="flex items-start justify-between gap-4 text-base">
-              <span className="font-semibold text-surface-900">Total paid</span>
-              <span className="font-bold text-surface-900">{formatCurrency(receipt.totalAmount)}</span>
+            <div className="flex justify-between text-body-medium font-bold text-surface-900">
+              <span>Total</span>
+              <span>{formatCurrency(receipt.totalAmount)}</span>
             </div>
+            {receiptPaymentRows(receipt).map((row, i) => (
+              <div key={i} className="flex justify-between text-body text-surface-600">
+                <span>{receiptPaymentLabel(receipt, row)}</span>
+                <span className="font-semibold">{formatCurrency(row.amount)}</span>
+              </div>
+            ))}
           </div>
+
+          <div className="border-t border-dashed border-surface-200" />
+
+          {/* Footer: date + receipt number */}
+          <div className="flex justify-between text-caption text-surface-400">
+            <span>{formatDateTime(receipt.saleDate)}</span>
+            <span className="font-mono">No {receipt.receiptNumber}</span>
+          </div>
+
+          <p className="text-center text-caption text-surface-400 pt-1">
+            Thank you for shopping with Fresh Eggs Market!
+          </p>
         </div>
+      </div>
+
+      {/* Thermal print button */}
+      <div className="flex justify-center">
+        <button
+          type="button"
+          onClick={handleCustomerPrint}
+          className="rounded-lg border border-surface-300 bg-surface-0 px-4 py-2 text-body font-medium text-surface-700 hover:bg-surface-50"
+        >
+          Thermal print
+        </button>
       </div>
 
       <div className="flex items-center justify-between">
         <div>
           <p className="text-caption font-semibold uppercase tracking-[0.18em] text-surface-500">Internal receipt</p>
-          <p className="mt-1 text-body text-surface-500">This version keeps the admin-level audit detail for staff review.</p>
+          <p className="mt-1 text-body text-surface-500">Admin-level audit detail for staff review.</p>
         </div>
         <button
           type="button"
